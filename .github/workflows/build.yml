@@ -31,9 +31,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-14 is in brownout (retired 2026-11-02); macos-15 is the arm64 image.
+          # macos-14 is retiring and macos-15 arm64 was not handed a runner (capacity).
+          # macos-26 is the current Apple Silicon image (also macos-latest).
           - { name: windows-x64, os: windows-latest, vocals: true, enabled: true }
-          - { name: macos-arm64, os: macos-15, vocals: true, enabled: true }
+          - { name: macos-arm64, os: macos-26, vocals: true, enabled: true }
     env:
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
