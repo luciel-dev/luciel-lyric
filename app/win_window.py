@@ -137,17 +137,38 @@ def prepare_webview2(extra=()) -> str:
     return "missing"
 
 
+def _kill_tree(pid: int) -> None:
+    """Force-stop pid and every process it started. Used when an installer or the app sticks."""
+    if sys.platform != "win32" or not pid:
+        return
+    import subprocess
+    try:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _run_bootstrapper(path: Path) -> None:
     import subprocess
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
     print(f"installing WebView2 from {path}", flush=True)
+    proc = subprocess.Popen([str(path), "/silent", "/install"], creationflags=flags)
     try:
-        subprocess.run([str(path), "/silent", "/install"], timeout=180, creationflags=flags)
+        proc.wait(timeout=180)
     except Exception as e:  # noqa: BLE001
         print(f"WebView2 installer did not finish ({type(e).__name__}: {e})", flush=True)
+        _kill_tree(proc.pid)
+        try:
+            proc.kill()
+        except OSError:
+            pass
 
 
 def message_box(text: str, title: str = "Luciel Lyric") -> None:
+    if os.environ.get("LUCIEL_NO_DIALOG") == "1":
+        # CI and other unattended launches must not block on a click nobody can make.
+        print(text, flush=True)
+        return
     if sys.platform != "win32":
         print(text, flush=True)
         return
@@ -245,22 +266,6 @@ def focus_pid(pid: int) -> bool:
     user32.SetForegroundWindow(hwnd)
     user32.keybd_event(0x12, 0, 2, 0)
     return True
-
-
-def enforce_caption_buttons(window) -> None:
-    """WinForms defaults already include the buttons; set them again so a theme cannot drop them."""
-    form = getattr(window, "native", None)
-    if form is None or sys.platform != "win32":
-        return
-    import clr
-    clr.AddReference("System.Windows.Forms")
-    from System.Windows.Forms import FormBorderStyle
-    form.FormBorderStyle = FormBorderStyle.Sizable
-    form.ControlBox = True
-    form.MinimizeBox = True
-    form.MaximizeBox = True
-    form.ShowIcon = True
-    form.ShowInTaskbar = True
 
 
 def kill_descendants(root_pid: int) -> None:

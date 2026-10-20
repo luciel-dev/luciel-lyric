@@ -206,12 +206,9 @@ def _open_native(url, data, window_ref, shutdown) -> str:
                 pass
             return
         accepted["ok"] = True
-        if sys.platform == "win32":
-            try:
-                from app.win_window import enforce_caption_buttons
-                enforce_caption_buttons(w)
-            except Exception as e:  # noqa: BLE001
-                print(f"could not confirm window buttons ({type(e).__name__}: {e})", flush=True)
+        # Do not touch FormBorderStyle / MinimizeBox / MaximizeBox here. pywebview already
+        # creates a Sizable frame (caption, min, max, close). Changing those in the Shown
+        # handler recreates the HWND on the UI thread and the window stops answering messages.
 
     def _closed():
         if accepted.get("ok"):
