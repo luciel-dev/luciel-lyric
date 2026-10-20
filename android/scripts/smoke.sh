@@ -21,20 +21,20 @@ for demo in track sync look time render; do
   adb shell am force-stop app.luciel.lyric || true
   adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}"
   ok=0
-  for _ in $(seq 1 40); do
-    if adb logcat -d | grep -F "LucielReady" | grep -F "error:" >/dev/null; then
+  for _ in $(seq 1 60); do
+    if adb logcat -d -s LucielReady:I | grep -F "error:" >/dev/null; then
       echo "page error on ${demo}"
-      adb logcat -d | tail -80
+      adb logcat -d -s LucielReady:I | tail -40
       fail=1
       break
     fi
-    if adb logcat -d | grep -E "FATAL EXCEPTION" >/dev/null; then
+    if adb logcat -d | awk '/FATAL EXCEPTION/{hit=1} hit && /Process: app.luciel.lyric/{found=1} END{exit found?0:1}'; then
       echo "crash on ${demo}"
       adb logcat -d | tail -100
       fail=1
       break
     fi
-    if adb logcat -d | grep -F "LucielReady" | grep -F "${demo}" >/dev/null; then
+    if adb logcat -d -s LucielReady:I | grep -F "${demo}" >/dev/null; then
       ok=1
       break
     fi

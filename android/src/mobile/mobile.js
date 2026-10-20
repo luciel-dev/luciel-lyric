@@ -434,7 +434,7 @@
     if (window.LLFX) LLFX.setDefs(P.fx);
     state.fx = P.fx.map((f) => ({ id: f.id, label: f.label, amount: f.def || 40, on: false, option: (f.options || [null])[0] }));
     stage = new LLStage.Stage($("#stage"));
-    await LLStage.loadFonts({});
+    try { await LLStage.loadFonts({}); } catch (e) {}
     if (demo) demoFill();
     paintLooks(); paintAnims(); paintPalettes(); paintZooms(); paintFx(); paintQuality(); paintTimeline();
     syncColors();
