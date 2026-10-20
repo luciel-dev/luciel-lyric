@@ -104,6 +104,14 @@ How the frozen app works:
 Not in git: `models/*` (fetched), `data/`, `runtime/`, build outputs and `*.mp4`. The sample renders listed
 under "Test / sample" are made locally with `scripts/smoke_test.py`.
 
+## Android app
+
+The Android build is a WebView shell around the same lyric engine (`static/engine`), with a phone layout: pill buttons, rounded cards, and a bottom dock for Track, Sync, Look, Timeline, and Render. The three themes (grey Frutiger Aero, muted Y2K, Winamp) and the mascot are the same files as the desktop app.
+
+On the phone, whisper.cpp transcribes the section you picked and the page aligns pasted lyrics the same way as the desktop aligner. Rendering is MediaCodec H.264 + AAC, including black and green backgrounds. Phone Max is 1080p30. Demucs vocal isolation is not in the APK: a phone build of htdemucs is hundreds of megabytes and too slow, so sync uses the full mix. The English `ggml-tiny.en` model (~75 MB) is downloaded on first Sync into app storage and is not inside the APK. After that download, picking a song, syncing, and rendering do not need a network.
+
+`minSdk` is 26. The release APK contains `arm64-v8a` (phones) and `x86_64` (the CI emulator). CI signs it with a self-signed keystore created in the job when `LUCIEL_KEYSTORE` is not set. That key changes if the job mints a new one, so a later APK may not install over an older one until you uninstall.
+
 ## Using it
 
 1. **Track**: drop an mp3/wav/m4a file. Click or drag on the waveform (or type a start time) to place the clip, and set its length with the slider (15–30 s, default 20 s). **Play clip** plays the selected range.

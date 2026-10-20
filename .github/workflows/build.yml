@@ -230,7 +230,9 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Stand-alone Luciel Lyric - no Python or install script needed, works offline.
-            * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe.
+            Luciel Lyric  — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+
+            * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
               (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
+            * Android (arm64, Android 8+): install LucielLyric-android.apk. Same lyric looks and animations. The speech model (~75 MB, English) downloads the first time you sync; after that, sync and render stay on the phone. Vocal isolation is desktop-only. This APK is signed with a throwaway CI key (no upload keystore is configured). Uninstall the previous copy before installing a newer build.

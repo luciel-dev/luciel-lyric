@@ -1,0 +1,116 @@
+# Android APK. Separate from the desktop workflow so it does not share the macOS runner slot.
+# arm64-v8a is the phone ABI. x86_64 is in the same APK so this job can boot an emulator.
+name: build-android
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: android-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: SDK, NDK, CMake
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
+
+      - name: Signing key
+        env:
+          LUCIEL_KEYSTORE_B64: ${{ secrets.LUCIEL_KEYSTORE_B64 }}
+          LUCIEL_KEYSTORE_PASSWORD: ${{ secrets.LUCIEL_KEYSTORE_PASSWORD }}
+          LUCIEL_KEY_PASSWORD: ${{ secrets.LUCIEL_KEY_PASSWORD }}
+          LUCIEL_KEY_ALIAS: ${{ secrets.LUCIEL_KEY_ALIAS }}
+        run: |
+          if [ -n "${LUCIEL_KEYSTORE_B64}" ]; then
+            echo "Using the LUCIEL_KEYSTORE_B64 secret."
+            printf '%s' "${LUCIEL_KEYSTORE_B64}" | base64 -d > android/ci.keystore
+          else
+            echo "No LUCIEL_KEYSTORE_B64 secret. Minting a throwaway self-signed keystore (alias luciel)."
+            echo "The key is not stable across runs. Installing a newer APK may require uninstalling the old one."
+            keytool -genkeypair -keystore android/ci.keystore -storepass "${LUCIEL_KEYSTORE_PASSWORD:-luciellyric}" -keypass "${LUCIEL_KEY_PASSWORD:-luciellyric}" -alias "${LUCIEL_KEY_ALIAS:-luciel}" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Luciel Lyric CI, OU=CI, O=Luciel, L=None, ST=None, C=US"
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Assemble release APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Publish a stable APK name
+        run: |
+          src=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
+          cp "$src" LucielLyric-android.apk
+          ls -l LucielLyric-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LucielLyric-android
+          path: LucielLyric-android.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Emulator smoke + screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash android/scripts/smoke.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-screenshots
+          path: docs/screenshots/android-*.png
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LucielLyric-android
+          path: out
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk
+          draft: false
+          prerelease: false
+          body: |
+            Luciel Lyric  — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+
+            * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
+            * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
+              (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
+            * Android (arm64, Android 8+): install LucielLyric-android.apk. Same lyric looks and animations. The speech model (~75 MB, English) downloads the first time you sync; after that, sync and render stay on the phone. Vocal isolation is desktop-only. This APK is signed with a throwaway CI key (no upload keystore is configured). Uninstall the previous copy before installing a newer build.

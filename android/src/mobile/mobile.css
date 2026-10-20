@@ -1,0 +1,98 @@
+:root, [data-theme="aero"] {
+  --bg: #9eb4b4; --bg2: #d5e4e2; --ink: #1b2c30; --muted: #3e565c;
+  --card: rgba(255,255,255,.62); --card2: rgba(255,255,255,.38);
+  --accent: #147f96; --accent-ink: #f4fffd; --pill: #f7fbfb;
+  --line: rgba(255,255,255,.7); --shadow: 0 12px 28px rgba(30,60,70,.18);
+  --font: "Istok Web", "Poppins", sans-serif; --radius: 26px;
+}
+[data-theme="y2k"] {
+  --bg: #2c261f; --bg2: #3d342b; --ink: #f3eadb; --muted: #b7a790;
+  --card: rgba(54,46,38,.9); --card2: rgba(70,60,48,.75);
+  --accent: #c6a15a; --accent-ink: #241c12; --pill: #3a322a;
+  --line: rgba(230,210,170,.25); --shadow: 0 12px 28px rgba(0,0,0,.35);
+  --font: "Rajdhani", "Poppins", sans-serif; --radius: 22px;
+}
+[data-theme="winamp"] {
+  --bg: #1b1b1b; --bg2: #101010; --ink: #e6e6e6; --muted: #8d8d8d;
+  --card: #2a2a2a; --card2: #222; --accent: #6fbf4a; --accent-ink: #101408;
+  --pill: #141414; --line: #3a3a3a; --shadow: 0 10px 0 #0a0a0a;
+  --font: "Share Tech Mono", ui-monospace, monospace; --radius: 18px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+body {
+  font-family: var(--font);
+  background:
+    radial-gradient(120px 80px at 12% 8%, rgba(255,255,255,.35), transparent 70%),
+    radial-gradient(180px 120px at 90% 0%, rgba(255,255,255,.2), transparent 70%),
+    linear-gradient(180deg, var(--bg2), var(--bg) 42%);
+}
+button, input, textarea { font-family: inherit; color: inherit; }
+.app { min-height: 100%; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 14px 0; }
+.top { display: flex; align-items: center; gap: 10px; padding: 10px 2px 6px; }
+.mascot {
+  width: 64px; height: 64px; border-radius: 22px; object-fit: cover; background: #fff;
+  box-shadow: var(--shadow); border: 2px solid var(--line);
+}
+.brand { font-weight: 700; font-size: 20px; letter-spacing: .01em; }
+.tag { color: var(--muted); font-size: 12px; }
+.themes { margin-left: auto; display: flex; gap: 6px; }
+.themes button, .dock button, .pill, .pills button, .hscroll button {
+  border: 0; background: var(--pill); color: var(--ink); border-radius: 999px;
+  padding: 8px 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+}
+.themes button[aria-checked="true"], .dock button[aria-current="true"], .pills button.on, .hscroll button.on {
+  background: var(--accent); color: var(--accent-ink);
+}
+main { flex: 1; padding-bottom: 96px; }
+.screen { display: none; }
+.screen.on { display: block; animation: rise .28s ease; }
+@keyframes rise { from { opacity: .4; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+h1 { font-size: 28px; margin: 8px 0 0; }
+.lead, .hint { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.card, textarea, .stagewrap {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--line); padding: 12px;
+}
+textarea, input[type="text"], .row2 input {
+  width: 100%; border-radius: 18px; border: 1px solid var(--line); background: var(--card2);
+  padding: 12px 14px; font-size: 16px;
+}
+.pill { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 18px; font-size: 16px; margin: 8px 8px 0 0; }
+.pill.big { width: 100%; margin-right: 0; font-size: 18px; }
+.slider { display: block; font-size: 14px; margin-top: 8px; }
+.slider input { width: 100%; accent-color: var(--accent); }
+.lcd {
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  background: #102016; color: #b6e39a; border-radius: 16px; padding: 10px 12px; margin-bottom: 8px;
+}
+canvas#wave { width: 100%; height: 92px; border-radius: 16px; background: rgba(0,0,0,.15); }
+.stagewrap { padding: 8px; display: flex; justify-content: center; }
+.stagewrap canvas { width: min(100%, 280px); height: auto; border-radius: 18px; background: #111; }
+.hscroll { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 4px; scroll-snap-type: x mandatory; }
+.hscroll button { scroll-snap-align: start; flex: 0 0 auto; text-align: left; padding: 8px; }
+.hscroll canvas { display: block; width: 148px; height: 56px; border-radius: 12px; }
+.hscroll small { display: block; margin-top: 4px; font-size: 12px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pills button { min-height: 44px; }
+.lines, .keys { padding-left: 18px; }
+.lines li, .keys li { margin: 6px 0; }
+.fx label { display: flex; gap: 8px; align-items: center; background: var(--card); border-radius: 16px; padding: 8px 10px; margin-top: 8px; }
+.dock {
+  position: fixed; left: 10px; right: 10px; bottom: calc(8px + env(safe-area-inset-bottom));
+  display: flex; gap: 4px; padding: 6px; border-radius: 28px;
+  background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line);
+}
+.dock button { flex: 1; min-height: 46px; font-size: 12px; }
+.row2 { display: flex; gap: 8px; margin-top: 8px; }
+.colors { display: flex; gap: 8px; margin-top: 8px; }
+.colors label {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--card); border-radius: 18px; padding: 8px; font-size: 12px; border: 1px solid var(--line);
+}
+.colors input { width: 100%; height: 36px; border: 0; background: transparent; padding: 0; }
+canvas#tl { width: 100%; height: 72px; border-radius: 18px; background: rgba(0,0,0,.2); display: block; margin-top: 8px; }
+[data-theme="aero"] .pill.big {
+  background: linear-gradient(180deg, #8fd0dc, var(--accent));
+  color: white;
+}

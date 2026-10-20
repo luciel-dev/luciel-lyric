@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LucielLyric" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#14181c</item>
+        <item name="android:navigationBarColor">#14181c</item>
+        <item name="android:windowBackground">#14181c</item>
+    </style>
+</resources>
