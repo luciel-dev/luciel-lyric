@@ -31,10 +31,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-14 is retiring and macos-15 arm64 was not handed a runner (capacity).
-          # macos-26 is the current Apple Silicon image (also macos-latest).
+          # macos-15 and macos-26 arm64 jobs were cancelled with
+          # "not acquired by Runner of type hosted" (capacity). macos-14 is still
+          # served until 2026-11-02; the next brownout starts 2026-10-23 14:00 UTC.
           - { name: windows-x64, os: windows-latest, vocals: true, enabled: true }
-          - { name: macos-arm64, os: macos-26, vocals: true, enabled: true }
+          - { name: macos-arm64, os: macos-14, vocals: true, enabled: true }
     env:
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
