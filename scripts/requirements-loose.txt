@@ -1,0 +1,12 @@
+# Fallback used by setup only if the pinned requirements.txt cannot be installed (e.g. Intel Mac).
+fastapi
+uvicorn
+python-multipart
+faster-whisper
+ctranslate2
+rapidfuzz
+numpy
+pillow
+fonttools
+brotli
+static-ffmpeg

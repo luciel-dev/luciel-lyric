@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luciel Lyric · Lyric Video Maker</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('lc-theme')||'aero'}catch(e){document.documentElement.dataset.theme='aero'}</script>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/themes.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231ed760%22/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="bgfx" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i><i class="b5"></i><i class="b6"></i></div>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo"><span class="dot"></span><span class="logotext" data-text="Luciel Lyric">Luciel Lyric</span></div>
+    <div class="sub">15–30 s lyric videos · auto-synced</div>
+  </div>
+  <nav class="stepper" id="stepper">
+    <a href="#step1" data-step="1"><b>1</b><span>Track</span></a>
+    <a href="#step2" data-step="2"><b>2</b><span>Sync</span></a>
+    <a href="#step3" data-step="3"><b>3</b><span>Edit</span></a>
+    <a href="#step4" data-step="4"><b>4</b><span>Render</span></a>
+  </nav>
+  <div class="tools">
+    <div class="themepick" id="themePick" role="radiogroup" aria-label="Theme">
+      <button data-theme="aero" role="radio" title="Frutiger Aero"><span class="sw sw-aero"></span>Aero</button>
+      <button data-theme="y2k" role="radio" title="Cyberpunk"><span class="sw sw-y2k"></span>Cyberpunk</button>
+      <button data-theme="winamp" role="radio" title="Winamp 2.x"><span class="sw sw-winamp"></span>Winamp</button>
+    </div>
+    <button id="mascotToggle" class="btn ghost small mascot-toggle" title="Show/hide the mascot">👼 <span>Hide</span></button>
+    <button id="quitApp" class="btn ghost small hidden" title="Stop Luciel Lyric (closes the local server)">⏻ Quit</button>
+  </div>
+</header>
+<main>
+  <section class="card" id="step1">
+    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">1</span> Track</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
+    <label class="drop" id="drop">
+      <input type="file" id="audioFile" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg">
+      <div><b>Drop an audio file</b> or click to browse<br><small>mp3 · wav · m4a</small></div>
+    </label>
+    <div id="trackInfo" class="muted"></div>
+    <div class="lcd" id="lcd">
+      <div class="lcd-left"><div class="lcd-state" id="lcdState">■</div><div class="lcd-time" id="lcdTime">0:00.0</div></div>
+      <div class="lcd-right">
+        <div class="lcd-marquee"><span id="lcdTitle">LUCIEL LYRIC · DROP A TRACK TO BEGIN</span></div>
+        <div class="lcd-meta"><span id="lcdKbps">--:--</span><span id="lcdKhz">44 kHz</span><span id="lcdClip">clip 20s</span><span class="lcd-st">stereo</span></div>
+        <canvas id="miniViz" width="152" height="28"></canvas>
+      </div>
+    </div>
+    <div id="waveWrap" class="hidden">
+      <canvas id="wave" height="120"></canvas>
+      <div class="row">
+        <button id="playBtn" class="btn ghost">▶ Play clip</button>
+        <div class="field"><span>Start</span><input type="number" id="startIn" step="0.1" min="0" value="0"> s</div>
+        <div class="field grow"><span>Length <b id="lenVal">20</b>s</span><input type="range" id="lenIn" min="15" max="30" step="1" value="20"></div>
+      </div>
+      <small class="muted">Click or drag on the waveform to choose where the clip starts.</small>
+    </div>
+  </section>
+
+  <section class="card" id="step2">
+    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">2</span> Lyrics sync</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
+    <textarea id="lyricsIn" rows="5" placeholder="Optional: paste the known lyrics (whole song is fine, one line per lyric line). Leave empty to auto-transcribe."></textarea>
+    <div class="row">
+      <div class="field"><span>Model</span><select id="modelIn"></select></div>
+      <label class="check"><input type="checkbox" id="sepIn"> Isolate vocals first (Demucs, slower)</label>
+      <button id="syncBtn" class="btn primary" disabled>✨ Sync lyrics</button>
+    </div>
+    <div id="syncStatus" class="muted"></div>
+  </section>
+
+  <section class="card hidden" id="step3">
+    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">3</span> Edit &amp; preview</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
+    <div class="row">
+      <button id="previewBtn" class="btn ghost">▶ Preview sync</button>
+      <button id="shiftMinus" class="btn ghost small">−0.1s all</button>
+      <button id="shiftPlus" class="btn ghost small">+0.1s all</button>
+      <button id="addLine" class="btn ghost small">+ line</button>
+    </div>
+    <div id="preview" class="preview"><div id="pvLine">&nbsp;</div><div id="pvNext"></div></div>
+    <div id="lines"></div>
+    <small class="muted">Edit word text and start/end times (seconds from clip start). ↵ splits a line after that word; ⤒ merges with the line above.</small>
+  </section>
+
+  <section class="card hidden" id="step4">
+    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">4</span> Style, animate &amp; render</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
+    <div class="looksrow"><span class="lbl">Look</span><div class="presets" id="presets"></div></div>
+    <div class="split">
+     <div class="controls">
+      <div class="tabs" id="edTabs" role="tablist">
+        <button role="tab" data-tab="text" class="on">✍ Text &amp; animation</button>
+        <button role="tab" data-tab="video">🎥 Video · trim &amp; zoom</button>
+        <button role="tab" data-tab="fx">✨ Effects</button>
+        <button role="tab" data-tab="bg">🖼 Background &amp; export</button>
+      </div>
+
+      <div class="tabpane on" data-pane="text">
+        <div class="sublbl">Animation preset</div>
+        <div class="animgrid" id="animGrid"></div>
+        <div class="presetbar">
+          <div class="field"><span>My presets</span><select id="savedSel"><option value="">(none saved)</option></select></div>
+          <button class="btn ghost small" id="savedLoad">Load</button>
+          <button class="btn ghost small" id="savedDel" title="Delete the selected saved preset">🗑</button>
+          <input type="text" id="saveName" placeholder="Preset name" maxlength="60">
+          <button class="btn ghost small" id="saveBtn">💾 Save</button>
+          <button class="btn ghost small" id="exportBtn" title="Download style + animation + FX as a .json file">⬇ Export</button>
+          <label class="btn ghost small filebtn" title="Load a preset .json file">⬆ Import<input type="file" id="importFile" accept=".json,application/json"></label>
+          <button class="btn ghost small" id="resetBtn" title="Discard tweaks and go back to the selected preset">↺ Reset</button>
+          <span id="presetStatus" class="muted small"></span>
+        </div>
+        <div class="fontbox">
+          <div class="row">
+            <div class="field"><span>Font</span><select id="fontSel"><option value="">Look default</option></select></div>
+            <label class="btn ghost small filebtn">🔤 Upload font<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"></label>
+            <button id="fontDel" class="btn ghost small hidden" title="Delete this uploaded font">🗑 Delete font</button>
+            <span id="fontStatus" class="muted"></span>
+          </div>
+          <div id="fontPreview" class="fontpreview"><div class="fpname"></div><div class="fpsample">The quick brown fox · la la <i>love</i> 0123</div></div>
+        </div>
+        <details class="ctlgroup" open><summary>Text &amp; layout</summary><div class="ctlgrid" id="ctlText"></div></details>
+        <details class="ctlgroup" open id="palGroup"><summary>Colour palette</summary>
+          <div class="palgrid" id="palGrid"></div>
+          <div class="palbar">
+            <button class="btn ghost small" id="palAuto" title="Extract a palette from the background image, current video frame or gradient">✨ Auto from background</button>
+            <input type="text" id="palName" placeholder="Palette name" maxlength="40">
+            <button class="btn ghost small" id="palSave" title="Save the current text/title colours as a palette (kept in this browser and in exported presets)">★ Save colours</button>
+            <button class="btn ghost small" id="palDel" title="Delete the selected custom palette" disabled>🗑</button>
+            <small class="muted" id="palStatus"></small>
+          </div>
+          <small class="muted">A palette sets text, active/sung word, outline, glow, shadow, highlight box and title colours together. Fine-tune any of them below.</small>
+        </details>
+        <details class="ctlgroup"><summary>Colours, outline, shadow &amp; glow</summary><div class="ctlgrid" id="ctlColor"></div></details>
+        <details class="ctlgroup" id="titleGroup"><summary>Title text &amp; colour</summary>
+          <div class="row titlerow"><div class="field grow"><span>Title</span><input type="text" id="titleIn2" placeholder="Song · Artist (optional)"></div>
+            <label class="check"><input type="checkbox" id="showTitleIn2" checked> Show title</label></div>
+          <div class="ctlgrid" id="ctlTitle"></div>
+        </details>
+        <details class="ctlgroup" open><summary>Animation timing &amp; motion</summary><div class="ctlgrid" id="ctlAnim"></div></details>
+      </div>
+
+      <div class="tabpane" data-pane="video">
+        <div class="subbox" id="trimBox">
+          <div class="sublbl">Trim background video</div>
+          <div id="trimEmpty" class="muted small">Pick <b>Background → Video clip</b> and upload a clip to trim it here.</div>
+          <div id="trimUI" class="hidden">
+            <div class="trimstrip" id="trimStrip"><div class="thumbs" id="trimThumbs"></div><div class="shade l"></div><div class="shade r"></div><div class="sel" id="trimSel"></div><div class="h in" id="trimIn" title="In point"></div><div class="h out" id="trimOut" title="Out point"></div><div class="ph" id="trimPh"></div></div>
+            <div class="row">
+              <div class="field"><span>In</span><input type="number" id="trimInN" step="0.1" min="0" value="0"> s</div>
+              <div class="field"><span>Out</span><input type="number" id="trimOutN" step="0.1" min="0" value="0"> s</div>
+              <span class="muted small" id="trimInfo"></span>
+            </div>
+          </div>
+        </div>
+        <div class="subbox">
+          <div class="sublbl">Zoom &amp; pan (keyframes)</div>
+          <div class="row">
+            <div class="field"><span>Preset</span><select id="zoomPreset"></select></div>
+            <div class="field"><span>Apply to</span><select id="zoomTarget"><option value="bg">Background only</option><option value="all">Whole frame (incl. lyrics)</option></select></div>
+          </div>
+          <div class="row">
+            <button class="btn ghost small" id="kfAdd">＋ Keyframe at playhead</button>
+            <button class="btn ghost small" id="kfDel">✕ Delete keyframe</button>
+            <button class="btn ghost small" id="kfClear">Clear all</button>
+          </div>
+          <div class="kflist" id="kfList"></div>
+          <div class="row" id="kfEdit">
+            <div class="field grow"><span>Zoom <b id="kfZVal">1.00</b>×</span><input type="range" id="kfZ" min="1" max="2.5" step="0.01" value="1"></div>
+            <div class="field"><span>Ease in</span><select id="kfEase"></select></div>
+            <div class="field"><span>Time</span><input type="number" id="kfT" step="0.05" min="0" value="0"> s</div>
+          </div>
+          <small class="muted">Select a keyframe, then <b>drag on the preview</b> to move its focal point (double-click recentres). Dragging with no keyframe at the playhead adds one.</small>
+        </div>
+      </div>
+
+      <div class="tabpane" data-pane="fx">
+        <div id="fxWarn" class="warnbox hidden"></div>
+        <div class="fxlist" id="fxList"></div>
+        <small class="muted">Effects stack top to bottom. They render exactly as previewed (same maths on the server).</small>
+      </div>
+
+      <div class="tabpane" data-pane="bg">
+        <div class="row">
+          <div class="field"><span>Format</span>
+            <select id="aspectIn"><option value="9:16">1080×1920 (vertical)</option><option value="1:1">1080×1080 (square)</option><option value="16:9">1920×1080 (wide)</option></select></div>
+        </div>
+        <div class="row">
+          <div class="field grow"><span>Title</span><input type="text" id="titleIn" placeholder="Song · Artist (optional)"></div>
+          <label class="check"><input type="checkbox" id="showTitleIn" checked> Show title</label>
+        </div>
+        <div class="bgbox">
+          <div class="row">
+            <div class="field"><span>Background</span>
+              <select id="bgMode">
+                <option value="gradient">Gradient (from look)</option>
+                <option value="image">Image</option>
+                <option value="video">Video clip</option>
+                <option value="black">Black screen · overlay (Screen/Add blend)</option>
+                <option value="green">Green screen #00FF00 · chroma key</option>
+                <option value="transparent">Transparent · alpha channel</option>
+              </select></div>
+            <label class="check"><input type="checkbox" id="vizIn" checked> Waveform visualizer</label>
+          </div>
+          <div class="bgopt" data-mode="image">
+            <div class="row">
+              <label class="btn ghost small filebtn">🖼 Upload image<input type="file" id="bgFile" accept="image/*"></label>
+              <span id="bgName" class="muted">no image yet</span>
+              <button id="bgClear" class="btn ghost small hidden">✕</button>
+            </div>
+          </div>
+          <div class="bgopt" data-mode="video">
+            <div class="row">
+              <label class="btn ghost small filebtn">🎞 Upload video<input type="file" id="bgVideoFile" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"></label>
+              <span id="bgVideoName" class="muted">mp4 · mov · webm</span>
+            </div>
+            <div class="row">
+              <div class="field grow"><span>Darken <b id="vDarkVal">35</b>%</span><input type="range" id="vDarkIn" min="0" max="90" step="5" value="35"></div>
+              <div class="field grow"><span>Blur <b id="vBlurVal">0</b></span><input type="range" id="vBlurIn" min="0" max="30" step="1" value="0"></div>
+            </div>
+            <div class="row">
+              <label class="check"><input type="radio" name="vAudio" value="song" checked> Song audio only</label>
+              <label class="check"><input type="radio" name="vAudio" value="mix" id="vMixIn"> Mix in video audio</label>
+              <div class="field grow" id="vVolBox"><span>Video vol <b id="vVolVal">50</b>%</span><input type="range" id="vVolIn" min="0" max="150" step="5" value="50"></div>
+            </div>
+            <small class="muted" id="vLoopNote">Trim it in the <b>Video</b> tab. It's scaled and cropped to fill the frame and loops if shorter than the clip.</small>
+          </div>
+          <div class="bgopt" data-mode="transparent">
+            <div class="row">
+              <div class="field"><span>Export as</span>
+                <select id="alphaFmt"><option value="mov">MOV · ProRes 4444 (Premiere, Final Cut, Resolve)</option><option value="webm">WebM · VP9 alpha (web, CapCut desktop, smaller)</option></select></div>
+            </div>
+            <small class="muted">Lyrics only on a fully transparent background, so you can drop it on any video track. Post effects are off in this mode.</small>
+          </div>
+          <div class="bgopt" data-mode="black"><small class="muted">Pure #000 background. In your editor, put it above your footage and set blend mode to <b>Screen</b> or <b>Add/Linear Dodge</b>; black disappears. Only effects that keep black black are available.</small></div>
+          <div class="bgopt" data-mode="green"><small class="muted">Pure #00FF00 background for chroma key. Glow and soft shadows are turned off and post effects are disabled for clean keying.</small></div>
+        </div>
+      </div>
+
+      <div class="row renderrow">
+        <button id="renderBtn" class="btn primary big">🎬 Render</button>
+        <button id="openRenders" class="btn ghost small hidden" title="Show the rendered videos in Explorer / Finder">📂 Open renders folder</button>
+      </div>
+      <div id="renderStatus" class="muted"></div>
+     </div>
+     <div class="stagecol">
+      <div id="stage" class="stage"><canvas id="stageCanvas"></canvas><div class="focal hidden" id="focal"></div></div>
+      <div class="transport">
+        <button id="stagePlay" class="btn ghost small">▶ Preview</button>
+        <div class="scrubwrap"><div class="kfmarks" id="kfMarks"></div><input type="range" id="scrub" min="0" max="20" step="0.0333" value="0"></div>
+        <span class="tc" id="stageTime">0.0s</span>
+      </div>
+      <div class="row center"><span class="muted small" id="stageInfo"></span></div>
+      <video id="stageVideo" class="srcvideo" muted playsinline preload="auto"></video>
+     </div>
+    </div>
+    <div id="result" class="hidden">
+      <video id="video" controls playsinline></video>
+      <div><a id="dl" class="btn primary" download>⬇ Download</a> <button id="openRenders2" class="btn ghost small hidden">📂 Show in folder</button><div id="resultNote" class="muted"></div></div>
+    </div>
+  </section>
+</main>
+<audio id="audio" preload="auto"></audio>
+<div id="mascot" class="mascot" aria-live="polite">
+  <div class="mascot-win">
+    <div class="mascot-bar"><span class="wdots"><i></i><i></i><i></i></span><span class="mtitle">LUCIEL.EXE</span><button class="mascot-x" id="mascotClose" title="Hide mascot">×</button></div>
+    <div class="mascot-body" id="mascotBody" title="Say hi!">
+      <img id="mascotImg" src="/mascot/idle.webp" alt="Chibi angel mascot">
+      <video id="mascotVid" muted playsinline preload="none"></video>
+    </div>
+  </div>
+  <div class="mascot-bubble" id="mascotBubble"></div>
+</div>
+<script src="/engine/textanim.js"></script>
+<script src="/engine/fx.js"></script>
+<script src="/engine/stage.js"></script>
+<script src="/app.js"></script>
+<script src="/editor.js"></script>
+<script src="/theme.js"></script>
+<script src="/mascot.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# models are fetched (checksum-verified) by scripts/fetch_models.py - never committed
+models/*
+!models/README.txt
+# per-install / runtime state
+data/
+runtime/
+.venv/
+venv/
+# build outputs (PyInstaller, icons, ffmpeg, version info, installers)
+build/
+dist/
+packaging/build/
+*.spec.bak
+# large media (sample renders are produced locally, see README)
+*.mp4
+*.mov
+*.webm
+*.dmg
+*.zip
+# python / OS junk
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
