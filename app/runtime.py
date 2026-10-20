@@ -42,15 +42,44 @@ DESKTOP_MODE = env("DESKTOP_MODE")         # "window" | "browser" | "server" whe
 SHUTDOWN_HOOK = None                       # set by app.desktop: callable that stops the server/app
 
 
-if FROZEN and sys.platform == "win32":
-    # the windowed .exe has no console: without this every ffmpeg/ffprobe/demucs child would flash a console window
-    _popen_init = subprocess.Popen.__init__
+# Remember children so closing the window can stop ffmpeg/demucs, and hide their consoles
+# on the windowed Windows build (a GUI-subsystem exe has no console of its own).
+_CHILD_PROCS = []
+_popen_init = subprocess.Popen.__init__
 
-    def _popen_no_console(self, *a, **kw):
-        if not kw.get("creationflags"):
-            kw["creationflags"] = subprocess.CREATE_NO_WINDOW
-        _popen_init(self, *a, **kw)
-    subprocess.Popen.__init__ = _popen_no_console
+
+def _popen_tracked(self, *a, **kw):
+    if FROZEN and sys.platform == "win32" and not kw.get("creationflags"):
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+    _popen_init(self, *a, **kw)
+    _CHILD_PROCS.append(self)
+
+
+subprocess.Popen.__init__ = _popen_tracked
+
+
+def stop_children():
+    """Stop subprocesses started by this process (encode, probe, vocal isolation)."""
+    alive = [p for p in list(_CHILD_PROCS) if p.poll() is None]
+    for p in alive:
+        try:
+            p.terminate()
+        except Exception:  # noqa: BLE001
+            pass
+    for p in alive:
+        try:
+            p.wait(timeout=2)
+        except Exception:  # noqa: BLE001
+            try:
+                p.kill()
+            except Exception:  # noqa: BLE001
+                pass
+    if sys.platform == "win32":
+        try:
+            from .win_window import kill_descendants
+            kill_descendants(os.getpid())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def demucs_command(args):

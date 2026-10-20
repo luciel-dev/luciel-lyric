@@ -52,4 +52,22 @@ Name: "{autodesktop}\Luciel Lyric"; Filename: "{app}\LucielLyric.exe"; Tasks: de
 Name: "{userappdata}\LucielLyric\renders"
 
 [Run]
+; Evergreen bootstrapper (small, needs a network the first time). Skipped when WebView2 is already there.
+Filename: "{app}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 (the app window)..."; Flags: runhidden waituntilterminated; Check: not WebView2Ready
 Filename: "{app}\LucielLyric.exe"; Description: "{cm:LaunchProgram,Luciel Lyric}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function WebView2Ready: Boolean;
+var
+  V, Client, Tail: String;
+begin
+  Result := False;
+  Client := Chr(123) + 'F3017226-FE2A-4295-8BDF-00C3A9A7E4C5' + Chr(125);
+  Tail := '\Microsoft\EdgeUpdate\Clients\' + Client;
+  if RegQueryStringValue(HKCU, 'SOFTWARE' + Tail, 'pv', V) then
+    if (V <> '') and (V <> '0.0.0.0') then begin Result := True; Exit; end;
+  if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node' + Tail, 'pv', V) then
+    if (V <> '') and (V <> '0.0.0.0') then begin Result := True; Exit; end;
+  if RegQueryStringValue(HKLM, 'SOFTWARE' + Tail, 'pv', V) then
+    if (V <> '') and (V <> '0.0.0.0') then begin Result := True; Exit; end;
+end;

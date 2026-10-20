@@ -45,10 +45,13 @@ Release builds are stand-alone: `LucielLyric-Setup.exe` (or the portable zip) on
 `LucielLyric-mac-arm64.dmg` (Apple Silicon, macOS 14+). Python, all packages, ffmpeg, the Whisper `base.en` and
 Demucs `htdemucs` models are inside, so the app works offline from the first launch.
 
-* The app starts its local server on a free port (from 8000 up) and shows the UI in a native window
-  (WebView2 on Windows, WKWebView on macOS). If no native web view is available it opens the default browser
-  instead and shows a **⏻ Quit** button. Closing the window stops the server.
-* Only one copy runs at a time. Starting it again just points you at the running one.
+* The app starts its local server on a free port (from 8000 up) and shows the UI in its own window, not
+  in your browser. Windows uses a normal title bar (minimize, maximize, close) on WebView2; macOS uses
+  the traffic-light buttons on WKWebView. The installer and the portable build include the WebView2
+  bootstrapper and install that runtime if it is missing. If a native window still cannot be created,
+  a dialog explains why and the app opens in the browser as a last resort (use **⏻ Quit** so the
+  server actually stops). Closing the window stops the server and any encode or vocal-isolation process.
+* Only one copy runs at a time. Starting it again brings the existing window forward.
 * Your data (uploads, renders, custom fonts, presets, logs) is in `%APPDATA%\LucielLyric` on Windows,
   `~/Library/Application Support/LucielLyric` on macOS and `~/.local/share/LucielLyric` on Linux.
   **📂 Open renders folder** (next to Render) opens it.

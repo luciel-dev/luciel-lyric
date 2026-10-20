@@ -117,12 +117,20 @@ jobs:
         if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
         run: python packaging/fetch_ffmpeg.py
 
+      - name: Window helper tests
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        run: python scripts/test_desktop_window.py
+
       - name: Icons + version info
         if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
         shell: bash
         run: |
           python packaging/make_icons.py
           python packaging/make_version_info.py --version "${{ steps.ver.outputs.version }}"
+
+      - name: Bundle WebView2 bootstrapper
+        if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: python packaging/fetch_webview2.py
 
       - name: PyInstaller
         if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
@@ -132,6 +140,16 @@ jobs:
       - name: Smoke test (Windows)
         if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
         run: python packaging/ci_smoke.py --exe dist/LucielLyric/LucielLyric.exe
+      - name: Native window (Windows)
+        if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: python packaging/win_window_check.py --exe dist/LucielLyric/LucielLyric.exe --screenshot dist/windows-window.png
+      - name: Upload Windows window screenshot
+        if: ${{ !cancelled() && runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-window
+          path: dist/windows-window.png
+          if-no-files-found: ignore
       - name: Package (Windows installer + portable zip)
         if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
         shell: pwsh
@@ -203,7 +221,11 @@ jobs:
       - run: ls -la out
       - uses: softprops/action-gh-release@v2
         with:
-          files: out/*
+          files: |
+            out/*.exe
+            out/*.zip
+            out/*.dmg
+            out/*.tar.gz
           draft: false
           prerelease: false
           body: |

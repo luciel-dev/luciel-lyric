@@ -42,6 +42,13 @@ for pkg in pkgs:
 hiddenimports += collect_submodules("app") + collect_submodules("uvicorn") + [
     "python_multipart", "multipart", "rapidfuzz", "fontTools.ttLib", "fontTools.ttLib.woff2", "brotli",
     "PIL._imagingft", "huggingface_hub", "yaml"]
+WIN, MAC = sys.platform == "win32", sys.platform == "darwin"
+if WIN:
+    boot = BUILD / "webview2" / "MicrosoftEdgeWebview2Setup.exe"
+    if not boot.is_file():
+        raise SystemExit("missing WebView2 bootstrapper - run packaging/fetch_webview2.py first")
+    datas.append((str(boot), "."))
+    hiddenimports += ["clr", "clr_loader", "pythonnet", "webview.platforms.winforms", "webview.platforms.edgechromium"]
 if not NO_VOCALS:
     hiddenimports += ["torch", "demucs.separate", "demucs.pretrained", "demucs.htdemucs", "demucs.apply", "safetensors.torch"]
 
@@ -55,7 +62,6 @@ a = Analysis([str(ROOT / "desktop" / "luciel_desktop.py")], pathex=[str(ROOT)], 
              hiddenimports=hiddenimports, hookspath=[], runtime_hooks=[], excludes=excludes, noarchive=False)
 pyz = PYZ(a.pure)
 
-WIN, MAC = sys.platform == "win32", sys.platform == "darwin"
 icon = str(BUILD / ("icon.ico" if WIN else "icon.icns" if MAC else "icon.png"))
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="LucielLyric", debug=False, strip=False, upx=False,
           console=not (WIN or MAC),   # windowed on Windows/macOS (logs go to <data>/logs/luciel.log)

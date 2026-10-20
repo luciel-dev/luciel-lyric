@@ -1,16 +1,20 @@
 """Luciel Lyric desktop launcher (used by the PyInstaller build; also runnable from source).
 
-    python -m app.desktop                 # native window (pywebview), falls back to the default browser
+    python -m app.desktop                 # native window (pywebview)
     python -m app.desktop --browser       # always use the default browser
     python -m app.desktop --server-only   # headless: just serve on localhost (CI smoke test)
     options: --port N (default: first free from 8000), --data-dir PATH (default: OS user data folder)
 
 What it does:
   * starts the FastAPI app with uvicorn in a background thread on a free localhost port,
-  * opens it in a native window (WebView2 on Windows, WKWebView on macOS, GTK/Qt on Linux if available)
-    or, if no webview backend works, in the default browser (a Quit button appears in the app header),
-  * stops the server cleanly when the window is closed (or on Ctrl+C / SIGTERM / POST /api/shutdown),
-  * single-instance guard: a second launch just brings up the running instance's URL in the browser,
+  * opens a normal native window with the system title bar (WebView2 on Windows, WKWebView on macOS).
+    Windows minimize, maximize/restore and close sit in the top-right corner; macOS keeps the
+    traffic lights. The window is resizable and shows the Luciel Lyric name and icon.
+  * on Windows, installs the bundled WebView2 bootstrapper when the runtime is missing. A fixed
+    runtime in WebView2Fixed/ next to the exe is the offline native path. The system browser is
+    only used if a native window still cannot be created, and a dialog says so.
+  * closing the window stops the server and its child processes (ffmpeg, vocal isolation),
+  * a second launch focuses the existing window instead of opening a browser,
   * stores uploads/renders/fonts/presets/logs in the OS user data folder.
 """
 import argparse
@@ -82,14 +86,18 @@ class InstanceLock:
             self.fh.close(); self.fh = None
             return False
 
-    def publish(self, url):
-        self.info.write_text(json.dumps({"url": url, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
+    def publish(self, url, mode="window"):
+        self.info.write_text(json.dumps({"url": url, "pid": os.getpid(), "mode": mode, "started": time.time()}), encoding="utf-8")
+
+    def running_info(self):
+        try:
+            data = json.loads(self.info.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:  # noqa: BLE001
+            return {}
 
     def running_url(self):
-        try:
-            return json.loads(self.info.read_text(encoding="utf-8")).get("url")
-        except Exception:  # noqa: BLE001
-            return None
+        return self.running_info().get("url")
 
     def release(self):
         try:
@@ -119,6 +127,107 @@ def _redirect_output_if_needed(data_dir: Path):
     return logs / "luciel.log"
 
 
+def _raise_running(info) -> bool:
+    """Focus an existing native window. Returns True when this launch should not open a browser."""
+    if info.get("mode") != "window":
+        return False
+    if sys.platform == "win32":
+        from app.win_window import focus_pid, message_box
+        pid = int(info.get("pid") or 0)
+        if focus_pid(pid):
+            print("brought the existing window forward", flush=True)
+            return True
+        message_box("Luciel Lyric is already running.\n\nUse the window that is already open.")
+        return True
+    return False
+
+
+def _announce_browser(reason: str, log) -> None:
+    where = f"\n\nDetails were written to:\n{log}" if log else ""
+    if reason == "missing":
+        text = (
+            "Luciel Lyric could not open its own window because the Microsoft Edge WebView2 "
+            "Runtime is not installed, and the bundled installer could not add it "
+            "(this computer may be offline).\n\n"
+            "The app will open in your web browser instead. It still works offline. "
+            "Closing the browser tab does not quit Luciel Lyric — use the Quit button "
+            "in the header so the background server shuts down."
+            + where
+        )
+    elif reason == "mshtml":
+        text = (
+            "Luciel Lyric could not open its WebView2 window (it would have used the old "
+            "Internet Explorer engine instead).\n\n"
+            "The app will open in your web browser instead. Use the Quit button in the "
+            "header so the background server shuts down."
+            + where
+        )
+    else:
+        text = (
+            "Luciel Lyric could not open its own window"
+            + (f" ({reason})" if reason else "")
+            + ".\n\nIt will open in your web browser instead. Use the Quit button in the "
+            "header to shut it down."
+            + where
+        )
+    print(text, flush=True)
+    if sys.platform == "win32":
+        from app.win_window import message_box
+        message_box(text)
+
+
+def _open_native(url, data, window_ref, shutdown) -> str:
+    """Show a system-framed window. Returns 'ok' after the user closes it, or a failure reason."""
+    import webview
+    from app.version import APP_NAME
+    if sys.platform == "win32":
+        from app.win_window import prepare_webview2, set_app_id
+        set_app_id()
+        state = prepare_webview2()
+        print(f"webview2: {state}", flush=True)
+        if state == "missing":
+            return "missing"
+    # frameless stays false: Windows gets the corner min/max/close buttons, macOS the traffic lights.
+    w = webview.create_window(
+        APP_NAME, url, width=1280, height=860, min_size=(900, 640), resizable=True, frameless=False,
+        easy_drag=False, minimized=False, shadow=True, background_color="#111318", text_select=True,
+    )
+    window_ref["w"] = w
+    accepted = {"ok": False}
+
+    def _shown():
+        import webview as wv
+        if sys.platform == "win32" and getattr(wv, "renderer", "") == "mshtml":
+            # The IE engine is not the app window we ship. Fall back instead of pretending.
+            accepted["reject"] = True
+            try:
+                w.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        accepted["ok"] = True
+        if sys.platform == "win32":
+            try:
+                from app.win_window import enforce_caption_buttons
+                enforce_caption_buttons(w)
+            except Exception as e:  # noqa: BLE001
+                print(f"could not confirm window buttons ({type(e).__name__}: {e})", flush=True)
+
+    def _closed():
+        if accepted.get("ok"):
+            shutdown()
+
+    w.events.shown += _shown
+    w.events.closed += _closed
+    start_kw = {"private_mode": False, "storage_path": str(data / "webview")}
+    if sys.platform == "win32":
+        start_kw["gui"] = "edgechromium"
+    webview.start(**start_kw)
+    if accepted.get("reject"):
+        return "mshtml"
+    return "ok" if accepted.get("ok") else "no-window"
+
+
 # ------------------------------------------------------------------ main
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="LucielLyric", description="Luciel Lyric - lyric video maker")
@@ -139,12 +248,17 @@ def main(argv=None):
     data = runtime.DATA_DIR
     log = _redirect_output_if_needed(data)
 
+    if sys.platform == "win32":
+        from app.win_window import arm_kill_on_job_close
+        runtime.WIN_JOB = arm_kill_on_job_close()  # kept alive so children die with this process
+
     lock = InstanceLock(data)
     if not lock.acquire():
-        url = lock.running_url()
+        info = lock.running_info()
+        url = info.get("url")
         if url and _alive(url):
             print(f"{APP_NAME} is already running at {url}", flush=True)
-            if not a.server_only:
+            if not a.server_only and not _raise_running(info):
                 webbrowser.open(url)
             return 0
         print("Another Luciel Lyric is starting up (data folder is locked). Try again in a moment.", flush=True)
@@ -174,6 +288,7 @@ def main(argv=None):
             return
         stop.set()
         server.should_exit = True
+        runtime.stop_children()
         w = window_ref.get("w")
         if w is not None:            # closing the window ends webview.start() in the main thread
             try:
@@ -191,7 +306,7 @@ def main(argv=None):
         print("ERROR: the server did not start", flush=True)
         lock.release()
         return 2
-    lock.publish(url)
+    lock.publish(url, mode)
     print(f"ready in {time.time() - t0:.1f}s", flush=True)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -202,19 +317,26 @@ def main(argv=None):
 
     try:
         if mode == "window":
+            reason = ""
             try:
-                import webview  # pywebview
-                w = webview.create_window(APP_NAME, url, width=1380, height=920, min_size=(900, 640),
-                                          background_color="#111318", text_select=True)
-                window_ref["w"] = w
-                w.events.closed += shutdown
-                webview.start(private_mode=False, storage_path=str(data / "webview"))
-                shutdown()               # window closed
-            except Exception as e:  # noqa: BLE001  (no WebView2 / GTK / Qt available)
-                print(f"native window unavailable ({type(e).__name__}: {e}); opening the default browser", flush=True)
-                os.environ["LUCIEL_DESKTOP_MODE"] = runtime.DESKTOP_MODE = "browser"
+                status = _open_native(url, data, window_ref, shutdown)
+                if status == "ok":
+                    shutdown()           # window closed
+                else:
+                    reason = status
+                    mode = "browser"
+            except Exception as e:  # noqa: BLE001
+                import traceback
+                traceback.print_exc()
+                reason = f"{type(e).__name__}: {e}"
+                print(f"native window unavailable ({reason})", flush=True)
                 mode = "browser"
-        if mode == "browser":
+            if mode == "browser":
+                os.environ["LUCIEL_DESKTOP_MODE"] = runtime.DESKTOP_MODE = "browser"
+                lock.publish(url, "browser")
+                _announce_browser(reason, log)
+                webbrowser.open(url)
+        elif mode == "browser":
             webbrowser.open(url)
         while not stop.is_set():         # browser / server-only: run until Quit, Ctrl+C or SIGTERM
             stop.wait(0.5)
