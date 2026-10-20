@@ -173,10 +173,13 @@ textarea{width:100%;resize:vertical}
 .kfmarks{position:absolute;left:8px;right:8px;top:-6px;height:6px;pointer-events:none}
 .kfmarks i{position:absolute;width:8px;height:8px;margin-left:-4px;transform:rotate(45deg);background:var(--acc2);border:1px solid #0006}
 .kfmarks i.sel{background:var(--acc)}
-.looksrow{display:flex;gap:12px;align-items:flex-start}
+.looksrow{display:flex;gap:10px;align-items:flex-start}
 .looksrow .lbl,.sublbl{color:var(--mut);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
-.looksrow .lbl{padding-top:8px}.looksrow .presets{flex:1}
-.looksrow .preset{min-height:64px;padding:10px 12px}.looksrow .preset .pt{font-size:18px}
+.looksrow .lbl{flex:none;padding-top:8px}
+.looksrow .presets{flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px;max-height:300px;overflow:auto;padding:2px 4px 6px 2px;margin:0;scrollbar-width:thin}
+.looksrow .preset{min-height:0;padding:5px 5px 4px;justify-content:flex-start;gap:3px;background:var(--sub-bg);border-color:var(--panel-border)}
+.looksrow .preset canvas{width:100%;height:auto;aspect-ratio:168/64;display:block;border-radius:6px;background:#111}
+.looksrow .preset small{color:var(--txt);font-size:11px;font-weight:700;line-height:1.25;padding:0 2px 1px;text-shadow:none}
 .sublbl{margin:4px 0 8px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px;border-bottom:1px solid var(--panel-border);padding-bottom:8px}
 .tabs button{background:var(--btn-bg);color:var(--btn-txt);border:1px solid transparent;border-radius:var(--radius-sm);padding:7px 12px;font:600 13px var(--font);cursor:pointer}

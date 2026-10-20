@@ -238,6 +238,74 @@
     tick();
   }
 
+  // Look cards are a single still: gradient, lyric line, and waveform. No timer.
+  const LOOK_DEMO = [{words: [{text: 'la', start: 0.2, end: 0.55}, {text: 'la', start: 0.55, end: 0.9}, {text: 'love', start: 0.9, end: 1.7}]}];
+  function paintThumbWave(ctx, W, H, style, wave) {
+    const vizStyle = style.vizStyle || 'line';
+    const vizY = style.vizY == null ? 0.86 : +style.vizY;
+    const vizH = style.vizH == null ? 0.10 : +style.vizH;
+    const vizA = style.vizAlpha == null ? 0.75 : +style.vizAlpha;
+    const col = style.vizColor || wave || '#ffffff';
+    let wh = Math.max(3, Math.round(H * Math.max(vizH, 0.08)));
+    let y0 = Math.round(H * vizY - wh / 2);
+    if (y0 < 2) y0 = 2;
+    if (y0 + wh > H - 1) y0 = Math.max(2, H - 1 - wh);
+    const amp = i => 0.28 + 0.72 * Math.abs(Math.sin(i * 0.55) * Math.cos(i * 0.17));
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.2, Math.min(1, vizA));
+    ctx.fillStyle = col;
+    if (vizStyle === 'bars') {
+      const nb = 16;
+      for (let i = 0; i < nb; i++) {
+        const x0 = Math.floor(i * W / nb), x1 = Math.floor((i + 1) * W / nb);
+        const bh = Math.max(1, Math.round(amp(i) * wh));
+        ctx.fillRect(x0 + 1, y0 + wh - bh, Math.max(1, x1 - x0 - 2), bh);
+      }
+    } else {
+      ctx.beginPath();
+      for (let x = 0; x < W; x++) {
+        const hh = Math.max(0.6, amp(x / 3.2) * wh / 2);
+        ctx.rect(x, y0 + (wh - 1) / 2 - hh + 0.5, 1, hh * 2);
+      }
+      ctx.fill();
+      if (vizStyle === 'mirror') {
+        ctx.globalAlpha *= 0.45;
+        const y1 = Math.min(H - 3, y0 + Math.round(wh * 0.72));
+        ctx.beginPath();
+        for (let x = 0; x < W; x++) {
+          const hh = Math.max(0.4, amp(x / 3.2) * wh * 0.22);
+          ctx.rect(x, y1 - hh, 1, hh * 2);
+        }
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function paintLookThumbs() {
+    if (!E.eng) return;
+    const P = E.eng;
+    for (const card of qa('#presets .preset')) {
+      const lk = P.looks[card.dataset.id];
+      const cv = card.querySelector('canvas');
+      if (!lk || !cv) continue;
+      const ctx = cv.getContext('2d');
+      const W = cv.width, H = cv.height;
+      ctx.clearRect(0, 0, W, H);
+      const cols = lk.grad && lk.grad.length ? lk.grad : ['#111111', '#333333'];
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      cols.forEach((c, i) => g.addColorStop(i / Math.max(1, cols.length - 1), c));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      const ap = P.anims.find(a => a.id === (lk.anim || 'karaoke')) || P.anims[0];
+      const style = {...P.styleDefaults, ...lk.style, size: 0.34, showNext: false, posY: 0.38, maxWidth: 0.94, titleAlpha: 0, artistAlpha: 0};
+      const anim = {...P.animDefaults, ...(ap.anim || {}), idle: 'none', idleAmt: 0, cursor: false};
+      const groups = LL.prepare(LOOK_DEMO, style, anim, 2.2);
+      const sc = {W, H, style, anim, measure: ST.measure, groups, title: '', artist: '', clipLen: 2.2, layKey: 'lookthumb-' + card.dataset.id};
+      paintThumbWave(ctx, W, H, lk.style || {}, lk.wave);
+      ST.drawItems(ctx, LL.buildItems(1.35, sc).items);
+    }
+  }
+
   // ---------- saved presets ----------
   async function loadSaved(selectId) {
     let list = [];
@@ -253,7 +321,7 @@
   }
   function applyPreset(d) {
     if (!d || typeof d !== 'object') throw new Error('not a Luciel Lyric preset');
-    if (d.look && E.eng.looks[d.look]) { E.look = d.look; S.preset = d.look; qa('.preset').forEach((x, i) => x.classList.toggle('sel', Object.keys(S.cfg.presets)[i] === d.look)); }
+    if (d.look && E.eng.looks[d.look]) { E.look = d.look; S.preset = d.look; qa('.preset').forEach(x => x.classList.toggle('sel', x.dataset.id === d.look)); }
     if (d.animId && E.eng.anims.some(a => a.id === d.animId)) E.animId = d.animId;
     E.styleOv = {...(d.style || {})}; E.animOv = {...(d.anim || {})};
     E.palette = d.palette && d.palette.colors ? {id: d.palette.id || 'custom-' + Date.now().toString(36), label: d.palette.label || 'Imported', colors: {...d.palette.colors}} : null;
@@ -672,11 +740,26 @@
       buildAnimGrid(); buildFx(); wirePresets(); wirePalettes(); wireZoom(); wireTimeline(); wireQuality(); wireTabs(); loadSaved();
       $('#scrub').oninput = e => { if (!audio.paused) stopPlay(); seek(+e.target.value); };
       $('#stageVideo').addEventListener('loadeddata', () => refresh());
-      ST.loadFonts().then(() => { buildAnimGrid(); refresh(); });
+      ST.loadFonts().then(() => { buildAnimGrid(); paintLookThumbs(); refresh(); });
+      paintLookThumbs();
       refresh();
     },
     refresh, seek,
-    onLook() { E.look = S.preset; E.styleOv = keepLayers(); E.palette = null; dirty = false; paintThumbs(); syncControls(); refresh(); },
+    onLook() {
+      const lk = E.eng && E.eng.looks[S.preset];
+      E.look = S.preset;
+      if (lk && lk.anim && E.eng.anims.some(a => a.id === lk.anim)) E.animId = lk.anim;
+      E.styleOv = lk ? {...lk.style} : {};
+      E.animOv = {};
+      E.palette = null;
+      E.animLive = false;
+      dirty = false;
+      $('#presetStatus').textContent = '';
+      qa('.animcard').forEach(x => x.classList.toggle('sel', x.dataset.id === E.animId));
+      paintThumbs();
+      syncControls();
+      refresh();
+    },
     onFont() { if (!E.stage) return; ST.loadFonts(resolve().style).then(refresh); },
     onAudio() { decodeAudio(); },
     onVideo(m) { addClip(m); },

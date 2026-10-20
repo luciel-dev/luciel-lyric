@@ -20,9 +20,18 @@ const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`
   for (const [k, p] of Object.entries(S.cfg.presets)) {
     const d = document.createElement('div');
     d.className = 'preset' + (k === S.preset ? ' sel' : '');
-    d.style.background = `linear-gradient(135deg,${p.grad.join(',')})`;
-    d.innerHTML = `<div class="pt" style="font-family:'${p.font}'">la la <i style="color:${p.hi}">love</i></div><small>${p.label}</small>`;
-    d.onclick = () => { S.preset = k; document.querySelectorAll('.preset').forEach(x => x.classList.remove('sel')); d.classList.add('sel'); window.ED && ED.onLook(); applyFont(); };
+    d.dataset.id = k;
+    d.title = p.label;
+    d.innerHTML = `<canvas width="168" height="64" aria-hidden="true"></canvas><small>${esc(p.label)}</small>`;
+    d.onclick = () => {
+      S.preset = k;
+      document.querySelectorAll('.preset').forEach(x => x.classList.remove('sel'));
+      d.classList.add('sel');
+      S.fontId = '';
+      const sel = $('#fontSel'); if (sel) sel.value = '';
+      window.ED && ED.onLook();
+      applyFont();
+    };
     pc.appendChild(d);
   }
   window.ED && ED.init(S.cfg);

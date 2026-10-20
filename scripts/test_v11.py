@@ -77,6 +77,42 @@ def measure(s, f):
     return max(1, len(s)) * f["px"] * 0.5
 
 
+def test_looks():
+    looks = PRESETS["looks"]
+    anims = {a["id"] for a in PRESETS["anims"]}
+    bundled = {"Poppins": {400, 700, 800}, "Bebas Neue": {400}, "Pacifico": {400}}
+    need = [
+        "font", "weight", "size", "upper", "color", "unsungAlpha", "active", "sung",
+        "strokeColor", "strokeWidth", "shadowColor", "shadowAlpha", "shadowBlur", "shadowY",
+        "glowColor", "glow", "glowAlpha",
+        "titleColor", "titleSize", "titlePosY", "titleAlpha", "titleWeight", "titleUpper",
+        "artistColor", "artistSize", "artistPosY", "artistAlpha", "artistWeight", "artistUpper",
+        "vizStyle", "vizY", "vizH", "vizAlpha", "vizColor",
+    ]
+    assert len(looks) >= 12
+    for key, lk in looks.items():
+        st = lk["style"]
+        missing = [n for n in need if n not in st]
+        assert not missing, (key, missing)
+        assert st["font"] in bundled, key
+        assert st["weight"] in bundled[st["font"]], (key, st["weight"])
+        assert st["titleWeight"] in bundled[st["font"]], key
+        assert st["artistWeight"] in bundled[st["font"]], key
+        assert lk["anim"] in anims, (key, lk.get("anim"))
+        assert st["vizStyle"] in {"line", "bars", "mirror"}
+        assert lk["label"]
+    neon = looks["neon"]["style"]
+    assert neon["font"] == "Poppins" and neon["active"] == "#ff3cac"
+    assert neon["vizStyle"] == "line"
+    assert abs(neon["vizY"] - 0.86) < 1e-9 and abs(neon["vizH"] - 0.10) < 1e-9
+    assert abs(neon["vizAlpha"] - 0.75) < 1e-9
+    assert neon["vizColor"].lower() == looks["neon"]["wave"].lower()
+    labels = {lk["label"] for lk in looks.values()}
+    for name in ("Cyber Noir", "Lo-fi Tape", "Chrome Y2K", "Halo Gothic", "Winamp Classic",
+                 "Film Credits", "Minimal Mono", "Vapor Dusk", "Street Poster", "Glitch Terminal"):
+        assert name in labels
+
+
 def test_artist():
     style = dict(PRESETS["styleDefaults"])
     anim = dict(PRESETS["animDefaults"])
@@ -97,4 +133,5 @@ if __name__ == "__main__":
     test_wave()
     test_timeline()
     test_artist()
+    test_looks()
     print("v1.1 tests ok")
