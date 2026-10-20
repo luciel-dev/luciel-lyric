@@ -120,6 +120,17 @@
   </nav>
 </div>
 <audio id="audio" preload="auto"></audio>
+<script>
+/* API 30's WebView predates Array.prototype.at (Chrome 92). The shared lyric engine uses it. */
+if (!Array.prototype.at) {
+  Array.prototype.at = function (n) {
+    var i = Math.trunc(n) || 0;
+    if (i < 0) i += this.length;
+    if (i < 0 || i >= this.length) return undefined;
+    return this[i];
+  };
+}
+</script>
 <script src="engine/textanim.js"></script>
 <script src="engine/fx.js"></script>
 <script src="engine/stage.js"></script>
