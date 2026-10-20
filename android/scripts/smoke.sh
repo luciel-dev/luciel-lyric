@@ -16,10 +16,11 @@ adb shell wm density 440 || true
 
 mkdir -p docs/screenshots
 fail=0
-for demo in track sync look time render; do
+capture() {
+  local demo="$1" theme="$2" file="$3"
   adb logcat -c || true
   adb shell am force-stop app.luciel.lyric || true
-  adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}"
+  adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}"
   ok=0
   err=0
   for _ in $(seq 1 60); do
@@ -49,7 +50,7 @@ for demo in track sync look time render; do
     fail=1
   fi
   sleep 2
-  out="docs/screenshots/android-${demo}.png"
+  out="docs/screenshots/${file}"
   adb exec-out screencap -p > "${out}"
   python3 - "$out" <<'PY'
 import pathlib, sys
@@ -59,5 +60,13 @@ if not b.startswith(b"\x89PNG\r\n\x1a\n") or len(b) < 8000:
     raise SystemExit(f"bad screenshot {p} ({len(b)} bytes)")
 print(p, len(b))
 PY
-done
+}
+
+capture track aero android-track.png
+capture sync aero android-sync.png
+capture look aero android-look.png
+capture time aero android-time.png
+capture render aero android-render.png
+capture look y2k android-look-y2k.png
+capture look winamp android-look-winamp.png
 exit "${fail}"

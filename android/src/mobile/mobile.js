@@ -146,10 +146,16 @@
     clearTimeout(mascotTimer);
     if (name && name !== "idle") mascotTimer = setTimeout(() => { img.src = "mascot/idle.png"; }, 2600);
   }
+  function cssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
   function theme(name) {
     document.documentElement.dataset.theme = name;
     try { localStorage.setItem("lc-theme", name); } catch (e) {}
     document.querySelectorAll("#themes button").forEach((b) => b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false"));
+    paintWave();
+    paintTimeline();
   }
   function resolved() {
     const lk = P.looks[state.look] || P.looks.noir;
@@ -210,17 +216,19 @@
       b.dataset.id = id;
       b.className = id === state.look ? "on" : "";
       const cv = document.createElement("canvas");
-      cv.width = 168; cv.height = 64;
-      const st = document.createElement("canvas");
-      const thumb = new LLStage.Stage(st);
+      cv.width = 180; cv.height = 320;
+      const thumb = new LLStage.Stage(cv);
       const anim = Object.assign({}, P.animDefaults, { idle: "none", cursor: false, enter: "none", exit: "none" });
-      thumb.setSize(168, 64, 1080);
+      const fake = new Float32Array(8000);
+      for (let i = 0; i < fake.length; i++) fake[i] = 0.45 * Math.sin(i / 14) * (0.6 + 0.4 * Math.sin(i / 90));
+      thumb.setAudio(fake, 8000);
+      thumb.setSize(180, 320, 1080);
       thumb.setScene({
-        style: Object.assign({}, P.styleDefaults, lk.style), anim, lines: DEMO, title: "", artist: "",
-        clipLen: 8, visualizer: false, bgMode: "gradient", grad: lk.grad, zoom: { keys: [], target: "bg" }, fx: [], fps: 30,
+        style: Object.assign({}, P.styleDefaults, lk.style), anim, lines: DEMO, title: "Title", artist: "Artist",
+        clipLen: 8, visualizer: true, bgMode: "gradient", grad: lk.grad, wave: lk.wave,
+        zoom: { keys: [], target: "bg" }, fx: [], fps: 30,
       });
       thumb.drawFrame(1.35);
-      cv.getContext("2d").drawImage(st, 0, 0);
       const label = document.createElement("small");
       label.textContent = lk.label;
       b.append(cv, label);
@@ -311,18 +319,25 @@
     const ctx = cv.getContext("2d");
     const w = cv.width, h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.fillStyle = "rgba(0,0,0,.28)";
     ctx.fillRect(0, 0, w, h);
     const dur = Math.max(state.duration, state.start + state.length, 1);
     const peaks = state.peaks.length ? state.peaks : new Array(400).fill(0.05);
-    ctx.fillStyle = "#d7e7df";
+    ctx.fillStyle = cssVar("--wave-off", "#8aa0ad");
     peaks.forEach((p, i) => {
       const x = i / peaks.length * w;
       const bh = Math.max(2, p * (h - 16));
       ctx.fillRect(x, (h - bh) / 2, Math.max(1, w / peaks.length - 1), bh);
     });
     const x0 = state.start / dur * w, x1 = (state.start + state.length) / dur * w;
-    ctx.fillStyle = "rgba(20,127,150,.35)";
+    ctx.fillStyle = cssVar("--wave-on", "#1aa9d6");
+    peaks.forEach((p, i) => {
+      const x = i / peaks.length * w;
+      if (x < x0 || x > x1) return;
+      const bh = Math.max(2, p * (h - 16));
+      ctx.fillRect(x, (h - bh) / 2, Math.max(1, w / peaks.length - 1), bh);
+    });
+    ctx.fillStyle = cssVar("--wave-sel", "rgba(32,180,220,.34)");
     ctx.fillRect(x0, 0, x1 - x0, h);
   }
   function paintLines() {
@@ -357,11 +372,11 @@
     ctx.fillStyle = "rgba(0,0,0,.28)";
     ctx.fillRect(0, 0, w, h);
     const y = 28, bh = 18;
-    ctx.fillStyle = "rgba(255,255,255,.25)";
-    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 9); ctx.fill();
-    ctx.fillStyle = "rgba(20,127,150,.85)";
-    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 9); ctx.fill();
-    ctx.fillStyle = "#f4fffd";
+    ctx.fillStyle = "rgba(255,255,255,.18)";
+    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 4); ctx.fill();
+    ctx.fillStyle = cssVar("--track", "#1592b8");
+    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 4); ctx.fill();
+    ctx.fillStyle = cssVar("--ink", "#f4fffd");
     ctx.font = "12px sans-serif";
     ctx.fillText("lyric section", 16, 18);
     state.keys.forEach((k) => {

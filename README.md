@@ -106,11 +106,11 @@ under "Test / sample" are made locally with `scripts/smoke_test.py`.
 
 ## Android app
 
-The Android build is a WebView shell around the same lyric engine (`static/engine`), with a phone layout: pill buttons, rounded cards, and a bottom dock for Track, Sync, Look, Timeline, and Render. The three themes (grey Frutiger Aero, muted Y2K, Winamp) and the mascot are the same files as the desktop app.
+The Android build is a WebView shell around the same lyric engine (`static/engine`), with its own phone layout: grouped sections, a bottom dock for Track, Sync, Look, Timeline, and Render, and the same three themes (grey Frutiger Aero, muted Y2K, Winamp) plus the mascot. Desktop styling is separate.
 
 On the phone, whisper.cpp transcribes the section you picked and the page aligns pasted lyrics the same way as the desktop aligner. Rendering is MediaCodec H.264 + AAC, including black and green backgrounds. Phone Max is 1080p30. Demucs vocal isolation is not in the APK: a phone build of htdemucs is hundreds of megabytes and too slow, so sync uses the full mix. The English `ggml-tiny.en` model (~75 MB) is downloaded on first Sync into app storage and is not inside the APK. After that download, picking a song, syncing, and rendering do not need a network.
 
-`minSdk` is 26. The release APK contains `arm64-v8a` (phones) and `x86_64` (the CI emulator). CI signs it with a self-signed keystore created in the job when `LUCIEL_KEYSTORE` is not set. That key changes if the job mints a new one, so a later APK may not install over an older one until you uninstall.
+`minSdk` is 26. The release APK contains `arm64-v8a` (phones) and `x86_64` (the CI emulator). CI signs with `LUCIEL_KEYSTORE_B64` when that secret is set, using `LUCIEL_KEY_ALIAS`, `LUCIEL_KEYSTORE_PASSWORD`, and `LUCIEL_KEY_PASSWORD`. The 1.3.0 key was created inside that CI job and never stored, so nothing can install over the 1.3.0 APK. Those secrets are not on the repo yet, so each job still mints a new key and a later APK will not replace the previous one until you uninstall.
 
 ## Using it
 

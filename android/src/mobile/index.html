@@ -4,11 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Luciel Lyric</title>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('lc-theme')||'aero'}catch(e){document.documentElement.dataset.theme='aero'}</script>
+<script>
+try {
+  var q = new URLSearchParams(location.search).get("theme");
+  var saved = localStorage.getItem("lc-theme");
+  var t = (q === "aero" || q === "y2k" || q === "winamp") ? q : (saved || "aero");
+  document.documentElement.dataset.theme = t;
+  if (q === "aero" || q === "y2k" || q === "winamp") localStorage.setItem("lc-theme", q);
+} catch (e) {
+  document.documentElement.dataset.theme = "aero";
+}
+</script>
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="mobile.css">
 </head>
 <body>
+<div class="bgfx" aria-hidden="true">
+  <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i><i class="b5"></i><i class="b6"></i>
+</div>
 <div class="app">
   <header class="top">
     <img id="mascot" class="mascot" alt="" src="mascot/idle.png">
@@ -17,18 +30,21 @@
       <div class="tag" id="tagline">15–30s lyric videos</div>
     </div>
     <div class="themes" id="themes" role="radiogroup" aria-label="Theme">
-      <button data-theme="aero" aria-label="Frutiger Aero">Aero</button>
-      <button data-theme="y2k" aria-label="Muted cyber">Y2K</button>
-      <button data-theme="winamp" aria-label="Winamp">Amp</button>
+      <button type="button" data-theme="aero" aria-label="Frutiger Aero">Aero</button>
+      <button type="button" data-theme="y2k" aria-label="Muted cyber">Y2K</button>
+      <button type="button" data-theme="winamp" aria-label="Winamp">Amp</button>
     </div>
   </header>
 
   <main>
     <section class="screen" id="screen-track" data-screen="track">
-      <h1>Track</h1>
-      <p class="lead">Drop a song, then pinch the section you want to film.</p>
-      <button class="pill big" id="pickAudio">Choose a song</button>
+      <header class="screenhead">
+        <h1>Track</h1>
+        <p class="lead">Pick a song, then set the 15–30 second section.</p>
+      </header>
+      <button class="pill big primary" id="pickAudio" type="button">Choose a song</button>
       <div class="card">
+        <h2>Section</h2>
         <div class="lcd" id="trackName">No song yet</div>
         <canvas id="wave" width="640" height="140"></canvas>
         <label class="slider">Start <b id="startVal">0.0s</b>
@@ -37,86 +53,138 @@
         <label class="slider">Length <b id="lenVal">20s</b>
           <input id="len" type="range" min="15" max="30" step="1" value="20">
         </label>
-        <button class="pill" id="playClip">Play section</button>
-        <p class="hint" id="trackHint">mp3, m4a, wav. Everything stays on this phone.</p>
+        <button class="pill" id="playClip" type="button">Play section</button>
       </div>
+      <p class="hint" id="trackHint">mp3, m4a, wav. Everything stays on this phone.</p>
     </section>
 
     <section class="screen" id="screen-sync" data-screen="sync">
-      <h1>Sync</h1>
-      <p class="lead">Paste the lyrics if you know them. Otherwise the phone listens.</p>
-      <textarea id="lyrics" rows="6" placeholder="One line per lyric line. The whole song is fine."></textarea>
-      <div class="card soft" id="modelCard">
-        <b>Speech model</b>
-        <p id="modelText">The small English model is about 75 MB and downloads once. After that, sync works offline.</p>
-        <button class="pill" id="getModel">Download model</button>
+      <header class="screenhead">
+        <h1>Sync</h1>
+        <p class="lead">Paste the lyrics if you know them. Otherwise the phone listens.</p>
+      </header>
+      <div class="card">
+        <h2>Lyrics</h2>
+        <textarea id="lyrics" rows="6" placeholder="One line per lyric line. The whole song is fine."></textarea>
       </div>
-      <button class="pill big" id="syncBtn">Sync lyrics</button>
+      <div class="card" id="modelCard">
+        <h2>Speech model</h2>
+        <p class="hint" id="modelText">The small English model is about 75 MB and downloads once. After that, sync works offline.</p>
+        <button class="pill" id="getModel" type="button">Download model</button>
+      </div>
+      <button class="pill big primary" id="syncBtn" type="button">Sync lyrics</button>
       <p class="hint" id="syncStatus">Vocal isolation is desktop-only. The phone syncs the full mix.</p>
-      <ol id="lineList" class="lines"></ol>
+      <div class="card">
+        <h2>Lines</h2>
+        <ol id="lineList" class="lines"></ol>
+      </div>
     </section>
 
     <section class="screen" id="screen-look" data-screen="look">
-      <h1>Look</h1>
-      <p class="lead">Pick a look. Animation stays still until you tap one.</p>
-      <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas></div>
-      <div class="row2">
-        <input id="title" placeholder="Title" maxlength="48">
-        <input id="artist" placeholder="Artist" maxlength="48">
+      <header class="screenhead">
+        <h1>Look</h1>
+        <p class="lead">Pick a look. Animation stays still until you tap one.</p>
+      </header>
+      <div class="card preview-row">
+        <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas></div>
+        <div class="preview-fields">
+          <h2>Text</h2>
+          <input id="title" placeholder="Title" maxlength="48">
+          <input id="artist" placeholder="Artist" maxlength="48">
+          <div class="actions">
+            <button class="pill" id="fontBtn" type="button">My font</button>
+            <button class="pill primary" id="previewBtn" type="button">Play</button>
+          </div>
+        </div>
       </div>
-      <div class="colors">
-        <label>Lyric <input id="cLyric" type="color" value="#ffffff" aria-label="Lyric colour"></label>
-        <label>Title <input id="cTitle" type="color" value="#ffffff" aria-label="Title colour"></label>
-        <label>Artist <input id="cArtist" type="color" value="#ffffff" aria-label="Artist colour"></label>
-      </div>
-      <div class="hscroll" id="looks"></div>
-      <div class="hscroll" id="palettes"></div>
-      <div class="hscroll" id="anims"></div>
-      <button class="pill" id="fontBtn">Use my font</button>
-      <button class="pill" id="previewBtn">Play preview</button>
+      <details class="group" open>
+        <summary>Looks</summary>
+        <div class="body">
+          <div class="lookwrap"><div class="lookgrid" id="looks"></div></div>
+        </div>
+      </details>
+      <details class="group" open>
+        <summary>Colours</summary>
+        <div class="body">
+          <div class="colors">
+            <label>Lyric <input id="cLyric" type="color" value="#ffffff" aria-label="Lyric colour"></label>
+            <label>Title <input id="cTitle" type="color" value="#ffffff" aria-label="Title colour"></label>
+            <label>Artist <input id="cArtist" type="color" value="#ffffff" aria-label="Artist colour"></label>
+          </div>
+        </div>
+      </details>
+      <details class="group" open>
+        <summary>Palettes</summary>
+        <div class="body">
+          <div class="scroller"><div class="hscroll" id="palettes"></div></div>
+        </div>
+      </details>
+      <details class="group" open>
+        <summary>Animation</summary>
+        <div class="body">
+          <div class="scroller"><div class="hscroll" id="anims"></div></div>
+        </div>
+      </details>
     </section>
 
     <section class="screen" id="screen-time" data-screen="time">
-      <h1>Timeline</h1>
-      <p class="lead">One picture track, plus a slow zoom if you want it.</p>
-      <div class="pills" id="bgModes">
-        <button data-bg="gradient" class="on">Gradient</button>
-        <button data-bg="video">Video</button>
-        <button data-bg="black">Black</button>
-        <button data-bg="green">Green</button>
+      <header class="screenhead">
+        <h1>Timeline</h1>
+        <p class="lead">One picture track, plus a slow zoom if you want it.</p>
+      </header>
+      <div class="card">
+        <h2>Background</h2>
+        <div class="pills" id="bgModes">
+          <button type="button" data-bg="gradient" class="on">Gradient</button>
+          <button type="button" data-bg="video">Video</button>
+          <button type="button" data-bg="black">Black</button>
+          <button type="button" data-bg="green">Green</button>
+        </div>
+        <button class="pill" id="pickVideo" type="button">Add background video</button>
       </div>
-      <button class="pill" id="pickVideo">Add background video</button>
       <div class="card" id="clipCard">
+        <h2>Clip</h2>
         <div class="lcd" id="clipName">No clip yet</div>
         <label class="slider">Clip in <b id="inVal">0.0s</b>
           <input id="clipIn" type="range" min="0" max="60" step="0.1" value="0">
         </label>
         <p class="hint">The clip covers the lyric section. In is where it starts in the video.</p>
       </div>
-      <canvas id="tl" width="640" height="72"></canvas>
-      <div class="hscroll" id="zooms"></div>
-      <button class="pill" id="addKey">Add zoom keyframe</button>
-      <ul id="keys" class="keys"></ul>
+      <div class="card">
+        <h2>Zoom</h2>
+        <canvas id="tl" width="640" height="72"></canvas>
+        <div class="scroller"><div class="hscroll" id="zooms"></div></div>
+        <button class="pill" id="addKey" type="button">Add zoom keyframe</button>
+        <ul id="keys" class="keys"></ul>
+      </div>
     </section>
 
     <section class="screen" id="screen-render" data-screen="render">
-      <h1>Render</h1>
-      <p class="lead">Same looks as the desktop app. The phone writes an MP4.</p>
-      <div class="pills" id="quality"></div>
-      <p class="hint" id="qualityHint"></p>
-      <div id="fx" class="fx"></div>
-      <button class="pill big" id="renderBtn">Render MP4</button>
+      <header class="screenhead">
+        <h1>Render</h1>
+        <p class="lead">Same looks as the desktop app. The phone writes an MP4.</p>
+      </header>
+      <div class="card">
+        <h2>Quality</h2>
+        <div class="pills" id="quality"></div>
+        <p class="hint" id="qualityHint"></p>
+      </div>
+      <div class="card">
+        <h2>Effects</h2>
+        <div id="fx" class="fx"></div>
+      </div>
+      <button class="pill big primary" id="renderBtn" type="button">Render MP4</button>
       <p class="hint" id="renderStatus">Black and green are for editors. Green turns glow off so the screen stays clean.</p>
-      <button class="pill" id="shareBtn" hidden>Share video</button>
+      <button class="pill" id="shareBtn" type="button" hidden>Share video</button>
     </section>
   </main>
 
   <nav class="dock" id="dock">
-    <button data-screen="track">Track</button>
-    <button data-screen="sync">Sync</button>
-    <button data-screen="look">Look</button>
-    <button data-screen="time">Time</button>
-    <button data-screen="render">Render</button>
+    <button type="button" data-screen="track">Track</button>
+    <button type="button" data-screen="sync">Sync</button>
+    <button type="button" data-screen="look">Look</button>
+    <button type="button" data-screen="time">Time</button>
+    <button type="button" data-screen="render">Render</button>
   </nav>
 </div>
 <audio id="audio" preload="auto"></audio>
