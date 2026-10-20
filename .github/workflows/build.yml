@@ -204,7 +204,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: out/*
-          draft: true
+          draft: false
+          prerelease: false
           body: |
             Stand-alone Luciel Lyric - no Python or install script needed, works offline.
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe.
