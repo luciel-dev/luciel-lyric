@@ -1,10 +1,8 @@
 # Builds the stand-alone desktop apps (no Python needed on the user's machine):
 #   Windows x64      -> LucielLyric-Setup.exe (Inno Setup) + LucielLyric-win-x64-portable.zip
 #   macOS arm64      -> LucielLyric-mac-arm64.dmg ("Luciel Lyric.app", ad-hoc signed, not notarized)
-#   macOS x64 (opt.) -> LucielLyric-mac-x86_64.dmg  (no vocal isolation: no torch wheels for Intel Macs)
-#                      Intel and Linux are off unless a workflow_dispatch asks for them, and they do not
-#                      fail the workflow (macos-15-intel is a scarce larger runner).
-#   Linux x64 (opt.) -> LucielLyric-linux-x64.tar.gz
+# Intel macOS and Linux are not in this workflow. A matrix entry still requests its runner
+# even when every step is skipped, and macos-15-intel is a scarce larger image.
 # Every build is smoke-tested headless (frozen app, server-only, internet blocked): sync with vocal
 # isolation + render via the HTTP API. On a v* tag the files are attached to a GitHub release.
 name: build-desktop
@@ -15,15 +13,6 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      mac_intel:
-        description: "Also build the Intel-Mac app (macos-15-intel, no vocal isolation)"
-        type: boolean
-        default: false
-      linux:
-        description: "Also build the Linux onedir"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -36,20 +25,15 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.name }}
-    # Skip before a runner is assigned. Step-level `if` still queues macos-15-intel / linux.
-    if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.optional == true || matrix.optional == 'true' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           # macos-14 is in brownout (retired 2026-11-02); macos-15 is the arm64 image.
-          - { name: windows-x64, os: windows-latest, vocals: true, enabled: true, optional: false }
-          - { name: macos-arm64, os: macos-15, vocals: true, enabled: true, optional: false }
-          - { name: macos-x86_64, os: macos-15-intel, vocals: false, optional: true, enabled: "${{ github.event_name == 'workflow_dispatch' && inputs.mac_intel == true }}" }
-          - { name: linux-x64, os: ubuntu-24.04, vocals: true, optional: true, enabled: "${{ github.event_name == 'workflow_dispatch' && inputs.linux == true }}" }
+          - { name: windows-x64, os: windows-latest, vocals: true, enabled: true }
+          - { name: macos-arm64, os: macos-15, vocals: true, enabled: true }
     env:
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
