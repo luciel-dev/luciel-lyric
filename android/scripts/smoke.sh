@@ -16,6 +16,7 @@ adb shell wm density 440 || true
 
 mkdir -p docs/screenshots
 fail=0
+last_hash=""
 capture() {
   local demo="$1" theme="$2" file="$3"
   adb logcat -c || true
@@ -55,7 +56,14 @@ capture() {
   blank=1
   for _try in 1 2 3 4 5 6; do
     sleep 2
-    adb exec-out screencap -p > "${out}"
+    # exec-out screencap sometimes returns the previous frame unchanged.
+    adb shell screencap -p /sdcard/luciel-shot.png >/dev/null || true
+    adb pull /sdcard/luciel-shot.png "${out}" >/dev/null || true
+    hash=$(sha256sum "${out}" | awk '{print $1}')
+    if [ -n "${last_hash}" ] && [ "${hash}" = "${last_hash}" ]; then
+      echo "stale frame for ${file}, retry ${_try}"
+      continue
+    fi
     if python3 - "$out" <<'PY'
 import pathlib, struct, sys, zlib
 p = pathlib.Path(sys.argv[1])
@@ -128,6 +136,7 @@ print(p, len(b), f"var={var:.0f}")
 PY
     then
       blank=0
+      last_hash="${hash}"
       break
     fi
     echo "blank frame for ${file}, retry ${_try}"
