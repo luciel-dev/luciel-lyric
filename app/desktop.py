@@ -61,10 +61,17 @@ class InstanceLock:
         self.fh = None
 
     def acquire(self) -> bool:
-        self.fh = open(self.path, "a+")
+        # Windows: msvcrt.locking needs a binary file with at least one locked byte.
+        # Text mode (and an empty file) makes the first launch fail the lock, so the
+        # smoke test's single-instance guard never sees a running server.
+        self.fh = open(self.path, "a+b")
         try:
             if os.name == "nt":
                 import msvcrt
+                self.fh.seek(0, os.SEEK_END)
+                if self.fh.tell() == 0:
+                    self.fh.write(b"\0")
+                    self.fh.flush()
                 self.fh.seek(0)
                 msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
             else:

@@ -2,6 +2,8 @@
 #   Windows x64      -> LucielLyric-Setup.exe (Inno Setup) + LucielLyric-win-x64-portable.zip
 #   macOS arm64      -> LucielLyric-mac-arm64.dmg ("Luciel Lyric.app", ad-hoc signed, not notarized)
 #   macOS x64 (opt.) -> LucielLyric-mac-x86_64.dmg  (no vocal isolation: no torch wheels for Intel Macs)
+#                      Intel and Linux are off unless a workflow_dispatch asks for them, and they do not
+#                      fail the workflow (macos-15-intel is a scarce larger runner).
 #   Linux x64 (opt.) -> LucielLyric-linux-x64.tar.gz
 # Every build is smoke-tested headless (frozen app, server-only, internet blocked): sync with vocal
 # isolation + render via the HTTP API. On a v* tag the files are attached to a GitHub release.
@@ -25,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -33,16 +36,20 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # Skip before a runner is assigned. Step-level `if` still queues macos-15-intel / linux.
+    if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true || matrix.optional == 'true' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: windows-x64, os: windows-latest, vocals: true, enabled: true }
-          - { name: macos-arm64, os: macos-14, vocals: true, enabled: true }
-          - { name: macos-x86_64, os: macos-15-intel, vocals: false, enabled: "${{ inputs.mac_intel }}" }
-          - { name: linux-x64, os: ubuntu-24.04, vocals: true, enabled: "${{ inputs.linux }}" }
+          # macos-14 is in brownout (retired 2026-11-02); macos-15 is the arm64 image.
+          - { name: windows-x64, os: windows-latest, vocals: true, enabled: true, optional: false }
+          - { name: macos-arm64, os: macos-15, vocals: true, enabled: true, optional: false }
+          - { name: macos-x86_64, os: macos-15-intel, vocals: false, optional: true, enabled: "${{ github.event_name == 'workflow_dispatch' && inputs.mac_intel == true }}" }
+          - { name: linux-x64, os: ubuntu-24.04, vocals: true, optional: true, enabled: "${{ github.event_name == 'workflow_dispatch' && inputs.linux == true }}" }
     env:
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -85,11 +92,20 @@ jobs:
             sed 's/^onnxruntime==.*/onnxruntime==1.23.2/' scripts/requirements.txt > /tmp/req-x64.txt; req=/tmp/req-x64.txt
           fi
           if [ "$LUCIEL_NO_VOCALS" != "1" ] && [ "$RUNNER_OS" != "macOS" ]; then
-            # CPU-only torch (avoids the multi-GB CUDA build)
+            # CPU-only torch (avoids the multi-GB CUDA build). Version is 2.14.1+cpu.
             python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
           fi
           python -m pip install -r "$req"
-          if [ "$LUCIEL_NO_VOCALS" != "1" ]; then python -m pip install -r scripts/requirements-vocals.txt; fi
+          if [ "$LUCIEL_NO_VOCALS" != "1" ]; then
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              python -m pip install -r scripts/requirements-vocals.txt
+            else
+              # requirements-vocals.txt pins torch==2.14.1, which does not match 2.14.1+cpu
+              # and would replace the CPU wheel with the default PyPI build.
+              grep -v '^torch==' scripts/requirements-vocals.txt > /tmp/req-vocals.txt
+              python -m pip install -r /tmp/req-vocals.txt
+            fi
+          fi
           python -m pip install -r packaging/requirements-desktop.txt
           python -m pip uninstall -y static-ffmpeg twine || true
           python -c "import torch; print('torch', torch.__version__)" || true
@@ -135,10 +151,23 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          if (-not (Test-Path $iscc)) {
+            $found = Get-ChildItem -Path "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $iscc = $found.FullName }
+          }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup ISCC.exe not found" }
+          Write-Host "Using $iscc"
           & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" "/DSourceDir=..\..\dist\LucielLyric" packaging\windows\LucielLyric.iss
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
-          7z a -tzip -mx=5 dist\LucielLyric-win-x64-portable.zip .\dist\LucielLyric | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          $seven = $null
+          $cmd = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($cmd) { $seven = $cmd.Source } else { $seven = "${env:ProgramFiles}\7-Zip\7z.exe" }
+          if (-not (Test-Path $seven)) { throw "7z not found" }
+          & $seven a -tzip -mx=5 dist\LucielLyric-win-x64-portable.zip .\dist\LucielLyric
+          if ($LASTEXITCODE -ne 0) { throw "7z failed ($LASTEXITCODE)" }
           Get-ChildItem dist\*.exe, dist\*.zip | Format-Table Name, Length
 
       # ---------- macOS ----------
@@ -179,6 +208,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/download-artifact@v4
         with:
