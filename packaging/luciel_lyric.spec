@@ -68,6 +68,15 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="LucielLyric", debug=F
           icon=icon, codesign_identity=None, entitlements_file=None,
           version=str(BUILD / "version_info.txt") if WIN and (BUILD / "version_info.txt").exists() else None)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="LucielLyric")
+if WIN:
+    # PyInstaller 6 stores datas in _internal/. The installer, the portable zip and the
+    # window check all expect the Evergreen bootstrapper beside LucielLyric.exe.
+    import shutil
+    placed = Path(DISTPATH) / "LucielLyric" / boot.name
+    shutil.copy2(boot, placed)
+    if not placed.is_file() or placed.stat().st_size < 100_000:
+        raise SystemExit(f"WebView2 bootstrapper was not placed next to the exe ({placed})")
+    print(f"WebView2 bootstrapper next to exe: {placed} ({placed.stat().st_size} bytes)")
 if MAC:
     app = BUNDLE(coll, name=f"{APP_NAME}.app", icon=icon, bundle_identifier=APP_ID, version=__version__,
                  info_plist={"CFBundleName": APP_NAME, "CFBundleDisplayName": APP_NAME,

@@ -80,6 +80,29 @@ def pids_named(name: str):
     return out
 
 
+def list_windows(pid: int):
+    """Visible top-level windows for pid: (hwnd, w, h, title)."""
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _cb(hwnd, _lp):
+        proc = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc))
+        if proc.value != pid or not user32.IsWindowVisible(hwnd):
+            return True
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        n = user32.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, buf, n + 1)
+        found.append((int(hwnd), rect.right - rect.left, rect.bottom - rect.top, buf.value))
+        return True
+
+    user32.EnumWindows(_cb, 0)
+    return found
+
+
 def find_window(pid: int, title: str):
     user32 = ctypes.windll.user32
     found = []
@@ -186,8 +209,10 @@ def main():
     if sub != 2:
         fail(f"LucielLyric.exe subsystem is {sub}, expected 2 (WINDOWS_GUI)")
     boot = exe.parent / "MicrosoftEdgeWebview2Setup.exe"
+    internal = exe.parent / "_internal" / "MicrosoftEdgeWebview2Setup.exe"
     if not boot.is_file() or boot.stat().st_size < 100_000:
-        fail("WebView2 bootstrapper is not next to LucielLyric.exe")
+        where = f" (a copy exists in _internal, {internal.stat().st_size} bytes)" if internal.is_file() else ""
+        fail("WebView2 bootstrapper is not next to LucielLyric.exe" + where)
     before = set(pids_named(exe.name))
     data = Path(tempfile.mkdtemp(prefix="luciel_win_"))
     env = dict(os.environ, LUCIEL_DATA_DIR=str(data), PYTHONUNBUFFERED="1", HF_HUB_OFFLINE="1")
@@ -209,6 +234,7 @@ def main():
             log = data / "logs" / "luciel.log"
             if log.exists():
                 print(log.read_text(encoding="utf-8", errors="replace")[-4000:])
+            print("visible windows:", list_windows(proc.pid))
             fail(f"no native window appeared (process exit {proc.poll()})")
         user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
         user32.SetWindowPos.restype = wintypes.BOOL
