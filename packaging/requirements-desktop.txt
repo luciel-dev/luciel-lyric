@@ -1,0 +1,7 @@
+# Extra packages for the desktop (PyInstaller) build, on top of scripts/requirements.txt
+# (+ scripts/requirements-vocals.txt). pywebview pulls in pythonnet (Windows, WebView2) or
+# pyobjc (macOS, WKWebView) automatically.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
+pywebview==6.2.1
+pythonnet==3.2.1 ; sys_platform == 'win32'

@@ -1,0 +1,20 @@
+# Optional: vocal isolation before transcription (Demucs htdemucs). Installed by the Install script
+# after requirements.txt. The app works without it (the "isolate vocals" option is then disabled).
+#
+# CPU-only torch: on Linux and Windows the installer puts torch from the PyTorch CPU index first,
+#   uv pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+# which avoids the ~2.5 GB CUDA build. On macOS (Apple Silicon) the normal PyPI wheel is used.
+# Intel Macs: torch 2.14 has no Intel-Mac wheels, so vocal isolation is skipped there.
+torch==2.14.1
+demucs==4.1.0
+einops==0.8.2
+julius==0.2.8
+lameenc==1.9.0
+sphn==0.2.1
+safetensors==0.8.0
+sympy==1.14.0
+mpmath==1.3.0
+networkx==3.6.1
+jinja2==3.1.6
+markupsafe==3.0.3
+setuptools==78.1.0

@@ -1,0 +1,196 @@
+# Builds the stand-alone desktop apps (no Python needed on the user's machine):
+#   Windows x64      -> LucielLyric-Setup.exe (Inno Setup) + LucielLyric-win-x64-portable.zip
+#   macOS arm64      -> LucielLyric-mac-arm64.dmg ("Luciel Lyric.app", ad-hoc signed, not notarized)
+#   macOS x64 (opt.) -> LucielLyric-mac-x86_64.dmg  (no vocal isolation: no torch wheels for Intel Macs)
+#   Linux x64 (opt.) -> LucielLyric-linux-x64.tar.gz
+# Every build is smoke-tested headless (frozen app, server-only, internet blocked): sync with vocal
+# isolation + render via the HTTP API. On a v* tag the files are attached to a GitHub release.
+name: build-desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mac_intel:
+        description: "Also build the Intel-Mac app (macos-15-intel, no vocal isolation)"
+        type: boolean
+        default: false
+      linux:
+        description: "Also build the Linux onedir"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, os: windows-latest, vocals: true, enabled: true }
+          - { name: macos-arm64, os: macos-14, vocals: true, enabled: true }
+          - { name: macos-x86_64, os: macos-15-intel, vocals: false, enabled: "${{ inputs.mac_intel }}" }
+          - { name: linux-x64, os: ubuntu-24.04, vocals: true, enabled: "${{ inputs.linux }}" }
+    env:
+      PYTHONUTF8: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      LUCIEL_NO_VOCALS: ${{ matrix.vocals && '0' || '1' }}
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - name: Skip (optional build not requested)
+        if: ${{ matrix.enabled != true && matrix.enabled != 'true' }}
+        run: echo "skipped - enable it from 'Run workflow'"
+
+      - uses: actions/checkout@v4
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+
+      - uses: actions/setup-python@v5
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            scripts/requirements*.txt
+            packaging/requirements-desktop.txt
+
+      - name: Version
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        id: ver
+        shell: bash
+        run: |
+          base=$(python -c "import sys; sys.path.insert(0,'.'); from app.version import __version__; print(__version__)")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF#refs/tags/v}"; else v="$base"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"; echo "version $v"
+
+      - name: Install Python dependencies
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip wheel
+          req=scripts/requirements.txt
+          if [ "${{ matrix.name }}" = "macos-x86_64" ]; then
+            # onnxruntime >= 1.24 ships no Intel-Mac wheels; 1.23.2 is the last one
+            sed 's/^onnxruntime==.*/onnxruntime==1.23.2/' scripts/requirements.txt > /tmp/req-x64.txt; req=/tmp/req-x64.txt
+          fi
+          if [ "$LUCIEL_NO_VOCALS" != "1" ] && [ "$RUNNER_OS" != "macOS" ]; then
+            # CPU-only torch (avoids the multi-GB CUDA build)
+            python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+          fi
+          python -m pip install -r "$req"
+          if [ "$LUCIEL_NO_VOCALS" != "1" ]; then python -m pip install -r scripts/requirements-vocals.txt; fi
+          python -m pip install -r packaging/requirements-desktop.txt
+          python -m pip uninstall -y static-ffmpeg twine || true
+          python -c "import torch; print('torch', torch.__version__)" || true
+          python -m pip list
+
+      - name: Cache models
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/faster-whisper-base.en
+            models/hf
+          key: models-${{ hashFiles('scripts/fetch_models.py') }}-${{ matrix.vocals }}
+
+      - name: Fetch models (checksum-verified)
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        shell: bash
+        run: |
+          if [ "$LUCIEL_NO_VOCALS" = "1" ]; then python scripts/fetch_models.py --no-vocals; python scripts/fetch_models.py --check --no-vocals
+          else python scripts/fetch_models.py; python scripts/fetch_models.py --check; fi
+
+      - name: Fetch static ffmpeg (pinned SHA-256)
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        run: python packaging/fetch_ffmpeg.py
+
+      - name: Icons + version info
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        shell: bash
+        run: |
+          python packaging/make_icons.py
+          python packaging/make_version_info.py --version "${{ steps.ver.outputs.version }}"
+
+      - name: PyInstaller
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        run: pyinstaller packaging/luciel_lyric.spec --noconfirm --distpath dist --workpath build/pyi
+
+      # ---------- Windows ----------
+      - name: Smoke test (Windows)
+        if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: python packaging/ci_smoke.py --exe dist/LucielLyric/LucielLyric.exe
+      - name: Package (Windows installer + portable zip)
+        if: ${{ runner.os == 'Windows' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" "/DSourceDir=..\..\dist\LucielLyric" packaging\windows\LucielLyric.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          7z a -tzip -mx=5 dist\LucielLyric-win-x64-portable.zip .\dist\LucielLyric | Out-Null
+          Get-ChildItem dist\*.exe, dist\*.zip | Format-Table Name, Length
+
+      # ---------- macOS ----------
+      - name: Sign + dmg (macOS)
+        if: ${{ runner.os == 'macOS' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: bash packaging/macos/make_dmg.sh "$(uname -m)"
+      - name: Smoke test (macOS, signed app)
+        if: ${{ runner.os == 'macOS' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: python packaging/ci_smoke.py --exe "dist/Luciel Lyric.app/Contents/MacOS/LucielLyric" ${{ matrix.vocals && ' ' || '--no-vocals' }}
+
+      # ---------- Linux ----------
+      - name: Smoke test (Linux, no network namespace)
+        if: ${{ runner.os == 'Linux' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo apt-get install -y -q iproute2 >/dev/null || true
+          python packaging/ci_smoke.py --exe dist/LucielLyric/LucielLyric --netns
+      - name: Package (Linux)
+        if: ${{ runner.os == 'Linux' && (matrix.enabled == true || matrix.enabled == 'true') }}
+        run: tar -C dist -czf dist/LucielLyric-linux-x64.tar.gz LucielLyric
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ matrix.enabled == true || matrix.enabled == 'true' }}
+        with:
+          name: LucielLyric-${{ matrix.name }}
+          path: |
+            dist/LucielLyric-Setup.exe
+            dist/LucielLyric-win-x64-portable.zip
+            dist/LucielLyric-mac-*.dmg
+            dist/LucielLyric-linux-x64.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          draft: true
+          body: |
+            Stand-alone Luciel Lyric - no Python or install script needed, works offline.
+            * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe.
+            * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
+              (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.

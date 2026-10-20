@@ -1,0 +1,166 @@
+{
+  "name": "chibi-angel-mascot",
+  "description": "Chibi angel: white hime-cut hair, gold halo, dark demon wings, plain white robe, front-facing, soft pink lips, yellow sparkles",
+  "canvas": "1:1 square, white background (#FFFFFF), character centered",
+  "idle": {
+    "default": "idle/mascot-idle-512.png",
+    "sizes": [
+      1024,
+      512,
+      480,
+      256,
+      128
+    ],
+    "format": "PNG RGB"
+  },
+  "reactions": {
+    "slow": {
+      "file": "reactions/mascot-dance-slow",
+      "tempo": "slow"
+    },
+    "mid": {
+      "file": "reactions/mascot-dance-mid",
+      "tempo": "mid"
+    },
+    "fast": {
+      "file": "reactions/mascot-dance-fast",
+      "tempo": "fast"
+    }
+  },
+  "reactionSpec": {
+    "resolution": "480x480",
+    "fps": 24,
+    "durationSec": 6.04,
+    "audio": "none",
+    "formats": {
+      "mp4": "H.264 yuv420p faststart",
+      "webm": "VP9",
+      "gif": "240x240 @12fps fallback"
+    }
+  },
+  "behavior": {
+    "mode": "event-triggered only; never on a timer or schedule",
+    "default": "show idle still",
+    "onEvent": "play the mapped reaction exactly once, then return to idle; ignore new events while one is playing (or restart if higher priority)",
+    "events": {
+      "message_liked": "slow",
+      "task_finished": "mid",
+      "big_win": "fast"
+    }
+  },
+  "emotes": {
+    "angry": {
+      "file": "emotes/mascot-emote-angry",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "bored": {
+      "file": "emotes/mascot-emote-bored",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "cloud": {
+      "file": "emotes/mascot-emote-cloud",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "cloud-sleep": {
+      "file": "emotes/mascot-emote-cloud-sleep",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "confused": {
+      "file": "emotes/mascot-emote-confused",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "crying": {
+      "file": "emotes/mascot-emote-crying",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "flying": {
+      "file": "emotes/mascot-emote-flying",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "happy": {
+      "file": "emotes/mascot-emote-happy",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "love": {
+      "file": "emotes/mascot-emote-love",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "music": {
+      "file": "emotes/mascot-emote-music",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "shy": {
+      "file": "emotes/mascot-emote-shy",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "sleepy": {
+      "file": "emotes/mascot-emote-sleepy",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "smug": {
+      "file": "emotes/mascot-emote-smug",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    },
+    "surprised": {
+      "file": "emotes/mascot-emote-surprised",
+      "sizes": [
+        1024,
+        512
+      ],
+      "format": "PNG RGB, white background"
+    }
+  },
+  "version": "1.1"
+}

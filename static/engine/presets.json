@@ -1,0 +1,825 @@
+{
+ "_doc": "Shared by the browser preview (static/engine/*.js) and the server renderer (app/textanim.py, app/fx.py, app/compose.py). Sizes are fractions: text sizes of min(W,H), offsets/blur of the font size unless noted.",
+ "looks": {
+  "neon": {
+   "label": "Neon Pop",
+   "grad": [
+    "#12002b",
+    "#3a0ca3",
+    "#7209b7",
+    "#f72585"
+   ],
+   "wave": "#ff3cac",
+   "style": {
+    "font": "Poppins",
+    "weight": 700,
+    "size": 0.085,
+    "upper": false,
+    "color": "#ffffff",
+    "unsungAlpha": 0.82,
+    "active": "#ff3cac",
+    "sung": "#ff3cac",
+    "strokeColor": "#ff3cac",
+    "strokeWidth": 0.03,
+    "glowColor": "#ff3cac",
+    "glow": 0.05,
+    "glowAlpha": 0.8,
+    "shadowColor": "#000000",
+    "shadowAlpha": 0.0,
+    "shadowBlur": 0.0,
+    "shadowY": 0.0
+   }
+  },
+  "bold": {
+   "label": "Bold Poster",
+   "grad": [
+    "#0f0f0f",
+    "#2b2b2b",
+    "#ff5f00",
+    "#111111"
+   ],
+   "wave": "#ffe600",
+   "style": {
+    "font": "Bebas Neue",
+    "weight": 400,
+    "size": 0.12,
+    "upper": true,
+    "color": "#ffffff",
+    "unsungAlpha": 1.0,
+    "active": "#ffe600",
+    "sung": "#ffe600",
+    "strokeColor": "#000000",
+    "strokeWidth": 0.05,
+    "glowColor": "#ffe600",
+    "glow": 0.0,
+    "glowAlpha": 0.8,
+    "shadowColor": "#000000",
+    "shadowAlpha": 0.9,
+    "shadowBlur": 0.0,
+    "shadowY": 0.035
+   }
+  },
+  "dreamy": {
+   "label": "Dreamy Script",
+   "grad": [
+    "#0b1d51",
+    "#3a6ea5",
+    "#c9a7eb",
+    "#ffb5c2"
+   ],
+   "wave": "#9ee7ff",
+   "style": {
+    "font": "Pacifico",
+    "weight": 400,
+    "size": 0.078,
+    "upper": false,
+    "color": "#ffffff",
+    "unsungAlpha": 0.7,
+    "active": "#9ee7ff",
+    "sung": "#9ee7ff",
+    "strokeColor": "#2a1b5c",
+    "strokeWidth": 0.025,
+    "glowColor": "#9ee7ff",
+    "glow": 0.03,
+    "glowAlpha": 0.7,
+    "shadowColor": "#2a1b5c",
+    "shadowAlpha": 0.6,
+    "shadowBlur": 0.02,
+    "shadowY": 0.025
+   }
+  }
+ },
+ "styleDefaults": {
+  "font": "Poppins",
+  "weight": 700,
+  "size": 0.085,
+  "upper": false,
+  "tracking": 0.0,
+  "lineHeight": 1.18,
+  "maxWidth": 0.86,
+  "posY": 0.47,
+  "align": "center",
+  "color": "#ffffff",
+  "unsungAlpha": 0.8,
+  "active": "#ff3cac",
+  "sung": "#ff3cac",
+  "strokeColor": "#000000",
+  "strokeWidth": 0.0,
+  "shadowColor": "#000000",
+  "shadowAlpha": 0.0,
+  "shadowBlur": 0.0,
+  "shadowY": 0.0,
+  "glowColor": "#ff3cac",
+  "glow": 0.0,
+  "glowAlpha": 0.8,
+  "boxColor": "#22c55e",
+  "boxRadius": 0.2,
+  "boxPad": 0.14,
+  "boxAlpha": 1.0,
+  "showNext": true,
+  "nextAlpha": 0.55,
+  "boxText": "",
+  "titleColor": "#ffffff",
+  "titleColor2": "#ffd36e",
+  "titleGrad": false,
+  "titleSize": 0.45,
+  "titlePosY": 0.06,
+  "titleAlpha": 0.81,
+  "titleWeight": 400,
+  "titleUpper": false,
+  "titleStroke": 0.0,
+  "titleStrokeColor": "#000000",
+  "titleShadowAlpha": 0.0,
+  "titleShadowColor": "#000000",
+  "titleShadowBlur": 0.08
+ },
+ "animDefaults": {
+  "layout": "line",
+  "chunk": 3,
+  "enter": "fade",
+  "unit": "line",
+  "trigger": "line",
+  "dur": 0.22,
+  "stagger": 0.04,
+  "ease": "outCubic",
+  "dist": 0.6,
+  "active": "fill",
+  "activeAmt": 1.0,
+  "idle": "none",
+  "idleAmt": 1.0,
+  "exit": "fade",
+  "exitDur": 0.18,
+  "speed": 1.0,
+  "intensity": 1.0,
+  "cursor": false
+ },
+ "anims": [
+  {
+   "id": "karaoke",
+   "label": "Karaoke fill",
+   "desc": "Classic sing-along: words fill with colour as they're sung",
+   "anim": {
+    "layout": "line",
+    "enter": "fade",
+    "unit": "line",
+    "trigger": "line",
+    "active": "fill",
+    "exit": "fade"
+   },
+   "style": {
+    "showNext": true
+   }
+  },
+  {
+   "id": "capcut",
+   "label": "CapCut highlight box",
+   "desc": "3-word captions, the sung word sits in a coloured box",
+   "anim": {
+    "layout": "chunk",
+    "chunk": 3,
+    "enter": "pop",
+    "unit": "word",
+    "trigger": "line",
+    "dur": 0.18,
+    "stagger": 0.035,
+    "active": "box",
+    "exit": "none"
+   },
+   "style": {
+    "upper": true,
+    "weight": 800,
+    "color": "#ffffff",
+    "unsungAlpha": 1.0,
+    "active": "#ffffff",
+    "sung": "#ffffff",
+    "strokeColor": "#000000",
+    "strokeWidth": 0.08,
+    "glow": 0.0,
+    "shadowAlpha": 0.6,
+    "shadowBlur": 0.04,
+    "shadowY": 0.03,
+    "boxColor": "#22c55e",
+    "showNext": false,
+    "size": 0.095
+   }
+  },
+  {
+   "id": "tiktok",
+   "label": "TikTok one-word",
+   "desc": "One big word at a time, popping on the beat",
+   "anim": {
+    "layout": "word",
+    "enter": "pop",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.16,
+    "active": "scale",
+    "activeAmt": 0.4,
+    "exit": "none"
+   },
+   "style": {
+    "upper": true,
+    "weight": 800,
+    "size": 0.15,
+    "color": "#ffffff",
+    "unsungAlpha": 1.0,
+    "active": "#ffe600",
+    "sung": "#ffffff",
+    "strokeColor": "#000000",
+    "strokeWidth": 0.09,
+    "glow": 0.0,
+    "shadowAlpha": 0.7,
+    "shadowBlur": 0.05,
+    "shadowY": 0.04,
+    "showNext": false
+   }
+  },
+  {
+   "id": "typewriter",
+   "label": "Typewriter",
+   "desc": "Letters type out as each word is sung, with a blinking cursor",
+   "anim": {
+    "layout": "line",
+    "enter": "type",
+    "unit": "char",
+    "trigger": "word",
+    "active": "color",
+    "exit": "fade",
+    "cursor": true
+   },
+   "style": {
+    "showNext": false,
+    "unsungAlpha": 1.0
+   }
+  },
+  {
+   "id": "bounce",
+   "label": "Bounce pop",
+   "desc": "Words bounce in with a springy overshoot as they're sung",
+   "anim": {
+    "layout": "chunk",
+    "chunk": 4,
+    "enter": "pop",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.38,
+    "ease": "outBack",
+    "active": "color",
+    "exit": "fade"
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "blurin",
+   "label": "Blur in",
+   "desc": "Words drift into focus from a soft blur",
+   "anim": {
+    "layout": "line",
+    "enter": "blur",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.4,
+    "active": "color",
+    "exit": "blur",
+    "exitDur": 0.25
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "wave",
+   "label": "Wave",
+   "desc": "Letters ripple in a gentle wave; the sung word lights up",
+   "anim": {
+    "layout": "line",
+    "enter": "fade",
+    "unit": "char",
+    "trigger": "line",
+    "stagger": 0.015,
+    "active": "color",
+    "idle": "wave",
+    "idleAmt": 1.0,
+    "exit": "fade"
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "neon",
+   "label": "Neon flicker",
+   "desc": "Words buzz on like a neon sign, the sung word glows",
+   "anim": {
+    "layout": "line",
+    "enter": "flicker",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.32,
+    "active": "glow",
+    "activeAmt": 1.0,
+    "exit": "flicker",
+    "exitDur": 0.2
+   },
+   "style": {
+    "glow": 0.07,
+    "glowAlpha": 0.9,
+    "unsungAlpha": 0.9,
+    "showNext": false
+   }
+  },
+  {
+   "id": "slideup",
+   "label": "Slide up",
+   "desc": "Each word slides up into place on its beat",
+   "anim": {
+    "layout": "line",
+    "enter": "slide",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.3,
+    "dist": 0.7,
+    "active": "color",
+    "exit": "slide",
+    "exitDur": 0.22
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "punch",
+   "label": "Scale punch",
+   "desc": "The sung word punches forward, the rest of the line waits dimmed",
+   "anim": {
+    "layout": "line",
+    "enter": "fade",
+    "unit": "line",
+    "trigger": "line",
+    "active": "scale",
+    "activeAmt": 1.0,
+    "exit": "fade"
+   },
+   "style": {
+    "unsungAlpha": 0.5,
+    "showNext": false
+   }
+  },
+  {
+   "id": "cascade",
+   "label": "Letter cascade",
+   "desc": "Letters drop in one after another and bounce into place",
+   "anim": {
+    "layout": "line",
+    "enter": "drop",
+    "unit": "char",
+    "trigger": "line",
+    "dur": 0.42,
+    "stagger": 0.028,
+    "dist": 1.1,
+    "ease": "outBounce",
+    "active": "color",
+    "exit": "fade"
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "fadewords",
+   "label": "Soft fade",
+   "desc": "Calm: each word fades up as it's sung",
+   "anim": {
+    "layout": "line",
+    "enter": "fade",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.45,
+    "ease": "outSine",
+    "active": "none",
+    "exit": "fade",
+    "exitDur": 0.3
+   },
+   "style": {
+    "showNext": false
+   }
+  },
+  {
+   "id": "glow",
+   "label": "Glow highlight",
+   "desc": "Whole line shown, the sung word blooms with light",
+   "anim": {
+    "layout": "line",
+    "enter": "fade",
+    "unit": "line",
+    "trigger": "line",
+    "active": "glow",
+    "activeAmt": 1.0,
+    "exit": "fade"
+   },
+   "style": {
+    "unsungAlpha": 0.6,
+    "showNext": true
+   }
+  },
+  {
+   "id": "shake",
+   "label": "Shake emphasis",
+   "desc": "Punchy rap captions: the sung word shakes",
+   "anim": {
+    "layout": "chunk",
+    "chunk": 3,
+    "enter": "scale",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.14,
+    "active": "shake",
+    "activeAmt": 1.0,
+    "exit": "none"
+   },
+   "style": {
+    "upper": true,
+    "weight": 800,
+    "strokeColor": "#000000",
+    "strokeWidth": 0.07,
+    "showNext": false
+   }
+  },
+  {
+   "id": "spin",
+   "label": "Spin in",
+   "desc": "Words spin and zoom into place",
+   "anim": {
+    "layout": "chunk",
+    "chunk": 3,
+    "enter": "spin",
+    "unit": "word",
+    "trigger": "word",
+    "dur": 0.32,
+    "active": "color",
+    "exit": "fade"
+   },
+   "style": {
+    "showNext": false
+   }
+  }
+ ],
+ "enterTypes": [
+  "none",
+  "fade",
+  "pop",
+  "slide",
+  "blur",
+  "drop",
+  "type",
+  "scale",
+  "flicker",
+  "spin"
+ ],
+ "activeTypes": [
+  "none",
+  "fill",
+  "color",
+  "box",
+  "scale",
+  "glow",
+  "shake",
+  "wave"
+ ],
+ "exitTypes": [
+  "none",
+  "fade",
+  "slide",
+  "blur",
+  "pop",
+  "flicker"
+ ],
+ "eases": [
+  "linear",
+  "inSine",
+  "outSine",
+  "inOutSine",
+  "inCubic",
+  "outCubic",
+  "inOutCubic",
+  "outBack",
+  "outBounce",
+  "outElastic"
+ ],
+ "fx": [
+  {
+   "id": "grade",
+   "label": "Colour grade",
+   "overlay": [
+    "black"
+   ],
+   "options": [
+    "warm",
+    "cool",
+    "bw",
+    "faded"
+   ],
+   "def": 70
+  },
+  {
+   "id": "leaks",
+   "label": "Light leaks",
+   "overlay": [],
+   "def": 55
+  },
+  {
+   "id": "streak",
+   "label": "Anamorphic streak",
+   "overlay": [
+    "black"
+   ],
+   "def": 60
+  },
+  {
+   "id": "vignette",
+   "label": "Vignette",
+   "overlay": [],
+   "def": 55
+  },
+  {
+   "id": "vhs",
+   "label": "VHS",
+   "overlay": [],
+   "def": 60
+  },
+  {
+   "id": "glitch",
+   "label": "Glitch",
+   "overlay": [
+    "black"
+   ],
+   "options": [
+    "bursts",
+    "constant"
+   ],
+   "def": 60
+  },
+  {
+   "id": "grain",
+   "label": "Film grain",
+   "overlay": [],
+   "def": 40
+  }
+ ],
+ "zoomPresets": [
+  {
+   "id": "none",
+   "label": "No zoom"
+  },
+  {
+   "id": "pushin",
+   "label": "Slow push-in"
+  },
+  {
+   "id": "pullout",
+   "label": "Pull-out"
+  },
+  {
+   "id": "punch",
+   "label": "Punch zoom on lines"
+  },
+  {
+   "id": "kenburns",
+   "label": "Ken Burns pan"
+  }
+ ],
+ "paletteKeys": [
+  "color",
+  "active",
+  "sung",
+  "strokeColor",
+  "glowColor",
+  "shadowColor",
+  "boxColor",
+  "boxText",
+  "titleColor",
+  "titleColor2",
+  "titleStrokeColor",
+  "titleShadowColor"
+ ],
+ "palettes": [
+  {
+   "id": "sunset",
+   "label": "Sunset",
+   "colors": {
+    "color": "#fff4e6",
+    "active": "#ff7a45",
+    "sung": "#ffb347",
+    "strokeColor": "#3b1020",
+    "glowColor": "#ff5e62",
+    "shadowColor": "#2b0a1a",
+    "boxColor": "#ff5e62",
+    "boxText": "#ffffff",
+    "titleColor": "#ffd59e",
+    "titleColor2": "#ff7a45",
+    "titleStrokeColor": "#3b1020",
+    "titleShadowColor": "#2b0a1a"
+   }
+  },
+  {
+   "id": "vaporwave",
+   "label": "Vaporwave",
+   "colors": {
+    "color": "#f6f0ff",
+    "active": "#ff71ce",
+    "sung": "#01cdfe",
+    "strokeColor": "#2d1b69",
+    "glowColor": "#b967ff",
+    "shadowColor": "#1a0b3d",
+    "boxColor": "#b967ff",
+    "boxText": "#fffb96",
+    "titleColor": "#01cdfe",
+    "titleColor2": "#ff71ce",
+    "titleStrokeColor": "#2d1b69",
+    "titleShadowColor": "#1a0b3d"
+   }
+  },
+  {
+   "id": "mono",
+   "label": "Mono",
+   "colors": {
+    "color": "#ffffff",
+    "active": "#ffffff",
+    "sung": "#bdbdbd",
+    "strokeColor": "#000000",
+    "glowColor": "#ffffff",
+    "shadowColor": "#000000",
+    "boxColor": "#ffffff",
+    "boxText": "#000000",
+    "titleColor": "#e0e0e0",
+    "titleColor2": "#9e9e9e",
+    "titleStrokeColor": "#000000",
+    "titleShadowColor": "#000000"
+   }
+  },
+  {
+   "id": "pastel",
+   "label": "Pastel",
+   "colors": {
+    "color": "#fffaf5",
+    "active": "#ffb3c6",
+    "sung": "#a0e7e5",
+    "strokeColor": "#5b4b7a",
+    "glowColor": "#ffd6e0",
+    "shadowColor": "#4a3b63",
+    "boxColor": "#b4f8c8",
+    "boxText": "#3b3355",
+    "titleColor": "#fbe7c6",
+    "titleColor2": "#ffb3c6",
+    "titleStrokeColor": "#5b4b7a",
+    "titleShadowColor": "#4a3b63"
+   }
+  },
+  {
+   "id": "ocean",
+   "label": "Ocean",
+   "colors": {
+    "color": "#e8fbff",
+    "active": "#00c2d1",
+    "sung": "#7ee8fa",
+    "strokeColor": "#04213a",
+    "glowColor": "#00a6c0",
+    "shadowColor": "#021526",
+    "boxColor": "#0077b6",
+    "boxText": "#ffffff",
+    "titleColor": "#90e0ef",
+    "titleColor2": "#00b4d8",
+    "titleStrokeColor": "#04213a",
+    "titleShadowColor": "#021526"
+   }
+  },
+  {
+   "id": "bloodmoon",
+   "label": "Blood Moon",
+   "colors": {
+    "color": "#f3e6e3",
+    "active": "#e63946",
+    "sung": "#ff8c69",
+    "strokeColor": "#1b0306",
+    "glowColor": "#9d0208",
+    "shadowColor": "#120204",
+    "boxColor": "#9d0208",
+    "boxText": "#ffe8d6",
+    "titleColor": "#ffb4a2",
+    "titleColor2": "#e63946",
+    "titleStrokeColor": "#1b0306",
+    "titleShadowColor": "#120204"
+   }
+  },
+  {
+   "id": "matcha",
+   "label": "Matcha",
+   "colors": {
+    "color": "#f4f9ec",
+    "active": "#a7c957",
+    "sung": "#dde5b6",
+    "strokeColor": "#283618",
+    "glowColor": "#6a994e",
+    "shadowColor": "#1b2610",
+    "boxColor": "#6a994e",
+    "boxText": "#f4f9ec",
+    "titleColor": "#dde5b6",
+    "titleColor2": "#a7c957",
+    "titleStrokeColor": "#283618",
+    "titleShadowColor": "#1b2610"
+   }
+  },
+  {
+   "id": "goldblack",
+   "label": "Gold & Black",
+   "colors": {
+    "color": "#ffffff",
+    "active": "#f5c518",
+    "sung": "#e6b422",
+    "strokeColor": "#000000",
+    "glowColor": "#d4a017",
+    "shadowColor": "#000000",
+    "boxColor": "#f5c518",
+    "boxText": "#111111",
+    "titleColor": "#fff1b8",
+    "titleColor2": "#d4a017",
+    "titleStrokeColor": "#000000",
+    "titleShadowColor": "#000000"
+   }
+  },
+  {
+   "id": "ice",
+   "label": "Ice",
+   "colors": {
+    "color": "#f0f8ff",
+    "active": "#a5f3fc",
+    "sung": "#c7d2fe",
+    "strokeColor": "#1e3a5f",
+    "glowColor": "#67e8f9",
+    "shadowColor": "#0f1f33",
+    "boxColor": "#e0f2fe",
+    "boxText": "#0f2a44",
+    "titleColor": "#ffffff",
+    "titleColor2": "#a5f3fc",
+    "titleStrokeColor": "#1e3a5f",
+    "titleShadowColor": "#0f1f33"
+   }
+  },
+  {
+   "id": "candy",
+   "label": "Candy",
+   "colors": {
+    "color": "#fff0f6",
+    "active": "#ff4d9d",
+    "sung": "#7cf2c8",
+    "strokeColor": "#4b1035",
+    "glowColor": "#ff85c0",
+    "shadowColor": "#3a0b29",
+    "boxColor": "#ffd23f",
+    "boxText": "#4b1035",
+    "titleColor": "#ff85c0",
+    "titleColor2": "#ffd23f",
+    "titleStrokeColor": "#4b1035",
+    "titleShadowColor": "#3a0b29"
+   }
+  },
+  {
+   "id": "cyberamber",
+   "label": "Cyber Amber",
+   "colors": {
+    "color": "#e2ddd0",
+    "active": "#d4a24a",
+    "sung": "#6fa9a2",
+    "strokeColor": "#0c0e10",
+    "glowColor": "#d4a24a",
+    "shadowColor": "#000000",
+    "boxColor": "#d4a24a",
+    "boxText": "#15110a",
+    "titleColor": "#e2ddd0",
+    "titleColor2": "#d4a24a",
+    "titleStrokeColor": "#0c0e10",
+    "titleShadowColor": "#000000"
+   }
+  },
+  {
+   "id": "limepunch",
+   "label": "Lime Punch",
+   "colors": {
+    "color": "#ffffff",
+    "active": "#c6ff00",
+    "sung": "#c6ff00",
+    "strokeColor": "#10210a",
+    "glowColor": "#9ef01a",
+    "shadowColor": "#000000",
+    "boxColor": "#c6ff00",
+    "boxText": "#10210a",
+    "titleColor": "#ecffb3",
+    "titleColor2": "#c6ff00",
+    "titleStrokeColor": "#10210a",
+    "titleShadowColor": "#000000"
+   }
+  }
+ ]
+}
