@@ -122,6 +122,17 @@
         fill2: style.titleGrad ? (style.titleColor2 || style.titleColor || '#ffffff') : null, alpha: (style.titleAlpha ?? 0.81) * fa,
         stroke: (style.titleStroke || 0) * tpx, strokeColor: style.titleStrokeColor || '#000000', scale: 1, rot: 0, cx: W / 2, cy: ty, blur: 0, glow: null, shadow: tsh, wipe: null});
     }
+    if (sc.artist) {
+      const apx = Math.max(6, Math.round(fsBase * (style.artistSize ?? 0.32)));
+      const font = {family: style.font, weight: style.artistWeight ?? 400, px: apx, fontId: style.fontId || ''};
+      const atext = style.artistUpper ? String(sc.artist).toUpperCase() : String(sc.artist);
+      const aw = measure(atext, font);
+      const fa = Math.min(clamp(t / 0.4), clamp((sc.clipLen - t) / 0.4));
+      const ay = H * (style.artistPosY ?? 0.13);
+      items.push({k: 'text', text: atext, font, x: (W - aw) / 2, y: ay + apx * 0.8, w: aw, fill: style.artistColor || '#ffffff',
+        fill2: null, alpha: (style.artistAlpha ?? 0.9) * fa,
+        stroke: 0, strokeColor: '#000000', scale: 1, rot: 0, cx: W / 2, cy: ay, blur: 0, glow: null, shadow: null, wipe: null});
+    }
     const groups = sc.groups;
     let gi = -1;
     for (let i = 0; i < groups.length; i++) if (groups[i].gs <= t && t < groups[i].ge) { gi = i; break; }

@@ -368,6 +368,9 @@ class RenderReq(BaseModel):
     video_blur: float = 0.0
     video_audio: bool = False    # mix the background video's own audio under the song
     video_volume: float = 0.5
+    quality: str = "standard"   # draft | standard | high | max
+    artist: str = ""            # optional second text line (artist / subtitle)
+    video_clips: list | None = None  # [{video_id, in, out, start}] — one track, no overlap
 
 
 @app.get("/api/fonts")
@@ -408,9 +411,11 @@ def delete_font(fid: str):
 
 
 _COLOR_KEYS = ("color", "active", "sung", "strokeColor", "shadowColor", "glowColor", "boxColor", "boxText",
-               "titleColor", "titleColor2", "titleStrokeColor", "titleShadowColor")
+               "titleColor", "titleColor2", "titleStrokeColor", "titleShadowColor", "artistColor", "vizColor")
 _RANGES = {"titleSize": (0.05, 2.0), "titlePosY": (0.0, 0.95), "titleAlpha": (0.0, 1.0), "titleStroke": (0.0, 0.3),
-           "titleShadowAlpha": (0.0, 1.0), "titleShadowBlur": (0.0, 0.5)}
+           "titleShadowAlpha": (0.0, 1.0), "titleShadowBlur": (0.0, 0.5),
+           "artistSize": (0.05, 2.0), "artistPosY": (0.0, 0.95), "artistAlpha": (0.0, 1.0),
+           "vizY": (0.0, 1.0), "vizH": (0.02, 0.6), "vizAlpha": (0.0, 1.0)}
 
 
 def _clean_style(d):
@@ -431,7 +436,27 @@ def _clean_style(d):
                 d.pop(k)
     if "titleWeight" in d and d["titleWeight"] not in (400, 700, 800):
         d.pop("titleWeight")
+    if "artistWeight" in d and d["artistWeight"] not in (400, 700, 800):
+        d.pop("artistWeight")
+    if "vizStyle" in d and d["vizStyle"] not in ("line", "bars", "mirror"):
+        d.pop("vizStyle")
     return d
+
+
+def _clip_list(raw_list):
+    """Resolve timeline clips to source files. Empty in/out stays inside each file."""
+    clips = []
+    for raw in raw_list or []:
+        if not isinstance(raw, dict):
+            continue
+        vm = bg_video_meta(str(raw.get("video_id") or ""))
+        inn = min(max(0.0, float(raw.get("in") or 0)), max(0.0, vm["duration"] - 0.05))
+        outv = vm["duration"] if raw.get("out") is None else min(float(raw.get("out")), vm["duration"])
+        if outv < inn + 0.05:
+            continue
+        clips.append({"path": vm["path"], "in": inn, "out": outv, "start": max(0.0, float(raw.get("start") or 0)),
+                      "has_audio": vm["has_audio"], "duration": vm["duration"], "video_id": vm["bg_video_id"]})
+    return clips
 
 
 def _scene(req: RenderReq):
@@ -450,7 +475,16 @@ def _scene(req: RenderReq):
             raise HTTPException(404, str(e))
     mode = req.bg_mode or ("image" if bg else "gradient")
     bgv = None
-    if mode == "video":
+    clips = None
+    if mode == "video" and req.video_clips is not None:
+        clips = _clip_list(req.video_clips)
+        if clips:
+            host = next((c for c in clips if c["start"] <= 1e-3), clips[0])
+            bgv = {"path": host["path"], "in": host["in"], "out": host["out"], "darken": req.video_darken,
+                   "blur": req.video_blur, "mix_audio": bool(req.video_audio and host.get("has_audio")),
+                   "video_volume": req.video_volume, "has_audio": host.get("has_audio"),
+                   "duration": host.get("duration"), "loop_audio": False}
+    elif mode == "video":
         vm = bg_video_meta(req.bg_video_id or "")
         vin = req.video_in if req.video_in is not None else req.video_offset
         vin = min(max(0.0, vin), max(0.0, vm["duration"] - 0.1))
@@ -461,15 +495,16 @@ def _scene(req: RenderReq):
                 vout = None
         bgv = {"path": vm["path"], "in": vin, "out": vout, "darken": req.video_darken, "blur": req.video_blur,
                "mix_audio": req.video_audio, "video_volume": req.video_volume, "has_audio": vm["has_audio"],
-               "duration": vm["duration"]}
+               "duration": vm["duration"], "loop_audio": True}
     if mode == "image" and not bg:
         raise HTTPException(400, "image mode needs an uploaded background image")
     style = _clean_style(req.style)
     if font_meta:
         style["fontId"] = req.font_id
     kw = dict(aspect=req.aspect, look=req.preset, anim_id=req.anim_preset, style=style, anim=req.anim,
-              lines=req.lines, title=req.title, visualizer=req.visualizer, bg_mode=mode, bg_image=bg,
-              bg_video=bgv, zoom=req.zoom, fx_list=req.fx or [],
+              lines=req.lines, title=req.title, artist=req.artist or "", visualizer=req.visualizer,
+              bg_mode=mode, bg_image=bg, bg_video=bgv, video_clips=clips, zoom=req.zoom, fx_list=req.fx or [],
+              quality=req.quality or "standard",
               font_files={req.font_id: font_path} if font_path else None)
     return src, kw, font_meta
 
@@ -481,14 +516,16 @@ def render(req: RenderReq):
     out = REN / f"lyric_video_{rid}.mp4"
     t0 = time.time()
     try:
+        full = SIZES.get(req.aspect, SIZES["9:16"])
         res = render_frames(src, req.start, min(30.0, max(1.0, req.length)), out, WORK / f"render_{rid}",
-                            transparent_format=req.transparent_format, **kw)
+                            transparent_format=req.transparent_format, full_width=full[0], **kw)
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     out = Path(res["out"])
     return {"url": f"/api/download/{out.name}", "file": out.name, "render_s": round(time.time() - t0, 1),
             "bg_mode": kw["bg_mode"], "container": out.suffix.lstrip("."), "fx_skipped": res["fx_skipped"],
-            "frames": res["frames"], "fps": res["fps"], "size_mb": round(out.stat().st_size / 1e6, 2),
+            "frames": res["frames"], "fps": res["fps"], "output_fps": res.get("output_fps"),
+            "quality": res.get("quality") or req.quality, "size_mb": round(out.stat().st_size / 1e6, 2),
             "fonts_used": [res["font_file"]], "custom_font": font_meta and font_meta["family"],
             "custom_font_resolved": True if font_meta else None}
 

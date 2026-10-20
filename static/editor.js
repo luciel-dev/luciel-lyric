@@ -1,9 +1,17 @@
-/* Luciel Lyric step-4 editor: text animation library + customisation, video trim + keyframed zoom/pan,
-   stackable post FX, saved presets, and the canvas preview stage. Uses globals from app.js (S, $, api, audio, ...). */
+/* Luciel Lyric step-4 editor: Look (text + visualizer), static animation presets, a one-track
+   timeline with zoom markers, quality presets, and the canvas preview. Uses globals from app.js. */
 (function () {
   const LL = window.LL, LLFX = window.LLFX, ST = window.LLStage;
+  const QUALITY = {
+    draft: {label: 'Draft', scale: 0.5, fps: 24, crf: 28, maxrate: '2M'},
+    standard: {label: 'Standard', scale: 1, fps: 30, crf: 20, maxrate: '6M'},
+    high: {label: 'High', scale: 1, fps: 30, crf: 16, maxrate: '12M'},
+    max: {label: 'Max', scale: 1, fps: 60, crf: 14, maxrate: '20M'},
+  };
+  const evenPx = n => { n = Math.round(n); if (n % 2) n -= 1; return Math.max(2, n); };
   const E = {look: 'neon', animId: 'karaoke', styleOv: {}, animOv: {}, palette: null, fx: [], zoom: {preset: 'none', keys: [], target: 'bg'},
-    trimIn: 0, trimOut: null, sel: -1, t: 0, playing: false, eng: null, stage: null, pcm: null, pcmId: null, image: null, imageUrl: null, tab: 'text'};
+    clips: [], selClip: -1, tlPps: 48, quality: 'standard', animLive: false,
+    sel: -1, t: 0, playing: false, eng: null, stage: null, pcm: null, pcmId: null, image: null, imageUrl: null, tab: 'look'};
   window.ED = {};
   const qa = s => [...document.querySelectorAll(s)];
   const fmtS = v => (+v).toFixed(2);
@@ -37,6 +45,11 @@
     R('titleAlpha', 'Title opacity', 0, 1, 0.05, pct), Sl('titleWeight', 'Title weight', [[400, 'Regular'], [700, 'Bold'], [800, 'Extra bold']]), B('titleUpper', 'UPPERCASE title'),
     C('titleStrokeColor', 'Title outline'), R('titleStroke', 'Title outline width', 0, 0.15, 0.005), C('titleShadowColor', 'Title shadow'),
     R('titleShadowAlpha', 'Title shadow opacity', 0, 1, 0.05, pct), R('titleShadowBlur', 'Title shadow blur', 0, 0.3, 0.01)];
+  const ARTIST = [C('artistColor', 'Artist colour'), R('artistSize', 'Artist size', 0.15, 0.9, 0.01, v => (+v).toFixed(2) + '× lyrics'),
+    R('artistPosY', 'Artist position', 0.02, 0.9, 0.01, pct), R('artistAlpha', 'Artist opacity', 0, 1, 0.05, pct),
+    Sl('artistWeight', 'Artist weight', [[400, 'Regular'], [700, 'Bold'], [800, 'Extra bold']]), B('artistUpper', 'UPPERCASE artist')];
+  const VIZ = [Sl('vizStyle', 'Shape', [['line', 'Line'], ['bars', 'Bars'], ['mirror', 'Mirror']]), C('vizColor', 'Colour'),
+    R('vizY', 'Position', 0.05, 0.98, 0.01, pct), R('vizH', 'Height', 0.03, 0.4, 0.01, pct), R('vizAlpha', 'Opacity', 0.05, 1, 0.05, pct)];
   let ANIM = [];
   function animSchema() {
     const P = E.eng, o = a => a.map(x => [x, x]);
@@ -67,11 +80,15 @@
     }
   }
   function syncControls() {
-    const {style, anim} = resolve();
+    const {style, anim, lk} = resolve();
     for (const d of qa('.ctl')) {
       const c = d._c, v = (d.dataset.kind === 'style' ? style : anim)[c.k], inp = d.querySelector('input,select');
       if (c.type === 'check') inp.checked = !!v;
-      else if (c.type === 'color') { const vv = c.k === 'boxText' && !v ? style.active : v; inp.value = /^#[0-9a-f]{6}$/i.test(vv) ? vv : '#ffffff'; }
+      else if (c.type === 'color') {
+        let vv = c.k === 'boxText' && !v ? style.active : v;
+        if (c.k === 'vizColor' && !v) vv = lk.wave;
+        inp.value = /^#[0-9a-f]{6}$/i.test(vv) ? vv : '#ffffff';
+      }
       else { inp.value = v; if (c.type === 'range') d.querySelector('b').textContent = c.f(v); }
     }
     // hide irrelevant knobs
@@ -113,7 +130,7 @@
     E.palette = p ? {id: p.id, label: p.label, colors: {...p.colors}} : null;
     for (const k of E.eng.paletteKeys) delete E.styleOv[k];   // one click = the palette wins; individual edits afterwards still override
     $('#palStatus').textContent = p ? `palette: ${p.label}` : 'look colours';
-    markDirty(); syncControls(); refresh(); thumbLoop();
+    markDirty(); syncControls(); refresh(); paintThumbs();
   }
   function saveCurrentPalette() {
     const {style} = resolve(), name = ($('#palName').value || '').trim() || `My palette ${customPals().length + 1}`;
@@ -125,7 +142,7 @@
   function deletePalette() {
     if (!E.palette || !E.palette.id.startsWith('custom-')) return;
     storePals(customPals().filter(p => p.id !== E.palette.id)); $('#palStatus').textContent = `deleted “${E.palette.label}”`;
-    E.palette = null; buildPalettes(); syncControls(); refresh(); thumbLoop();
+    E.palette = null; buildPalettes(); syncControls(); refresh(); paintThumbs();
   }
   // --- auto palette from the background (image, current video frame or gradient) ---
   const hsl2hex = (h, s, l) => { h = ((h % 360) + 360) % 360; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
@@ -170,16 +187,9 @@
   function wirePalettes() {
     buildPalettes();
     $('#palAuto').onclick = autoPalette; $('#palSave').onclick = saveCurrentPalette; $('#palDel').onclick = deletePalette;
-    // title text mirror (the canonical field is in Background & export)
-    const t1 = $('#titleIn'), t2 = $('#titleIn2'), s1 = $('#showTitleIn'), s2 = $('#showTitleIn2');
-    t2.value = t1.value; s2.checked = s1.checked;
-    t2.addEventListener('input', () => { t1.value = t2.value; t1.dispatchEvent(new Event('input', {bubbles: true})); refresh(); });
-    t1.addEventListener('input', () => { if (t2.value !== t1.value) t2.value = t1.value; });
-    s2.addEventListener('change', () => { s1.checked = s2.checked; s1.dispatchEvent(new Event('change', {bubbles: true})); refresh(); });
-    s1.addEventListener('change', () => { s2.checked = s1.checked; });
   }
-  // title styling is independent of the look / animation preset, so switching those keeps it
-  const keepTitle = () => Object.fromEntries(Object.entries(E.styleOv).filter(([k]) => k.startsWith('title')));
+  // title, artist and visualizer styling survive a look / animation change
+  const keepLayers = () => Object.fromEntries(Object.entries(E.styleOv).filter(([k]) => k.startsWith('title') || k.startsWith('artist') || k.startsWith('viz')));
   let dirty = false;
   function markDirty() { dirty = true; $('#presetStatus').textContent = 'modified'; }
 
@@ -189,34 +199,41 @@
     for (const a of E.eng.anims) {
       const b = document.createElement('button'); b.className = 'animcard' + (a.id === E.animId ? ' sel' : ''); b.dataset.id = a.id; b.title = a.desc;
       b.innerHTML = `<canvas width="132" height="64"></canvas><span>${a.label}</span>`;
-      b.onclick = () => { E.animId = a.id; E.styleOv = keepTitle(); E.animOv = {}; dirty = false; $('#presetStatus').textContent = ''; qa('.animcard').forEach(x => x.classList.toggle('sel', x === b)); syncControls(); refresh(); };
+      b.onclick = () => {
+        E.animId = a.id; E.styleOv = keepLayers(); E.animOv = {}; dirty = false; $('#presetStatus').textContent = '';
+        E.animLive = true;
+        qa('.animcard').forEach(x => x.classList.toggle('sel', x === b));
+        syncControls(); refresh(); paintThumbs();
+      };
       g.appendChild(b);
     }
-    thumbLoop();
+    paintThumbs();
   }
-  // tiny looping thumbnails: same engine on a 3-word demo line
+  // Thumbnails stay on one frame. Only the card you click plays.
   const DEMO = [{words: [{text: 'sing', start: 0.25, end: 0.6}, {text: 'it', start: 0.6, end: 0.85}, {text: 'loud', start: 0.85, end: 1.5}]}];
-  let thumbT0 = performance.now(), thumbRaf = null;
-  function thumbLoop() {
-    cancelAnimationFrame(thumbRaf);
+  let thumbTimer = null;
+  function thumbScenes() {
     const P = E.eng, lk = P.looks[E.look] || P.looks.neon;
-    const scenes = qa('.animcard').map(b => {
+    return qa('.animcard').map(b => {
       const a = P.anims.find(x => x.id === b.dataset.id), cv = b.querySelector('canvas');
       const style = {...P.styleDefaults, ...lk.style, ...(a.style || {}), ...(E.palette?.colors || {}), size: 0.3, showNext: false, posY: 0.55, maxWidth: 0.95};
       if (style.size > 0.3) style.size = 0.3;
       const anim = {...P.animDefaults, ...(a.anim || {})};
       const groups = LL.prepare(DEMO, style, anim, 2.2);
-      return {cv, ctx: cv.getContext('2d'), sc: {W: cv.width, H: cv.height, style, anim, measure: ST.measure, groups, title: '', clipLen: 2.2, layKey: 'thumb'}};
+      return {id: a.id, cv, ctx: cv.getContext('2d'), sc: {W: cv.width, H: cv.height, style, anim, measure: ST.measure, groups, title: '', clipLen: 2.2, layKey: 'thumb'}};
     });
+  }
+  function paintThumbs() {
+    clearTimeout(thumbTimer);
+    const scenes = thumbScenes();
+    const live = E.animLive ? E.animId : null;
+    const t0 = performance.now();
+    const drawOne = (s, t) => { s.ctx.clearRect(0, 0, s.cv.width, s.cv.height); ST.drawItems(s.ctx, LL.buildItems(t, s.sc).items); };
     const tick = () => {
-      if (E.tab === 'text' && !document.hidden && $('#step4') && !$('#step4').classList.contains('hidden')) {
-        const t = ((performance.now() - thumbT0) / 1000) % 2.2;
-        for (const s of scenes) {
-          s.ctx.clearRect(0, 0, s.cv.width, s.cv.height);
-          ST.drawItems(s.ctx, LL.buildItems(t, s.sc).items);
-        }
-      }
-      thumbRaf = setTimeout(() => requestAnimationFrame(tick), 40);
+      const show = E.tab === 'animate' && !document.hidden && $('#step4') && !$('#step4').classList.contains('hidden');
+      const tLive = ((performance.now() - t0) / 1000) % 2.2;
+      for (const s of scenes) drawOne(s, s.id === live && show ? tLive : 0.9);
+      if (live && show) thumbTimer = setTimeout(() => requestAnimationFrame(tick), 40);
     };
     tick();
   }
@@ -246,7 +263,8 @@
     if (Array.isArray(d.fx)) E.fx = defaultFx().map(f => ({...f, ...(d.fx.find(x => x.id === f.id) || {})}));
     if (d.zoom && d.zoom.preset) { E.zoom.target = d.zoom.target || 'bg'; setZoomPreset(d.zoom.preset); }
     qa('.animcard').forEach(x => x.classList.toggle('sel', x.dataset.id === E.animId));
-    dirty = false; syncControls(); buildFx(); refresh(); thumbLoop();
+    E.animLive = false;
+    dirty = false; syncControls(); buildFx(); refresh(); paintThumbs();
   }
   function wirePresets() {
     $('#saveBtn').onclick = async () => {
@@ -271,7 +289,7 @@
       catch (er) { $('#presetStatus').textContent = '❌ ' + er.message; }
       e.target.value = '';
     };
-    $('#resetBtn').onclick = () => { E.styleOv = {}; E.animOv = {}; E.palette = null; dirty = false; $('#presetStatus').textContent = 'reset'; syncControls(); refresh(); };
+    $('#resetBtn').onclick = () => { E.styleOv = {}; E.animOv = {}; E.palette = null; dirty = false; $('#presetStatus').textContent = 'reset'; syncControls(); refresh(); paintThumbs(); };
   }
 
   // ---------- FX ----------
@@ -326,9 +344,19 @@
     qa('#kfList .kf').forEach(b => b.onclick = () => { E.sel = +b.dataset.i; seek(ks[E.sel].t); kfUI(); });
     const k = ks[E.sel];
     $('#kfEdit').classList.toggle('dim', !k);
-    if (k) { $('#kfZ').value = k.z; $('#kfZVal').textContent = k.z.toFixed(2); $('#kfEase').value = k.ease; $('#kfT').value = k.t.toFixed(2); }
+    if (k) {
+      $('#kfZ').value = k.z; $('#kfZVal').textContent = k.z.toFixed(2); $('#kfEase').value = k.ease; $('#kfT').value = k.t.toFixed(2);
+      $('#kfX').value = k.x.toFixed(2); $('#kfY').value = k.y.toFixed(2);
+    }
     const L = S.len || 20;
     $('#kfMarks').innerHTML = ks.map((k, i) => `<i class="${i === E.sel ? 'sel' : ''}" style="left:${(k.t / L * 100).toFixed(2)}%"></i>`).join('');
+    const sum = $('#kfSummary');
+    if (sum) {
+      sum.innerHTML = ks.length ? ks.map((k, i) => `<button type="button" class="kf ${i === E.sel ? 'sel' : ''}" data-i="${i}">${k.t.toFixed(2)}s · ${k.z.toFixed(2)}× · ${k.ease}</button>`).join('')
+        : '<span class="muted small">No zoom keyframes. The render stays at 1×.</span>';
+      qa('#kfSummary .kf').forEach(b => b.onclick = () => { E.sel = +b.dataset.i; seek(ks[E.sel].t); kfUI(); });
+    }
+    qInfo();
   }
   function keyAtPlayhead(create) {
     const ks = E.zoom.keys, i = ks.findIndex(k => Math.abs(k.t - E.t) < 0.05);
@@ -351,10 +379,13 @@
     $('#kfZ').oninput = e => { const k = E.zoom.keys[E.sel] || keyAtPlayhead(true); k.z = +e.target.value; E.zoom.preset = 'custom'; zp.value = 'custom'; kfUI(); refresh(); };
     $('#kfEase').onchange = e => { const k = E.zoom.keys[E.sel]; if (k) { k.ease = e.target.value; kfUI(); refresh(); } };
     $('#kfT').onchange = e => { const k = E.zoom.keys[E.sel]; if (k) { k.t = Math.max(0, Math.min(S.len, +e.target.value)); kfUI(); E.sel = E.zoom.keys.indexOf(k); kfUI(); refresh(); } };
+    const setPan = (axis, v) => { const k = E.zoom.keys[E.sel]; if (!k) return; k[axis] = Math.max(0, Math.min(1, +v)); E.zoom.preset = 'custom'; zp.value = 'custom'; kfUI(); refresh(); };
+    $('#kfX').onchange = e => setPan('x', e.target.value);
+    $('#kfY').onchange = e => setPan('y', e.target.value);
     // drag on the stage = move the focal point of the keyframe at the playhead
     const st = $('#stage'); let drag = null;
     st.addEventListener('pointerdown', e => {
-      if (E.tab !== 'video') return;
+      if (E.tab !== 'timeline') return;
       if (!audio.paused) stopPlay();
       const k = (E.sel >= 0 && Math.abs(E.zoom.keys[E.sel].t - E.t) < 0.05) ? E.zoom.keys[E.sel] : keyAtPlayhead(true);
       if (k.z < 1.01) k.z = 1.15;  // panning needs some zoom
@@ -369,40 +400,183 @@
     });
     const end = () => { drag = null; };
     st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
-    st.addEventListener('dblclick', () => { if (E.tab !== 'video') return; const k = keyAtPlayhead(false); if (k) { k.x = 0.5; k.y = 0.5; kfUI(); refresh(); } });
+    st.addEventListener('dblclick', () => { if (E.tab !== 'timeline') return; const k = keyAtPlayhead(false); if (k) { k.x = 0.5; k.y = 0.5; kfUI(); refresh(); } });
   }
-  function trimUI() {
-    const m = S.bgVideo, has = S.bgMode === 'video' && !!m;
-    $('#trimEmpty').classList.toggle('hidden', has); $('#trimUI').classList.toggle('hidden', !has);
-    if (!has) return;
-    const D = m.duration, a = E.trimIn, b = E.trimOut ?? D;
-    $('#trimSel').style.left = $('#trimIn').style.left = (a / D * 100) + '%';
-    $('#trimOut').style.left = (b / D * 100) + '%'; $('#trimSel').style.width = ((b - a) / D * 100) + '%';
-    $('#trimStrip .shade.l').style.width = (a / D * 100) + '%'; $('#trimStrip .shade.r').style.width = ((D - b) / D * 100) + '%';
-    $('#trimInN').value = a.toFixed(1); $('#trimOutN').value = b.toFixed(1);
-    const seg = b - a;
-    $('#trimInfo').textContent = `segment ${seg.toFixed(1)}s` + (seg < S.len - 0.05 ? ` · loops ${Math.ceil(S.len / seg)}× over the ${S.len}s clip` : '');
+  function qInfo() {
+    const q = QUALITY[E.quality] || QUALITY.standard;
+    const aspect = $('#aspectIn') ? $('#aspectIn').value : '9:16';
+    const base = aspect === '16:9' ? [1920, 1080] : aspect === '1:1' ? [1080, 1080] : [1080, 1920];
+    const info = $('#qInfo');
+    if (info) info.textContent = `${q.label}: ${evenPx(base[0] * q.scale)}×${evenPx(base[1] * q.scale)} · ${q.fps} fps · CRF ${q.crf} · max ${q.maxrate}`;
+    qa('#qRow button').forEach(b => b.classList.toggle('on', b.dataset.q === E.quality));
   }
-  function wireTrim() {
-    const strip = $('#trimStrip'); let which = null;
-    const at = e => { const r = strip.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (S.bgVideo?.duration || 0); };
-    strip.addEventListener('pointerdown', e => {
-      if (!S.bgVideo) return;
-      const t = at(e), b = E.trimOut ?? S.bgVideo.duration;
-      which = Math.abs(t - E.trimIn) <= Math.abs(t - b) ? 'in' : 'out'; strip.setPointerCapture(e.pointerId); move(e);
-    });
-    const move = e => {
-      if (!which) return; const D = S.bgVideo.duration, t = at(e);
-      if (which === 'in') E.trimIn = Math.min(t, (E.trimOut ?? D) - 0.3); else E.trimOut = Math.max(t, E.trimIn + 0.3);
-      if (E.trimOut !== null && E.trimOut >= D - 0.05) E.trimOut = null;
-      trimUI(); previewVideoAt(which === 'in' ? E.trimIn : (E.trimOut ?? D) - 0.05);
+  function wireQuality() {
+    qa('#qRow button').forEach(b => b.onclick = () => { E.quality = b.dataset.q; qInfo(); refresh(); });
+    qInfo();
+  }
+
+  // ---------- one-track timeline ----------
+  function clipSpan(c) { return Math.max(0, (c.out ?? c.duration) - c.in); }
+  function clipAtTime(t) {
+    let hit = null;
+    E.clips.forEach((c, i) => { const d = clipSpan(c); if (c.start <= t && t < c.start + d - 1e-6) hit = {i, c, local: t - c.start}; });
+    return hit;
+  }
+  function unoverlap(i) {
+    const c = E.clips[i]; if (!c) return;
+    const d = clipSpan(c);
+    for (let guard = 0; guard < 8; guard++) {
+      const j = E.clips.findIndex((o, k) => k !== i && c.start < o.start + clipSpan(o) - 1e-4 && o.start < c.start + d - 1e-4);
+      if (j < 0) break;
+      const o = E.clips[j], after = o.start + clipSpan(o), before = o.start - d;
+      c.start = (before >= 0 && Math.abs(before - c.start) <= Math.abs(after - c.start)) ? before : after;
+    }
+    c.start = Math.max(0, c.start);
+  }
+  let tlDrag = null;
+  function tlTime(e) {
+    const r = $('#tlInner').getBoundingClientRect();
+    return Math.max(0, (e.clientX - r.left) / E.tlPps);
+  }
+  function tlHead() {
+    const head = $('#tlHead');
+    if (head) head.style.left = (E.t * E.tlPps) + 'px';
+  }
+  function tlRender() {
+    const inner = $('#tlInner'); if (!inner) return;
+    if (tlDrag) { tlHead(); return; }
+    const pps = E.tlPps;
+    const end = E.clips.reduce((m, c) => Math.max(m, c.start + clipSpan(c)), S.len || 20);
+    const w = Math.max(320, Math.ceil(end) * pps + 24);
+    inner.style.width = w + 'px';
+    let ruler = '';
+    for (let s = 0; s <= Math.ceil(end); s++) ruler += `<i style="left:${s * pps}px">${s}s</i>`;
+    $('#tlRuler').innerHTML = ruler;
+    $('#tlTrack').innerHTML = E.clips.map((c, i) => {
+      const d = clipSpan(c);
+      const bg = c.thumbs ? `background-image:url(${c.thumbs});background-size:auto 100%;background-repeat:repeat-x;` : '';
+      return `<div class="tlclip${i === E.selClip ? ' sel' : ''}" data-i="${i}" style="left:${c.start * pps}px;width:${Math.max(8, d * pps)}px;${bg}"><i class="edge in"></i><span class="nm">${esc(c.name || 'clip')}</span><i class="edge out"></i></div>`;
+    }).join('');
+    $('#tlLane').innerHTML = E.zoom.keys.map((k, i) => `<i class="tlkf${i === E.sel ? ' sel' : ''}" data-i="${i}" style="left:${k.t * pps}px" title="${k.t.toFixed(2)}s ×${k.z.toFixed(2)}"></i>`).join('');
+    tlHead();
+  }
+  function splitClip() {
+    const hit = clipAtTime(E.t);
+    if (!hit) { $('#tlStatus').textContent = 'Move the playhead over a clip to cut it.'; return; }
+    const dur = clipSpan(hit.c), local = E.t - hit.c.start;
+    if (local < 0.12 || dur - local < 0.12) { $('#tlStatus').textContent = 'That cut is too close to a clip edge.'; return; }
+    const c = hit.c;
+    const a = {...c, out: +(c.in + local).toFixed(3)};
+    const b = {...c, id: c.id + 'b' + Math.random().toString(36).slice(2, 5), in: +(c.in + local).toFixed(3), start: +(c.start + local).toFixed(3)};
+    E.clips.splice(hit.i, 1, a, b); E.selClip = hit.i + 1;
+    $('#tlStatus').textContent = `Cut at ${E.t.toFixed(2)}s.`;
+    tlRender(); refresh();
+  }
+  function addClip(meta) {
+    const dur = Math.max(0.2, +meta.duration || 1);
+    const L = S.len || 20;
+    const end = E.clips.reduce((m, c) => Math.max(m, c.start + clipSpan(c)), 0);
+    E.clips.push({id: 'c' + Math.random().toString(36).slice(2, 8), videoId: meta.bg_video_id, name: meta.name || 'clip',
+      duration: dur, in: 0, out: Math.min(dur, L), start: E.clips.length ? end : 0, url: meta.preview_url, thumbs: meta.thumbs_url || ''});
+    E.selClip = E.clips.length - 1;
+    S.bgVideo = meta;
+    $('#tlStatus').textContent = `Added “${meta.name || 'clip'}”. Drag the edges to trim it.`;
+    if (S.bgMode !== 'video') setBgMode('video');
+    else refresh();
+    if (typeof validateRender === 'function') validateRender();
+  }
+  function wireTimeline() {
+    $('#tlSplit').onclick = splitClip;
+    $('#tlDelete').onclick = () => {
+      if (E.selClip < 0) return;
+      E.clips.splice(E.selClip, 1); E.selClip = Math.min(E.selClip, E.clips.length - 1);
+      $('#tlStatus').textContent = E.clips.length ? 'Clip deleted.' : 'Timeline is empty.';
+      tlRender(); refresh(); if (typeof validateRender === 'function') validateRender();
     };
-    strip.addEventListener('pointermove', move);
-    strip.addEventListener('pointerup', () => { which = null; seek(E.t); });
-    $('#trimInN').onchange = e => { E.trimIn = Math.max(0, Math.min(+e.target.value, (E.trimOut ?? S.bgVideo.duration) - 0.3)); trimUI(); seek(E.t); };
-    $('#trimOutN').onchange = e => { const D = S.bgVideo.duration, v = Math.min(D, Math.max(+e.target.value, E.trimIn + 0.3)); E.trimOut = v >= D - 0.05 ? null : v; trimUI(); seek(E.t); };
+    $('#tlDup').onclick = () => {
+      const i = E.selClip >= 0 ? E.selClip : E.clips.length - 1;
+      const c = E.clips[i]; if (!c) return;
+      const copy = {...c, id: c.id + 'd' + Math.random().toString(36).slice(2, 5), start: c.start + clipSpan(c)};
+      E.clips.splice(i + 1, 0, copy); unoverlap(i + 1); E.selClip = i + 1;
+      $('#tlStatus').textContent = 'Duplicated. Short clips do not loop — place the copy where you need it.';
+      tlRender(); refresh();
+    };
+    $('#tlAdd').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      $('#tlStatus').innerHTML = `<span class="spin"></span>Uploading ${esc(f.name)}…`;
+      const fd = new FormData(); fd.append('file', f);
+      try {
+        const m = await api('/api/bgvideo', {method: 'POST', body: fd});
+        $('#bgVideoName').textContent = `🎞 ${m.name} · ${m.duration.toFixed(1)}s · ${m.width}×${m.height}${m.has_audio ? '' : ' · no audio'}`;
+        $('#vMixIn').disabled = !m.has_audio;
+        addClip(m);
+      } catch (er) { $('#tlStatus').textContent = '❌ ' + er.message; }
+      e.target.value = '';
+    };
+    $('#tlZoom').oninput = e => { E.tlPps = +e.target.value; tlRender(); };
+    const sc = $('#tlScroll');
+    sc.addEventListener('pointerdown', e => {
+      if (!audio.paused) stopPlay();
+      const clipEl = e.target.closest('.tlclip');
+      const kf = e.target.closest('.tlkf');
+      if (kf) {
+        E.sel = +kf.dataset.i; kfUI(); tlRender();
+        tlDrag = {kind: 'kf', i: E.sel, x0: e.clientX, t0: E.zoom.keys[E.sel].t};
+        sc.setPointerCapture(e.pointerId); return;
+      }
+      if (clipEl) {
+        const i = +clipEl.dataset.i, c = E.clips[i];
+        E.selClip = i; tlRender();
+        const kind = e.target.classList.contains('in') ? 'in' : e.target.classList.contains('out') ? 'out' : 'move';
+        tlDrag = {kind, i, x0: e.clientX, start: c.start, inn: c.in, out: c.out, dur: c.duration};
+        sc.setPointerCapture(e.pointerId); return;
+      }
+      if (e.target.closest('.tllane')) {
+        E.t = Math.max(0, Math.min(S.len || 20, tlTime(e)));
+        $('#scrub').value = E.t;
+        keyAtPlayhead(true); kfUI(); refresh(); return;
+      }
+      tlDrag = {kind: 'scrub'};
+      seek(Math.max(0, Math.min(S.len || 20, tlTime(e))));
+      sc.setPointerCapture(e.pointerId);
+    });
+    sc.addEventListener('pointermove', e => {
+      if (!tlDrag) return;
+      const dt = (e.clientX - tlDrag.x0) / E.tlPps;
+      if (tlDrag.kind === 'scrub') { seek(Math.max(0, Math.min(S.len || 20, tlTime(e)))); return; }
+      if (tlDrag.kind === 'kf') {
+        const k = E.zoom.keys[tlDrag.i]; if (!k) return;
+        k.t = Math.max(0, Math.min(S.len || 20, tlDrag.t0 + dt));
+        E.zoom.preset = 'custom'; $('#zoomPreset').value = 'custom';
+        const node = $('#tlLane').querySelector(`.tlkf[data-i="${tlDrag.i}"]`);
+        if (node) node.style.left = (k.t * E.tlPps) + 'px';
+        $('#kfT').value = k.t.toFixed(2);
+        return;
+      }
+      const c = E.clips[tlDrag.i]; if (!c) return;
+      if (tlDrag.kind === 'move') c.start = Math.max(0, tlDrag.start + dt);
+      else if (tlDrag.kind === 'out') c.out = Math.max(tlDrag.inn + 0.12, Math.min(tlDrag.dur, tlDrag.out + dt));
+      else {
+        let inn = tlDrag.inn + dt, start = tlDrag.start + dt;
+        if (inn < 0) { start -= inn; inn = 0; }
+        if (inn > tlDrag.out - 0.12) { start -= inn - (tlDrag.out - 0.12); inn = tlDrag.out - 0.12; }
+        if (start < 0) { inn = Math.max(0, inn - start); start = 0; }
+        c.in = inn; c.start = start; c.out = tlDrag.out;
+      }
+      const node = $('#tlTrack').querySelector(`.tlclip[data-i="${tlDrag.i}"]`);
+      if (node) { node.style.left = (c.start * E.tlPps) + 'px'; node.style.width = Math.max(8, clipSpan(c) * E.tlPps) + 'px'; }
+    });
+    const endDrag = () => {
+      if (!tlDrag) return;
+      const kind = tlDrag.kind, i = tlDrag.i;
+      tlDrag = null;
+      if (kind === 'move' || kind === 'in') unoverlap(i);
+      if (kind === 'kf') { E.zoom.keys.sort((a, b) => a.t - b.t); E.sel = E.zoom.keys.findIndex(k => Math.abs(k.t - +$('#kfT').value) < 0.02); }
+      tlRender(); refresh();
+    };
+    sc.addEventListener('pointerup', endDrag); sc.addEventListener('pointercancel', endDrag);
   }
-  function previewVideoAt(vt) { const v = $('#stageVideo'); try { v.currentTime = vt; } catch (e) {} v.onseeked = () => { E.stage.cfg.video && E.stage.drawFrame(E.t); }; }
+  function previewVideoAt(vt) { const v = $('#stageVideo'); try { v.currentTime = vt; } catch (e) {} v.onseeked = () => { E.stage && E.stage.cfg && E.stage.cfg.video && E.stage.drawFrame(E.t); }; }
 
   // ---------- stage ----------
   function stageSize() {
@@ -413,19 +587,24 @@
     if (!E.eng || !E.stage) return;
     const [W, H, fullW] = stageSize(), a = $('#aspectIn').value, st = $('#stage');
     st.classList.toggle('r11', a === '1:1'); st.classList.toggle('r169', a === '16:9'); st.classList.toggle('checker', S.bgMode === 'transparent');
-    st.classList.toggle('panmode', E.tab === 'video');
+    st.classList.toggle('panmode', E.tab === 'timeline');
     E.stage.setSize(W, H, fullW);
     const {style, anim, lk} = resolve();
     const v = $('#stageVideo');
+    const hit = S.bgMode === 'video' ? clipAtTime(E.t) : null;
+    if (hit && v.dataset.vid !== hit.c.videoId) { v.dataset.vid = hit.c.videoId; v.src = hit.c.url; try { v.load(); } catch (e) {} }
     if (S.bgMode === 'image' && S.bgImageUrl && E.imageUrl !== S.bgImageUrl) { E.imageUrl = S.bgImageUrl; E.image = new Image(); E.image.onload = () => draw(); E.image.src = S.bgImageUrl; }
-    E.stage.setScene({look: E.look, style, anim, lines: S.lines || [], title: $('#showTitleIn').checked ? $('#titleIn').value : '', clipLen: S.len || 20,
+    const q = QUALITY[E.quality] || QUALITY.standard;
+    E.stage.setScene({look: E.look, style, anim, lines: S.lines || [], title: $('#showTitleIn').checked ? $('#titleIn').value : '',
+      artist: $('#showArtistIn').checked ? $('#artistIn').value : '', clipLen: S.len || 20, fps: q.fps,
       visualizer: $('#vizIn').checked, bgMode: S.bgMode, grad: lk.grad, wave: lk.wave, image: S.bgMode === 'image' ? E.image : null,
-      video: S.bgMode === 'video' && S.bgVideo && v.readyState >= 2 ? v : null,
-      trimIn: E.trimIn, trimOut: E.trimOut, darken: +$('#vDarkIn').value / 100, blur: +$('#vBlurIn').value,
+      video: hit && v.readyState >= 2 && v.dataset.vid === hit.c.videoId ? v : null,
+      clip: hit ? {in: hit.c.in, out: hit.c.out, start: hit.c.start} : null,
+      trimIn: 0, trimOut: null, darken: +$('#vDarkIn').value / 100, blur: +$('#vBlurIn').value,
       zoom: {keys: E.zoom.keys, target: E.zoom.target}, fx: E.fx});
     setAudioSlice();
     $('#scrub').max = S.len || 20;
-    fxState(); trimUI(); syncControls(); kfUI();
+    fxState(); syncControls(); kfUI(); tlRender();
     if (audio.paused) seek(E.t, true); else draw();
   }
   function setAudioSlice() {
@@ -455,12 +634,17 @@
       E.lastMs = performance.now() - t0;
       $('#stageTime').textContent = `${E.t.toFixed(1)}s`;
       const z = LL.zoomAt(E.t, E.zoom.keys), f = $('#focal');
-      f.classList.toggle('hidden', E.tab !== 'video' || !E.zoom.keys.length);
+      f.classList.toggle('hidden', E.tab !== 'timeline' || !E.zoom.keys.length);
       f.style.left = (z.x * 100) + '%'; f.style.top = (z.y * 100) + '%'; f.dataset.z = '×' + z.z.toFixed(2);
+      tlHead();
     });
   }
-  function seek(t, quiet) {
-    E.t = Math.max(0, Math.min(S.len || 20, t)); $('#scrub').value = E.t;
+  function seek(t, fromRefresh) {
+    const before = clipAtTime(E.t);
+    E.t = Math.max(0, Math.min(S.len || 20, t)); $('#scrub').value = E.t; tlHead();
+    const after = clipAtTime(E.t);
+    const same = (before && before.i) === (after && after.i);
+    if (!fromRefresh && !same) { refresh(); return; }
     const c = E.stage?.cfg;
     if (c && c.video) { const v = $('#stageVideo'), want = E.stage.videoTime(E.t); if (Math.abs(v.currentTime - want) > 0.02) { previewVideoAt(want); } }
     draw();
@@ -473,6 +657,7 @@
       qa('#edTabs button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
       qa('.tabpane').forEach(p => p.classList.toggle('on', p.dataset.pane === E.tab));
       refresh();
+      if (E.tab === 'animate') paintThumbs();
     });
   }
 
@@ -483,33 +668,43 @@
       E.stage = new ST.Stage($('#stageCanvas'));
       animSchema();
       buildControls($('#ctlText'), TEXT, 'style'); buildControls($('#ctlColor'), COLOR, 'style'); buildControls($('#ctlAnim'), ANIM, 'anim');
-      buildControls($('#ctlTitle'), TITLE, 'style');
-      buildAnimGrid(); buildFx(); wirePresets(); wirePalettes(); wireZoom(); wireTrim(); wireTabs(); loadSaved();
+      buildControls($('#ctlTitle'), TITLE, 'style'); buildControls($('#ctlArtist'), ARTIST, 'style'); buildControls($('#ctlViz'), VIZ, 'style');
+      buildAnimGrid(); buildFx(); wirePresets(); wirePalettes(); wireZoom(); wireTimeline(); wireQuality(); wireTabs(); loadSaved();
       $('#scrub').oninput = e => { if (!audio.paused) stopPlay(); seek(+e.target.value); };
       $('#stageVideo').addEventListener('loadeddata', () => refresh());
       ST.loadFonts().then(() => { buildAnimGrid(); refresh(); });
       refresh();
     },
     refresh, seek,
-    onLook() { E.look = S.preset; E.styleOv = keepTitle(); E.palette = null; dirty = false; thumbLoop(); syncControls(); refresh(); },
+    onLook() { E.look = S.preset; E.styleOv = keepLayers(); E.palette = null; dirty = false; paintThumbs(); syncControls(); refresh(); },
     onFont() { if (!E.stage) return; ST.loadFonts(resolve().style).then(refresh); },
     onAudio() { decodeAudio(); },
-    onVideo(m) { E.trimIn = 0; E.trimOut = null; $('#trimThumbs').style.backgroundImage = m.thumbs_url ? `url(${m.thumbs_url})` : 'none'; trimUI(); },
+    onVideo(m) { addClip(m); },
+    outputFps: () => (QUALITY[E.quality] || QUALITY.standard).fps,
+    clipCount: () => E.clips.length,
     playFrom() { return E.t >= (S.len || 20) - 0.1 ? 0 : E.t; },
     onPlay(from) {
       E.playing = true; E.t = from;
-      if (S.bgMode === 'video' && S.bgVideo) { const v = $('#stageVideo'); try { v.currentTime = E.stage.videoTime(from); } catch (e) {} v.play().catch(() => {}); }
+      const hit = clipAtTime(from);
+      if (S.bgMode === 'video' && hit) { const v = $('#stageVideo'); try { v.currentTime = E.stage.videoTime(from); } catch (e) {} v.play().catch(() => {}); }
     },
     onTick(t) {
-      E.t = t; $('#scrub').value = t;
-      if (S.bgMode === 'video' && S.bgVideo) { const v = $('#stageVideo'), want = E.stage.videoTime(t); if (Math.abs(v.currentTime - want) > 0.2) { try { v.currentTime = want; } catch (e) {} } }
+      const before = clipAtTime(E.t);
+      E.t = t; $('#scrub').value = t; tlHead();
+      const hit = clipAtTime(t);
+      if ((before && before.i) !== (hit && hit.i)) { refresh(); return; }
+      if (S.bgMode === 'video' && hit) { const v = $('#stageVideo'), want = E.stage.videoTime(t); if (v.readyState >= 2 && Math.abs(v.currentTime - want) > 0.2) { try { v.currentTime = want; } catch (e) {} } }
       draw();
     },
     onStop() { E.playing = false; $('#stageVideo').pause(); },
     renderExtras() {
       const {style, anim} = resolve(); const st = {...style}; delete st.fontId;
+      const first = E.clips[0];
       return {anim_preset: E.animId, style: st, anim, fx: E.fx.filter(f => f.on).map(f => ({id: f.id, amount: f.amount, option: f.option, on: true})),
-        zoom: {keys: E.zoom.keys, target: E.zoom.target}, video_in: E.trimIn, video_out: E.trimOut};
+        zoom: {keys: E.zoom.keys, target: E.zoom.target}, quality: E.quality,
+        artist: $('#showArtistIn').checked ? $('#artistIn').value : '',
+        video_clips: E.clips.map(c => ({video_id: c.videoId, in: +(+c.in).toFixed(3), out: +(+c.out).toFixed(3), start: +(+c.start).toFixed(3)})),
+        video_in: first ? first.in : 0, video_out: first ? first.out : null};
     },
     state: () => E,
   });

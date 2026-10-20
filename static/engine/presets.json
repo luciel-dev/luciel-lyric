@@ -131,7 +131,17 @@
   "titleStrokeColor": "#000000",
   "titleShadowAlpha": 0.0,
   "titleShadowColor": "#000000",
-  "titleShadowBlur": 0.08
+  "titleShadowBlur": 0.08,
+  "artistColor": "#ffffff",
+  "artistSize": 0.32,
+  "artistPosY": 0.13,
+  "artistAlpha": 0.9,
+  "artistWeight": 400,
+  "artistUpper": false,
+  "vizStyle": "line",
+  "vizY": 0.86,
+  "vizH": 0.10,
+  "vizAlpha": 0.75
  },
  "animDefaults": {
   "layout": "line",

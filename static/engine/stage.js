@@ -92,20 +92,26 @@
       if (cfg.bgMode === 'green') { style.glow = 0; style.shadowBlur = 0; style.titleShadowBlur = 0; }
       const groups = LL.prepare(cfg.lines, style, cfg.anim, cfg.clipLen);
       this.cfg = cfg;
-      this.sc = {W, H, style, anim: cfg.anim, measure, groups, title: cfg.title, clipLen: cfg.clipLen, layKey: `${W}x${H}:${Math.random()}`};
+      this.sc = {W, H, style, anim: cfg.anim, measure, groups, title: cfg.title, artist: cfg.artist || '', clipLen: cfg.clipLen, layKey: `${W}x${H}:${Math.random()}`};
       this.lineStarts = [...new Set(groups.map(g => g.words[0].s))].sort((a, b) => a - b);
       this.groups = groups;
     }
     videoTime(t) {
-      const c = this.cfg, v = c.video; if (!v) return 0;
+      const c = this.cfg, fps = c.fps || 30;
+      if (c.clip) {
+        const qt = Math.round(t * fps + 1e-6) / fps;
+        return (c.clip.in || 0) + Math.max(0, qt - (c.clip.start || 0));
+      }
+      const v = c.video; if (!v) return 0;
       const vin = c.trimIn || 0, vout = c.trimOut && c.trimOut > vin + 0.1 ? c.trimOut : (v.duration || 1e9);
-      const seg = Math.max(1 / 30, vout - vin);
-      const f = Math.floor(t * 30 + 1e-6), n = Math.max(1, Math.round(seg * 30));
-      return vin + (f % n) / 30;
+      const seg = Math.max(1 / fps, vout - vin);
+      const f = Math.floor(t * fps + 1e-6), n = Math.max(1, Math.round(seg * fps));
+      return vin + (f % n) / fps;
     }
     drawFrame(t) {
       if (!this.sc) return;
-      t = Math.round(t * 30 + 1e-6) / 30;  // show exactly the frames the 30 fps render will contain
+      const fps = (this.cfg && this.cfg.fps) || 30;
+      t = Math.round(t * fps + 1e-6) / fps;  // show exactly the frames the chosen render fps will contain
       const {ctx, W, H, cfg} = this, sc = this.sc;
       const z0 = LL.zoomAt(t, cfg.zoom?.keys || []), target = cfg.zoom?.target || 'bg';
       const zb = target === 'bg' ? z0 : {z: 1, x: 0.5, y: 0.5};
@@ -131,21 +137,62 @@
         ctx.filter = bl > 0.05 ? `blur(${bl}px)` : 'none';
         ctx.drawImage(v, x0, y0, vw, vh, 0, 0, W, H); ctx.filter = 'none';
         if (cfg.darken > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(0.9, cfg.darken)})`; ctx.fillRect(0, 0, W, H); }
-      } else if (m !== 'transparent') { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); }
-      // waveform
+      } else if (m === 'video') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+      else if (m !== 'transparent') { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); }
+      // waveform — line/bars/mirror, same placement as app/compose.py draw_wave
       if (cfg.visualizer && this.audio) {
-        const {samples, sr} = this.audio, wh = Math.trunc(H * 0.10), mid = Math.trunc(H * 0.86), y0 = mid - Math.floor(wh / 2);
-        const i0 = Math.trunc(t * sr), n = Math.max(1, Math.floor(sr / 30)), len = Math.max(0, Math.min(n, samples.length - i0));
-        let col = hexRgb(cfg.wave);
+        const st = cfg.style || {};
+        const vizStyle = st.vizStyle || 'line';
+        const vizY = st.vizY == null ? 0.86 : +st.vizY;
+        const vizH = st.vizH == null ? 0.10 : +st.vizH;
+        const vizA = st.vizAlpha == null ? 0.75 : +st.vizAlpha;
+        const classic = vizStyle === 'line' && vizY === 0.86 && vizH === 0.10 && vizA === 0.75 && fps === 30;
+        const {samples, sr} = this.audio;
+        const i0 = Math.trunc(t * sr), n = Math.max(1, Math.floor(sr / fps)), len = Math.max(0, Math.min(n, samples.length - i0));
+        let col = hexRgb(st.vizColor || cfg.wave);
         if (m === 'green') col = [col[0], Math.min(col[1], 77), col[2]];
-        ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.75)`;
-        if (len > 0) {
+        const ampAt = x => (len > 0 ? Math.sqrt(Math.min(1, Math.abs(samples[i0 + Math.floor(x * len / W)]))) : 0);
+        const strokeLine = (y, height, alpha) => {
+          if (len <= 0 || height < 1 || alpha <= 0) return;
+          ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
           ctx.beginPath();
           for (let x = 0; x < W; x++) {
-            const v = Math.sqrt(Math.min(1, Math.abs(samples[i0 + Math.floor(x * len / W)]))), hh = Math.max(0.5, v * wh / 2);
-            ctx.rect(x, y0 + (wh - 1) / 2 - hh + 0.5, 1, hh * 2);
+            const hh = Math.max(0.5, ampAt(x) * height / 2);
+            ctx.rect(x, y + (height - 1) / 2 - hh + 0.5, 1, hh * 2);
           }
           ctx.fill();
+        };
+        if (classic) {
+          const wh = Math.trunc(H * 0.10), mid = Math.trunc(H * 0.86), y0 = mid - Math.floor(wh / 2);
+          ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.75)`;
+          if (len > 0) {
+            ctx.beginPath();
+            for (let x = 0; x < W; x++) {
+              const v = Math.sqrt(Math.min(1, Math.abs(samples[i0 + Math.floor(x * len / W)]))), hh = Math.max(0.5, v * wh / 2);
+              ctx.rect(x, y0 + (wh - 1) / 2 - hh + 0.5, 1, hh * 2);
+            }
+            ctx.fill();
+          }
+        } else {
+          let wh = Math.trunc(H * vizH), mid = Math.trunc(H * vizY), y0 = mid - Math.floor(wh / 2);
+          if (wh < 1) wh = 1;
+          if (y0 < 0) y0 = 0;
+          if (y0 + wh > H) y0 = Math.max(0, H - wh);
+          if (vizStyle === 'bars') {
+            ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${vizA})`;
+            const nb = 32;
+            for (let i = 0; i < nb; i++) {
+              const x0 = Math.trunc(i * W / nb), x1 = Math.trunc((i + 1) * W / nb);
+              if (x1 <= x0) continue;
+              const xc = Math.min(W - 1, Math.floor((x0 + x1) / 2));
+              const bh = Math.max(1, Math.round(ampAt(xc) * wh));
+              const gap = x1 - x0 > 2 ? 1 : 0;
+              ctx.fillRect(x0, y0 + wh - bh, Math.max(1, x1 - x0 - gap), bh);
+            }
+          } else {
+            strokeLine(y0, wh, vizA);
+            if (vizStyle === 'mirror') strokeLine(y0 + Math.trunc(wh * 0.85), Math.max(1, Math.trunc(wh * 0.45)), vizA * 0.4);
+          }
         }
       }
       // lyrics

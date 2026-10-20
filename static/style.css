@@ -231,3 +231,23 @@ textarea{width:100%;resize:vertical}
 .palbar input[type=text]{width:140px}
 .titlerow{margin:8px 0 0}
 .renderrow{align-items:center}
+.qrow{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}
+.qrow button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--btn-bg);color:var(--btn-txt);border:1px solid var(--panel-border);border-radius:var(--radius-sm);padding:8px 12px;font:700 13px var(--font);cursor:pointer;min-width:112px}
+.qrow button small{font-weight:500;opacity:.75}
+.qrow button.on{background:var(--acc);color:var(--acc-txt);border-color:var(--acc)}
+.tlbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.tlscroll{position:relative;overflow-x:auto;overflow-y:hidden;border:1px solid var(--panel-border);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--panel) 65%,#000);user-select:none;touch-action:none}
+.tlinner{position:relative;min-height:118px}
+.tlruler{position:relative;height:18px;color:var(--mut);font:10px var(--font-mono);border-bottom:1px solid var(--panel-border)}
+.tlruler i{position:absolute;top:0;height:100%;border-left:1px solid var(--panel-border);padding-left:3px;font-style:normal}
+.tltrack{position:relative;height:52px;margin:6px 8px}
+.tlclip{position:absolute;top:0;height:100%;border-radius:6px;background:color-mix(in srgb,var(--acc) 42%,#1a1a22);border:1px solid var(--acc);overflow:hidden;cursor:grab;box-sizing:border-box}
+.tlclip.sel{box-shadow:0 0 0 2px var(--acc)}
+.tlclip .nm{position:absolute;left:12px;right:12px;top:16px;font:11px var(--font);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;text-shadow:0 1px 2px #000}
+.tlclip .edge{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;background:var(--acc)}
+.tlclip .edge.in{left:0}.tlclip .edge.out{right:0}
+.tllane{position:relative;height:22px;margin:0 8px 8px;background:color-mix(in srgb,var(--sub-bg) 80%,transparent);border-radius:4px}
+.tlkf{position:absolute;top:4px;width:14px;height:14px;margin-left:-7px;transform:rotate(45deg);background:var(--acc2);border:1px solid #0008;cursor:ew-resize}
+.tlkf.sel{background:var(--acc)}
+.tlhead{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#ff4d4d;pointer-events:none;z-index:3}
+.tlhead::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top-color:#ff4d4d;border-bottom:0}

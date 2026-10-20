@@ -15,11 +15,33 @@ from . import fx as FX
 from .raster import Fonts, Raster, rgb
 from .runtime import FFMPEG
 from .textanim import PRESETS, build_items, prepare, resolve, zoom_at
+from .timeline import clip_at
 
 FPS = 30
 SIZES = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080)}
 BG_MODES = ("gradient", "image", "video", "black", "green", "transparent")
 OVERLAY_MODES = ("black", "green", "transparent")
+# Output quality. scale is applied to SIZES; text animation still clocks at 30 fps internally.
+QUALITIES = {
+    "draft": {"scale": 0.5, "fps": 24, "crf": "28", "maxrate": "2M", "bufsize": "4M"},
+    "standard": {"scale": 1.0, "fps": 30, "crf": "20", "maxrate": "6M", "bufsize": "12M"},
+    "high": {"scale": 1.0, "fps": 30, "crf": "16", "maxrate": "12M", "bufsize": "24M"},
+    "max": {"scale": 1.0, "fps": 60, "crf": "14", "maxrate": "20M", "bufsize": "40M"},
+}
+
+
+def quality_profile(name):
+    key = (name or "standard").strip().lower()
+    if key not in QUALITIES:
+        key = "standard"
+    return dict(QUALITIES[key], name=key)
+
+
+def even_px(n):
+    n = int(round(float(n)))
+    if n % 2:
+        n -= 1
+    return max(2, n)
 
 
 def zoom_preset(pid, clip_len, groups):
@@ -85,10 +107,11 @@ def cover_box(sw, sh, W, H):
 class VideoSource:
     """Decodes the trimmed segment [vin, vout) of a background video at WxH rgb24, looping it."""
 
-    def __init__(self, path, vin, vout, W, H, blur=0.0, darken=0.0, oversample=1.0):
+    def __init__(self, path, vin, vout, W, H, blur=0.0, darken=0.0, oversample=1.0, fps=None):
         self.path, self.vin, self.vout = str(path), vin, vout
+        self.fps = int(fps or FPS)
         self.W, self.H = int(round(W * oversample / 2) * 2), int(round(H * oversample / 2) * 2)
-        chain = [f"fps={FPS}", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase:flags=bicubic",
+        chain = [f"fps={self.fps}", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase:flags=bicubic",
                  f"crop={self.W}:{self.H}", "setsar=1"]
         if blur > 0.05:
             chain.append(f"gblur=sigma={blur * oversample:.2f}")
@@ -127,15 +150,56 @@ class VideoSource:
             self.p.kill(); self.p.wait()
 
 
+class ClipDeck:
+    """One video track. Frame ``fi`` shows the clip covering that time, or black in a gap.
+    The decoder stays open while frames are read in order and reopens on a seek or a new clip."""
+
+    def __init__(self, clips, W, H, fps, blur=0.0, darken=0.0, oversample=1.0):
+        self.clips = list(clips)
+        self.W, self.H, self.fps = W, H, int(fps)
+        self.blur, self.darken, self.oversample = blur, darken, oversample
+        self.src = None
+        self.key = None
+        self.next_local = None
+
+    def close(self):
+        if self.src:
+            self.src.close()
+            self.src = None
+        self.key = None
+        self.next_local = None
+
+    def _blank(self):
+        return Image.new("RGB", (self.W, self.H), (0, 0, 0))
+
+    def read_at(self, fi):
+        hit = clip_at(self.clips, fi / self.fps)
+        if hit is None:
+            self.close()
+            return self._blank()
+        i, clip, local = hit
+        local_fi = int(math.floor(local * self.fps + 1e-6))
+        if self.src is None or self.key != i or self.next_local != local_fi:
+            self.close()
+            vin = float(clip.get("in") or 0) + local_fi / self.fps
+            self.src = VideoSource(clip["path"], vin, clip.get("out"), self.W, self.H,
+                                   self.blur, self.darken, self.oversample, fps=self.fps)
+            self.key = i
+            self.next_local = local_fi
+        frame = self.src.read()
+        self.next_local = local_fi + 1
+        return frame
+
+
 def load_audio_mono(path, start, length, sr=44100):
     r = subprocess.run([FFMPEG, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", str(path),
                         "-ac", "1", "-ar", str(sr), "-f", "f32le", "pipe:1"], capture_output=True)
     return np.frombuffer(r.stdout, np.float32), sr
 
 
-def wave_columns(samples, sr, t, W):
+def wave_columns(samples, sr, t, W, fps=FPS):
     """Per-column amplitude (0..1, sqrt scaled) for the frame at time t - same as stage.js."""
-    i0 = int(t * sr); n = max(1, sr // FPS)
+    i0 = int(t * sr); n = max(1, sr // int(fps or FPS))
     seg = samples[i0:i0 + n]
     if len(seg) == 0:
         return np.zeros(W, np.float32)
@@ -143,27 +207,104 @@ def wave_columns(samples, sr, t, W):
     return np.sqrt(np.clip(np.abs(seg[idx]), 0, 1))
 
 
-def draw_wave(frame, amp, color, H, alpha_mode=False):
-    """frame: HxWx(3|4) uint8 array (modified in place). Centred line (showwaves cline look) at 0.86H."""
-    W = frame.shape[1]
-    wh = int(H * 0.10); mid = int(H * 0.86)
-    y0 = mid - wh // 2
+def _viz_params(viz):
+    viz = viz or {}
+    style = viz.get("style") or "line"
+    if style not in ("line", "bars", "mirror"):
+        style = "line"
+    try:
+        y = float(viz.get("y", 0.86))
+    except (TypeError, ValueError):
+        y = 0.86
+    try:
+        h = float(viz.get("h", 0.10))
+    except (TypeError, ValueError):
+        h = 0.10
+    try:
+        alpha = float(viz.get("alpha", 0.75))
+    except (TypeError, ValueError):
+        alpha = 0.75
+    return style, y, h, max(0.0, min(1.0, alpha))
+
+
+def _paint_line(frame, amp, col, y0, wh, alpha, alpha_mode):
+    """Centred line. Default y/h/alpha matches the historical draw_wave pixels."""
+    H = frame.shape[0]
+    if wh < 1 or alpha <= 0 or y0 >= H:
+        return
+    if y0 < 0:
+        wh += y0
+        y0 = 0
+    if wh < 1:
+        return
+    wh = min(wh, H - y0)
     ys = np.arange(wh, dtype=np.float32)[:, None] - (wh - 1) / 2
     hh = (amp * wh / 2)[None, :]
-    m = (np.abs(ys) <= np.maximum(hh, 0.5)).astype(np.float32) * 0.75
+    m = (np.abs(ys) <= np.maximum(hh, 0.5)).astype(np.float32) * alpha
     reg = frame[y0:y0 + wh].astype(np.float32)
-    col = np.array(color, np.float32)
     reg[..., :3] = reg[..., :3] * (1 - m[..., None]) + col * m[..., None]
-    if alpha_mode:
+    if alpha_mode and frame.shape[2] == 4:
         reg[..., 3] = reg[..., 3] * (1 - m) + 255 * m
     frame[y0:y0 + wh] = (reg + 0.5).astype(np.uint8)
 
 
+def draw_wave(frame, amp, color, H, alpha_mode=False, viz=None):
+    """frame: HxWx(3|4) uint8 array (modified in place).
+
+    viz: {style: line|bars|mirror, y, h, alpha}. Defaults are the original line at 0.86H.
+    """
+    style, yf, hf, alpha = _viz_params(viz)
+    W = frame.shape[1]
+    wh = int(H * hf)
+    mid = int(H * yf)
+    y0 = mid - wh // 2
+    if wh < 1:
+        wh = 1
+    if y0 < 0 or y0 + wh > H:
+        y0 = min(max(0, y0), max(0, H - wh))
+    col = np.array(color, np.float32)
+    if style == "bars":
+        nb = 32
+        for i in range(nb):
+            x0 = int(i * W / nb)
+            x1 = int((i + 1) * W / nb)
+            if x1 <= x0:
+                continue
+            xc = min(W - 1, (x0 + x1) // 2)
+            v = float(amp[xc]) if len(amp) else 0.0
+            bh = max(1, int(round(v * wh)))
+            gap = 1 if x1 - x0 > 2 else 0
+            bw = max(1, x1 - x0 - gap)
+            by = y0 + wh - bh
+            if by < 0:
+                bh += by
+                by = 0
+            if by >= H or bh < 1:
+                continue
+            bh = min(bh, H - by)
+            reg = frame[by:by + bh, x0:x0 + bw].astype(np.float32)
+            reg[..., :3] = reg[..., :3] * (1 - alpha) + col * alpha
+            if alpha_mode and frame.shape[2] == 4:
+                reg[..., 3] = reg[..., 3] * (1 - alpha) + 255 * alpha
+            frame[by:by + bh, x0:x0 + bw] = (reg + 0.5).astype(np.uint8)
+        return
+    _paint_line(frame, amp, col, y0, wh, alpha, alpha_mode)
+    if style == "mirror":
+        _paint_line(frame, amp, col, y0 + int(wh * 0.85), max(1, int(wh * 0.45)), alpha * 0.4, alpha_mode)
+
+
 def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="karaoke",
-          style=None, anim=None, lines=(), title="", visualizer=True, bg_mode="gradient", bg_image=None,
-          bg_video=None, zoom=None, fx_list=(), font_files=None, size=None, full_width=None):
+          style=None, anim=None, lines=(), title="", artist="", visualizer=True, bg_mode="gradient", bg_image=None,
+          bg_video=None, video_clips=None, zoom=None, fx_list=(), font_files=None, size=None, full_width=None,
+          quality="standard", fps=None):
     """Set up a scene. Returns (compose(frame_index, bg_frame) -> bytes, video_source_or_None, info)."""
-    W, H = size or SIZES.get(aspect, SIZES["9:16"])
+    prof = quality_profile(quality)
+    out_fps = int(fps or prof["fps"])
+    base_w, base_h = SIZES.get(aspect, SIZES["9:16"])
+    if size is None:
+        W, H = even_px(base_w * prof["scale"]), even_px(base_h * prof["scale"])
+    else:
+        W, H = size
     if bg_mode not in BG_MODES:
         raise RuntimeError(f"unknown background mode {bg_mode}")
     st, an, lk = resolve(look, anim_id, style, anim)
@@ -173,7 +314,7 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
     groups = prepare(list(lines), st, an, length)
     line_starts = sorted({g["words"][0]["s"] for g in groups if g["words"]})
     sc = {"W": W, "H": H, "style": st, "anim": an, "measure": fonts.measure, "groups": groups, "title": title,
-          "clipLen": length, "layKey": f"{W}x{H}"}
+          "artist": artist or "", "clipLen": length, "layKey": f"{W}x{H}"}
     zoom = zoom or {}
     keys = zoom.get("keys") or zoom_preset(zoom.get("preset") or "none", length, groups)
     target = zoom.get("target") or "bg"
@@ -181,9 +322,11 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
     skipped = [f["id"] for f in fx_list if not FX.allowed(f["id"], f.get("option"), bg_mode)]
     fx_on = [f for f in fx_list if f["id"] not in skipped]
     alpha = bg_mode == "transparent"
-    wave_col = rgb(lk.get("wave", "#ffffff"))
+    wave_col = rgb(st.get("vizColor") or lk.get("wave", "#ffffff"))
     if bg_mode == "green":
         wave_col = (wave_col[0], min(wave_col[1], 77), wave_col[2])
+    viz = {"style": st.get("vizStyle") or "line", "y": st.get("vizY", 0.86), "h": st.get("vizH", 0.10),
+           "alpha": st.get("vizAlpha", 0.75)}
     samples, sr = load_audio_mono(audio_path, start, length) if visualizer else (None, 44100)
 
     # background sources
@@ -199,15 +342,21 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
             box = cover_box(im.width, im.height, W, H)
         src_img = im.point(lambda v: int(v * 0.65 + 0.5)); src_box = box
     elif bg_mode == "video":
-        v = bg_video
+        v = bg_video or {}
         zmax = max([k["z"] for k in keys] + [1.0]) if target == "bg" else 1.0
-        blur_px = float(v.get("blur", 0)) * W / (full_width or W)   # blur is specified at full output size
-        vsrc = VideoSource(v["path"], float(v.get("in", 0) or 0), v.get("out"), W, H, blur_px,
-                           float(v.get("darken", 0)), oversample=1.25 if zmax > 1.05 else 1.0)
+        blur_px = float(v.get("blur", 0)) * W / (full_width or base_w)   # blur is specified at full output size
+        over = 1.25 if zmax > 1.05 else 1.0
+        darken = float(v.get("darken", 0))
+        if video_clips is not None:
+            if video_clips:
+                vsrc = ClipDeck(video_clips, W, H, out_fps, blur_px, darken, over)
+        elif v.get("path"):
+            vsrc = VideoSource(v["path"], float(v.get("in", 0) or 0), v.get("out"), W, H, blur_px,
+                               darken, oversample=over, fps=out_fps)
     solid = {"black": (0, 0, 0), "green": (0, 255, 0)}.get(bg_mode)
 
     def compose(fi, bg):
-        t = fi / FPS
+        t = fi / out_fps
         z, zx, zy = zoom_at(t, keys)
         if bg_mode == "transparent":
             frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -220,13 +369,15 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
         elif bg_mode == "image":
             frame = zoom_img(src_img, z if target == "bg" else 1, zx, zy, W, H, src_box)
         else:
-            if (target == "bg" and z > 1.0005) or bg.size != (W, H):
+            if bg is None:
+                frame = Image.new("RGB", (W, H), (0, 0, 0))
+            elif (target == "bg" and z > 1.0005) or bg.size != (W, H):
                 frame = zoom_img(bg, z if target == "bg" else 1, zx, zy, W, H)
             else:
                 frame = bg
         arr = np.array(frame)
         if visualizer and samples is not None:
-            draw_wave(arr, wave_columns(samples, sr, t, W), wave_col, H, alpha_mode=alpha)
+            draw_wave(arr, wave_columns(samples, sr, t, W, out_fps), wave_col, H, alpha_mode=alpha, viz=viz)
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         raster.draw_items(layer, build_items(t, sc))
         if alpha:
@@ -242,19 +393,29 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
             out = FX.apply(out, np.asarray(layer), t, fx_on, line_starts, bg_mode)
         return np.ascontiguousarray(out).tobytes()
 
-    info = {"W": W, "H": H, "alpha": alpha, "skipped": skipped, "style": st}
+    info = {"W": W, "H": H, "alpha": alpha, "skipped": skipped, "style": st, "fps": out_fps,
+            "quality": prof["name"]}
     return compose, vsrc, info
+
+
+def _pull_bg(vsrc, fi):
+    if vsrc is None:
+        return None
+    if isinstance(vsrc, ClipDeck):
+        return vsrc.read_at(fi)
+    bg = None
+    for _ in range(fi + 1):
+        bg = vsrc.read()
+    return bg
 
 
 def still(t, audio_path, start, length, **kw):
     """One composed frame as a PIL image (used for preview/render parity checks and /api/still)."""
     compose, vsrc, info = build(audio_path, start, length, **kw)
-    fi = int(math.floor(t * FPS + 0.5 + 1e-6))
-    bg = None
+    fps = info.get("fps", FPS)
+    fi = int(math.floor(t * fps + 0.5 + 1e-6))
     try:
-        if vsrc:
-            for _ in range(fi + 1):
-                bg = vsrc.read()
+        bg = _pull_bg(vsrc, fi)
     finally:
         if vsrc:
             vsrc.close()
@@ -263,27 +424,31 @@ def still(t, audio_path, start, length, **kw):
 
 
 def render(audio_path, start, length, out_path, work_dir, *, transparent_format="mov", threads=6, progress=None,
-           bg_video=None, bg_mode="gradient", **kw):
+           bg_video=None, bg_mode="gradient", quality="standard", **kw):
     """zoom: {"keys": [...], "preset": id, "target": "bg"|"all"}; bg_video: {path, in, out, darken, blur,
-    mix_audio, video_volume, has_audio}. Returns dict with output path, timings and skipped FX."""
+    mix_audio, video_volume, has_audio}. quality selects resolution, fps and x264 rate control.
+    Returns dict with output path, timings and skipped FX. ``fps`` stays the encode throughput;
+    ``output_fps`` is the file's frame rate."""
     work_dir = Path(work_dir); work_dir.mkdir(parents=True, exist_ok=True)
-    compose, vsrc, info = build(audio_path, start, length, bg_video=bg_video, bg_mode=bg_mode, **kw)
+    prof = quality_profile(quality)
+    compose, vsrc, info = build(audio_path, start, length, bg_video=bg_video, bg_mode=bg_mode, quality=quality, **kw)
     W, H, alpha, skipped, st = info["W"], info["H"], info["alpha"], info["skipped"], info["style"]
+    out_fps = info["fps"]
     fonts = Fonts(kw.get("font_files"))
 
     # encoder
     L = f"{length:.3f}"
     pix = "rgba" if alpha else "rgb24"
     cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", pix, "-s", f"{W}x{H}",
-           "-r", str(FPS), "-i", "pipe:0", "-ss", f"{start:.3f}", "-t", L, "-i", str(audio_path)]
+           "-r", str(out_fps), "-i", "pipe:0", "-ss", f"{start:.3f}", "-t", L, "-i", str(audio_path)]
     a_in = "[1:a]"; fg = []
-    if bg_mode == "video" and bg_video.get("mix_audio") and bg_video.get("has_audio"):
+    if bg_mode == "video" and bg_video and bg_video.get("mix_audio") and bg_video.get("has_audio"):
         vol = max(0.0, min(2.0, float(bg_video.get("video_volume", 0.5))))
         vin = float(bg_video.get("in", 0) or 0)
         vout = float(bg_video.get("out") or bg_video.get("duration") or 0)
         cmd += ["-i", str(bg_video["path"])]
         chain = f"[2:a]aresample=44100,atrim=start={vin:.3f}" + (f":end={vout:.3f}" if vout > vin else "") + ",asetpts=N/SR/TB"
-        if vout > vin:   # loop the trimmed segment, in step with the picture
+        if bg_video.get("loop_audio", True) and vout > vin:   # legacy single clip loops with the picture
             chain += f",aloop=loop=-1:size={int((vout - vin) * 44100)}"
         fg += [f"{chain},volume={vol:.2f}[va]", f"{a_in}[va]amix=inputs=2:duration=first:normalize=0[am]"]
         a_in = "[am]"
@@ -299,20 +464,25 @@ def render(audio_path, start, length, out_path, work_dir, *, transparent_format=
         out_path = out_path.with_suffix(".mov")
         cmd += ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-vendor", "apl0", "-c:a", "pcm_s16le"]
     else:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "6M", "-bufsize", "12M",
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", prof["crf"], "-maxrate", prof["maxrate"],
+                "-bufsize", prof["bufsize"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
     cmd.append(str(out_path))
     log = open(work_dir / "ffmpeg.log", "w", encoding="utf-8", errors="replace")
     log.write(" ".join(cmd) + "\n\n"); log.flush()
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=log)
-    n_frames = int(round(length * FPS))
+    n_frames = int(round(length * out_fps))
     t0 = time.time()
     err = None
     try:
         with ThreadPoolExecutor(max_workers=max(1, threads)) as ex:
             q = deque()
             for fi in range(n_frames):
-                bg = vsrc.read() if vsrc else None
+                if vsrc is None:
+                    bg = None
+                elif isinstance(vsrc, ClipDeck):
+                    bg = vsrc.read_at(fi)
+                else:
+                    bg = vsrc.read()
                 q.append(ex.submit(compose, fi, bg))
                 while len(q) >= threads * 2:
                     enc.stdin.write(q.popleft().result())
@@ -339,4 +509,5 @@ def render(audio_path, start, length, out_path, work_dir, *, transparent_format=
         raise RuntimeError(f"ffmpeg failed ({err or rc}): " + "\n".join(tail))
     return {"out": str(out_path), "bg_mode": bg_mode, "fx_skipped": skipped, "frames": n_frames,
             "compose_s": round(time.time() - t0, 2), "fps": round(n_frames / max(1e-6, time.time() - t0), 1),
+            "output_fps": out_fps, "quality": prof["name"],
             "font_file": Path(fonts.path({"family": st["font"], "weight": st["weight"], "fontId": st.get("fontId") or ""})).name}

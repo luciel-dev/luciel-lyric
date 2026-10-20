@@ -274,11 +274,12 @@ $('#bgClear').onclick = () => { S.bgId = null; $('#bgFile').value = ''; $('#bgNa
 // ---------- render ----------
 $('#renderBtn').onclick = async () => {
   $('#renderBtn').disabled = true; $('#result').classList.add('hidden'); emit('render-start');
-  $('#renderStatus').innerHTML = `<span class="spin"></span>Rendering ${Math.round(S.len * 30)} frames (animations + effects are drawn frame by frame; roughly as long as the clip)…`;
+  const outFps = window.ED && ED.outputFps ? ED.outputFps() : 30;
+  $('#renderStatus').innerHTML = `<span class="spin"></span>Rendering ${Math.round(S.len * outFps)} frames (animations + effects are drawn frame by frame; roughly as long as the clip)…`;
   try {
     const r = await api('/api/render', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(renderBody())});
-    $('#renderStatus').textContent = `✅ Rendered in ${r.render_s}s (${r.fps} fps)` + (r.size_mb ? ` · ${r.size_mb} MB` : '') + (r.custom_font ? ` · font “${r.custom_font}” ✓` : '')
+    $('#renderStatus').textContent = `✅ Rendered in ${r.render_s}s` + (r.output_fps ? ` · ${r.output_fps} fps${r.quality ? ' ' + r.quality : ''}` : ` (${r.fps} fps)`) + (r.size_mb ? ` · ${r.size_mb} MB` : '') + (r.custom_font ? ` · font “${r.custom_font}” ✓` : '')
       + (r.fx_skipped && r.fx_skipped.length ? ` · ⚠ skipped for this background: ${r.fx_skipped.join(', ')}` : '');
     const isMov = r.container === 'mov';
     $('#video').classList.toggle('hidden', isMov);
@@ -302,6 +303,7 @@ function renderBody() {
   return {audio_id: S.audio.id, start: S.start, length: S.len, lines: S.lines, aspect: $('#aspectIn').value,
     preset: S.preset, font_id: S.fontId || null, visualizer: $('#vizIn').checked,
     title: $('#showTitleIn').checked ? $('#titleIn').value : '',
+    artist: $('#showArtistIn') && $('#showArtistIn').checked ? $('#artistIn').value : '',
     bg_mode: vm, bg_id: vm === 'image' ? S.bgId : null, transparent_format: $('#alphaFmt').value,
     bg_video_id: vm === 'video' && S.bgVideo ? S.bgVideo.bg_video_id : null,
     video_darken: +$('#vDarkIn').value / 100, video_blur: +$('#vBlurIn').value,
@@ -311,18 +313,19 @@ function setBgMode(m) {
   const wasOverlay = OVERLAY.includes(S.bgMode), isOverlay = OVERLAY.includes(m);
   S.bgMode = m; $('#bgMode').value = m;
   document.querySelectorAll('.bgopt').forEach(e => e.classList.toggle('on', e.dataset.mode === m));
-  if (isOverlay && !wasOverlay) { $('#vizIn').checked = false; $('#showTitleIn').checked = false; }
+  if (isOverlay && !wasOverlay) { $('#vizIn').checked = false; $('#showTitleIn').checked = false; if ($('#showArtistIn')) $('#showArtistIn').checked = false; }
   if (!isOverlay && wasOverlay) { $('#vizIn').checked = true; $('#showTitleIn').checked = true; }
   $('#renderBtn').textContent = m === 'transparent' ? `🎬 Render ${$('#alphaFmt').value.toUpperCase()} with alpha` : '🎬 Render MP4';
   validateRender(); updateStage();
 }
 function validateRender() {
-  const need = S.bgMode === 'video' && !S.bgVideo ? 'Upload a background video first' : S.bgMode === 'image' && !S.bgId ? 'Upload a background image first' : '';
+  const clips = window.ED && ED.clipCount ? ED.clipCount() : (S.bgVideo ? 1 : 0);
+  const need = S.bgMode === 'video' && clips < 1 ? 'Add a video clip on the Timeline tab' : S.bgMode === 'image' && !S.bgId ? 'Upload a background image first' : '';
   $('#renderBtn').disabled = !!need; $('#renderBtn').title = need;
 }
 $('#bgMode').onchange = e => setBgMode(e.target.value);
 $('#alphaFmt').onchange = () => setBgMode(S.bgMode);
-['#vizIn', '#showTitleIn', '#titleIn', '#aspectIn'].forEach(s => $(s).addEventListener('input', updateStage));
+['#vizIn', '#showTitleIn', '#titleIn', '#aspectIn', '#artistIn', '#showArtistIn'].forEach(s => { const n = $(s); if (n) n.addEventListener('input', updateStage); });
 $('#aspectIn').addEventListener('change', updateStage);
 const sliders = [['#vDarkIn', '#vDarkVal', v => v], ['#vBlurIn', '#vBlurVal', v => v], ['#vVolIn', '#vVolVal', v => v]];
 sliders.forEach(([i, o, f]) => $(i).addEventListener('input', () => { $(o).textContent = f($(i).value); updateStage(); }));
@@ -338,7 +341,7 @@ $('#bgVideoFile').onchange = async e => {
     S.bgVideo = m; emit('bgvideo', m);
     $('#bgVideoName').textContent = `🎞 ${m.name} · ${m.duration.toFixed(1)}s · ${m.width}×${m.height}${m.has_audio ? '' : ' · no audio'}`;
     $('#vMixIn').disabled = !m.has_audio;
-    $('#vLoopNote').innerHTML = (m.duration < S.len ? `Clip is ${m.duration.toFixed(1)}s, shorter than the ${S.len}s lyric clip, so it will loop. ` : '') + 'Trim it and add zoom/pan in the <b>Video</b> tab.';
+    $('#vLoopNote').innerHTML = (m.duration < S.len ? `Clip is ${m.duration.toFixed(1)}s, shorter than the ${S.len}s lyric clip. Duplicate it on the Timeline to fill the gap. ` : '') + 'Cut, reorder and zoom it on the <b>Timeline</b> tab.';
     const v = $('#stageVideo'); v.src = m.preview_url; v.load();
     window.ED && ED.onVideo(m);
     validateRender(); updateStage();

@@ -191,6 +191,21 @@ def build_items(t, sc):
                           fill2=(g_("titleColor2") or tcol) if g_("titleGrad") else None, alpha=talpha * fa,
                           stroke=(g_("titleStroke") or 0) * tpx, strokeColor=g_("titleStrokeColor") or "#000000",
                           shadow=tsh, cx=W / 2, cy=ty))
+    if sc.get("artist"):
+        g_ = style.get
+        asize = g_("artistSize"); asize = 0.32 if asize is None else asize
+        apx = max(6, js_round(fs_base * asize))
+        awt = g_("artistWeight"); awt = 400 if awt is None else awt
+        font = {"family": style["font"], "weight": awt, "px": apx, "fontId": style.get("fontId") or ""}
+        atext = sc["artist"].upper() if g_("artistUpper") else sc["artist"]
+        aw = measure(atext, font)
+        fa = min(clamp(t / 0.4), clamp((sc["clipLen"] - t) / 0.4))
+        apos = g_("artistPosY"); apos = 0.13 if apos is None else apos
+        ay = H * apos
+        aalpha = g_("artistAlpha"); aalpha = 0.9 if aalpha is None else aalpha
+        acol = g_("artistColor") or "#ffffff"
+        items.append(_txt(text=atext, font=font, x=(W - aw) / 2, y=ay + apx * 0.8, w=aw, fill=acol,
+                          fill2=None, alpha=aalpha * fa, stroke=0, strokeColor="#000000", cx=W / 2, cy=ay))
     groups = sc["groups"]
     gi = next((i for i, g in enumerate(groups) if g["gs"] <= t < g["ge"]), -1)
     if gi < 0:
