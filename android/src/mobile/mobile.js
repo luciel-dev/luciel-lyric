@@ -31,13 +31,14 @@
     videoName: "", videoEl: null, videoReady: false, clips: [], nextClipId: 1,
     aspect: "9:16", vfit: "fill", vscale: 1, vx: 0.5, vy: 0.5, tier: "fast", frameCv: null,
     selectedClip: 0, selectedLine: -1, selectedWord: -1, pxPerSec: 46, thumbs: [],
+    overlays: [], nextOverlayId: 1,
     textStyle: null, textScope: "all",
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
     checks: null,
   };
   const libs = {
     ws: null, regions: null, atl: null, mv: null, mute: false, ready: false,
-    settled: false, span: 0, url: "", waiters: [], pinchBase: 1,
+    settled: false, syncSettled: false, span: 0, url: "", waiters: [], syncWaiters: [], pinchBase: 1,
   };
   let P = null;
   let stage = null;
@@ -71,19 +72,19 @@
     pinPreview();
     sizePreview();
     if (id === "look" || id === "time" || id === "render" || id === "video" || id === "sync") draw(state.t > 0.05 ? state.t : 1.2);
-    if (id === "time") { paintEditor(); paintTimeline(); }
-    if (id === "video" || id === "time") mountMoveable();
+    if (id === "video") { paintEditor(); mountMoveable(); }
+    if (id === "sync") { mountSyncWave(); syncRegions(); }
     layoutVidHandle();
-    if (id !== "time") {
-      const timeHost = document.getElementById("pin-time");
-      if (timeHost) { timeHost.style.height = ""; timeHost.style.maxHeight = ""; }
+    if (id !== "video") {
+      const videoHost = document.getElementById("pin-video");
+      if (videoHost) { videoHost.style.height = ""; videoHost.style.maxHeight = ""; }
       document.documentElement.style.removeProperty("--pin-h");
     }
     updatePreviewChrome();
     paintFlow();
     fitAll();
-    if (id === "time") fitTimeFold();
-    else if (id === "look" || id === "render" || id === "video" || id === "sync") fitPinClear();
+    if (id === "video") fitVideoFold();
+    else if (id === "look" || id === "render" || id === "time" || id === "sync") fitPinClear();
     saveProject();
   }
   const STEP_ORDER = ["track", "sync", "video", "look", "time", "render"];
@@ -121,7 +122,7 @@
     if (id === "sync") return syncReady() ? "Timings are locked." : "Line up the lyrics to continue.";
     if (id === "video") return videoStepReady() ? "Video ready." : "Add a video to continue.";
     if (id === "look") return state.look ? "Look chosen." : "Pick a look to continue.";
-    if (id === "time") return "Trim the clip, or continue.";
+    if (id === "time") return "Set a zoom, or continue.";
     if (id === "render") return stepDone("render") ? "Ready to share." : "Make the video to finish.";
     return "";
   }
@@ -521,7 +522,7 @@
     }
   }
   function fitActions() {
-    const buttons = [...document.querySelectorAll("#screen-time .tlactions button")];
+    const buttons = [...document.querySelectorAll("#screen-video .tlactions button")];
     if (buttons.length !== 5) return;
     applyDockFit(buttons, 1);
     let fit = 1;
@@ -569,8 +570,8 @@
     return sizes.every((size) => size === sizes[0]);
   }
   function actionsFit() {
-    if (state.screen !== "time") return true;
-    const buttons = [...document.querySelectorAll("#screen-time .tlactions button")];
+    if (state.screen !== "video") return true;
+    const buttons = [...document.querySelectorAll("#screen-video .tlactions button")];
     if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
     const sizes = buttons.map((b) => getComputedStyle(b).fontSize);
     return sizes.every((size) => size === sizes[0]);
@@ -760,7 +761,7 @@
     return ok;
   }
   function contentFlags(screen) {
-    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0, next: 0, steps: 0, intronext: 0, skip: 0, continuebtn: 0, startnew: 0, sheet: 0, fonts: 0, swatches: 0, tsize: 0, outline: 0, shadow: 0, alignn: 0, scope: 0, nudge: 0, linemerge: 0, undo: 0, preset: 0 };
+    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, syncregions: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0, overlay: 0, next: 0, steps: 0, intronext: 0, skip: 0, continuebtn: 0, startnew: 0, sheet: 0, fonts: 0, swatches: 0, tsize: 0, outline: 0, shadow: 0, alignn: 0, scope: 0, nudge: 0, linemerge: 0, undo: 0, preset: 0 };
     const flags = [];
     const kind = screen === "intro2" || screen === "intro3" ? "intro" : screen === "sheet" ? "sync" : screen;
     const titleEl = [...document.querySelectorAll(".screen.on h1")].find((el) => el.getClientRects().length);
@@ -778,6 +779,18 @@
       expect.syncbtn = inView($("#syncBtn"), 28) ? 1 : 0;
       if (!expect.lyrics) flags.push("lyrics");
       if (!expect.syncbtn) flags.push("syncbtn");
+      if (screen !== "sheet") {
+        const box = $("#syncWsBox");
+        if (box) { try { box.scrollIntoView({ block: "center", inline: "nearest" }); } catch (e) {} }
+        if (!handlesReady()) syncRegions();
+        const handles = regionHandles();
+        const sized = handles.length >= 2 && handles.every((h) => {
+          const hr = h.getBoundingClientRect();
+          return hr.width >= 48 && hr.height >= 48;
+        });
+        expect.syncregions = sized ? 1 : 0;
+        if (!sized) flags.push("syncregions" + handles.length);
+      }
     } else if (kind === "look") {
       const stage = $("#stage");
       const cards = [...document.querySelectorAll("#looks button")];
@@ -821,19 +834,22 @@
       expect.aspects = aspects.length === 4 && inView($("#aspects"), 16) ? 4 : 0;
       expect.fits = fits.length === 3 && inView($("#vfit"), 16) ? 3 : 0;
       expect.vzoom = inView($("#vscale"), 12) ? 1 : 0;
+      const atlCv = document.querySelector("#atl canvas");
+      const painted = canvasBusy(atlCv) || canvasBusy($("#tl")) || canvasBusy(document.getElementById("film"));
+      expect.timeline = painted && inView($("#tlview"), 16, false) ? 1 : 0;
+      expect.overlay = inView($("#addOverlay"), 28) ? 1 : 0;
       if (!expect.stage) flags.push(stageBusy ? "stageview" : stageSeen ? "stagepx" : "stage");
       if (!expect.upload) flags.push("upload");
       if (expect.aspects !== 4) flags.push("aspects");
       if (expect.fits !== 3) flags.push("fits");
       if (!expect.vzoom) flags.push("vzoom");
+      if (!expect.timeline) flags.push("timeline");
+      if (!expect.overlay) flags.push("overlay");
+      const syncLeak = document.querySelector("#screen-video #syncBtn, #screen-video #syncWsBox, #screen-video #lyrics");
+      if (syncLeak) flags.push("lyricsync");
     } else if (kind === "time") {
-      const waveCv = libCanvas("#wsBox");
-      const atlCv = document.querySelector("#atl canvas");
-      const painted = canvasBusy(waveCv) || canvasBusy(atlCv) || canvasBusy($("#tl"));
-      expect.timeline = painted && inView($("#tlview"), 16, false) ? 1 : 0;
       const zooms = document.querySelectorAll("#zooms button");
       expect.zooms = zooms.length === 5 && inView($("#zooms"), 16) ? 5 : zooms.length;
-      if (!expect.timeline) flags.push("timeline");
       if (expect.zooms !== 5) flags.push("zooms");
     } else if (kind === "render") {
       const q = document.querySelectorAll("#quality button");
@@ -881,7 +897,7 @@
       const nextBtn = document.querySelector("#screen-" + kind + " .stepnext");
       expect.next = nextBtn && inView(nextBtn, 28) ? 1 : 0;
       const stepBtns = document.querySelectorAll("#stepper button");
-      expect.steps = (kind === "time" || (stepBtns.length === 6 && inView($("#stepper"), 28))) ? 6 : 0;
+      expect.steps = (kind === "video" || (stepBtns.length === 6 && inView($("#stepper"), 28))) ? 6 : 0;
       if (!expect.next) flags.push("next");
       if (expect.steps !== 6) flags.push("steps");
     }
@@ -1023,11 +1039,11 @@
     }
     return problems;
   }
-  function fitTimeFold() {
-    const host = document.getElementById("pin-time");
-    const actions = document.querySelector("#screen-time .tlactions");
+  function fitVideoFold() {
+    const host = document.getElementById("pin-video");
+    const actions = document.querySelector("#screen-video .tlactions");
     const dock = document.querySelector(".dock");
-    if (!host || !actions || !dock || state.screen !== "time") return;
+    if (!host || !actions || !dock || state.screen !== "video") return;
     host.style.height = "";
     host.style.maxHeight = "";
     document.documentElement.style.removeProperty("--pin-h");
@@ -1140,35 +1156,24 @@
     state.headWhy = why;
     return !why;
   }
-  function timeFoldOk() {
+  function videoFoldOk() {
     const why = (msg) => { document.documentElement.dataset.foldWhy = msg; return false; };
     const dockTop = document.querySelector(".dock").getBoundingClientRect().top;
     const view = document.getElementById("tlview");
-    const bar = document.querySelector("#screen-time .tlactions");
+    const bar = document.querySelector("#screen-video .tlactions");
     if (!view) return why("view");
     const vr = view.getBoundingClientRect();
     const barTop = bar ? bar.getBoundingClientRect().top : dockTop;
     const limit = Math.min(dockTop, barTop);
-    if (vr.height < 120 || vr.top < -1 || vr.bottom > limit + 1) return why("viewbox" + Math.round(vr.top) + "-" + Math.round(vr.bottom) + "/" + Math.round(limit));
+    if (vr.height < 80 || vr.top < -1 || vr.bottom > limit + 1) return why("viewbox" + Math.round(vr.top) + "-" + Math.round(vr.bottom) + "/" + Math.round(limit));
     if (vr.left < -1 || vr.right > window.innerWidth + 1) return why("viewx");
     if (document.documentElement.dataset.editor === "libs") {
-      const rows = ["#wsTime", "#wsBox", "#atl"];
-      for (let i = 0; i < rows.length; i++) {
-        const el = document.querySelector(rows[i]);
-        if (!el) return why("miss" + rows[i]);
-        const r = el.getBoundingClientRect();
-        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why(rows[i] + "out" + Math.round(r.top) + "-" + Math.round(r.bottom));
-        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why(rows[i] + "clip" + Math.round(r.bottom) + "/" + Math.round(vr.bottom));
-      }
-      const waveH = document.querySelector("#wsBox").getBoundingClientRect().height;
-      const atlH = document.querySelector("#atl").getBoundingClientRect().height;
-      if (waveH < 32 || waveH > 56 || atlH < 64 || atlH > 100) return why("band" + Math.round(waveH) + "/" + Math.round(atlH));
-      const handles = regionHandles();
-      if (handles.length < 2) return why("handles" + handles.length);
-      for (let i = 0; i < handles.length; i++) {
-        const hr = handles[i].getBoundingClientRect();
-        if (hr.width < 48 || hr.height < 48) return why("handle" + Math.round(hr.width) + "x" + Math.round(hr.height));
-      }
+      const el = document.querySelector("#atl");
+      if (!el) return why("miss#atl");
+      const r = el.getBoundingClientRect();
+      if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why("#atlout" + Math.round(r.top) + "-" + Math.round(r.bottom));
+      if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why("#atlclip" + Math.round(r.bottom) + "/" + Math.round(vr.bottom));
+      if (r.height < 64 || r.height > 110) return why("band" + Math.round(r.height));
       const controls = [...document.querySelectorAll(".moveable-control")];
       if (controls.length < 2) return why("controls" + controls.length);
       for (let i = 0; i < controls.length; i++) {
@@ -1176,18 +1181,13 @@
         if (cr.width < 48 || cr.height < 48) return why("control" + Math.round(cr.width) + "x" + Math.round(cr.height));
       }
     } else {
-      const rows = ["#ruler", "#videoTrack", "#lyricTrack", "#zoomTrack", "#tl"];
+      const rows = ["#ruler", "#videoTrack"];
       for (let i = 0; i < rows.length; i++) {
         const el = document.querySelector(rows[i]);
-        if (!el) return false;
+        if (!el) return why("miss" + rows[i]);
         const r = el.getBoundingClientRect();
-        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return false;
-        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return false;
-      }
-      const bands = ["#videoTrack", "#lyricTrack", "#zoomTrack"];
-      for (let i = 0; i < bands.length; i++) {
-        const h = document.querySelector(bands[i]).getBoundingClientRect().height;
-        if (h < 34 || h > 48) return false;
+        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why(rows[i]);
+        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why(rows[i] + "clip");
       }
     }
     const actions = ["#tlSplit", "#tlDelete", "#tlAdd", "#tlReplace", "#tlSpeed"];
@@ -1233,8 +1233,8 @@
     const sheetEl = document.getElementById("textSheet");
     if (sheetEl && !sheetEl.hidden) document.documentElement.dataset.sheet = "1";
     else document.documentElement.removeAttribute("data-sheet");
-    if (logical === "time") fitTimeFold();
-    else if (logical === "look" || logical === "render" || logical === "video" || logical === "sync") fitPinClear();
+    if (logical === "video") fitVideoFold();
+    else if (logical === "look" || logical === "render" || logical === "time" || logical === "sync") fitPinClear();
     reserveSheet();
     placeSheet();
     dropOverflowMeta();
@@ -1244,8 +1244,8 @@
     const wrapHits = midWordWraps();
     const ellHits = ellipsisHits();
     const headVisible = headingClear() ? 1 : 0;
-    const foldOk = logical === "time" ? (timeFoldOk() ? 1 : 0) : 1;
-    const filmOk = logical === "time" ? (filmReady() ? 1 : 0) : 1;
+    const foldOk = logical === "video" ? (videoFoldOk() ? 1 : 0) : 1;
+    const filmOk = logical === "video" ? (filmReady() ? 1 : 0) : 1;
     const { expect, flags } = contentFlags(screen === "sheet" ? "sheet" : logical);
     if (wrapHits.length) flags.push("wrap:" + wrapHits.slice(0, 2).join("|").replace(/\s+/g, ""));
     if (ellHits.length) flags.push("ellipsis:" + ellHits.slice(0, 2).join("|").replace(/\s+/g, ""));
@@ -1323,6 +1323,7 @@
       "play=" + expect.play,
       "lyrics=" + expect.lyrics,
       "syncbtn=" + expect.syncbtn,
+      "syncregions=" + expect.syncregions,
       "stage=" + expect.stage,
       "looks=" + expect.looks,
       "palettes=" + expect.palettes,
@@ -1336,6 +1337,7 @@
       "aspects=" + expect.aspects,
       "fits=" + expect.fits,
       "vzoom=" + expect.vzoom,
+      "overlay=" + expect.overlay,
       "next=" + expect.next,
       "steps=" + expect.steps,
       "intronext=" + expect.intronext,
@@ -1501,6 +1503,28 @@
       darken: state.bg === "video" ? 0.35 : 0.35, blur: 0,
     };
   }
+  function paintOverlays(t, canvas) {
+    const cv = canvas || $("#stage");
+    if (!cv || cv.width < 2) return;
+    const active = (state.overlays || []).filter((o) => o && o.text && t >= o.start && t < o.end);
+    if (!active.length) return;
+    const ctx = cv.getContext("2d");
+    const W = cv.width;
+    const H = cv.height;
+    ctx.save();
+    ctx.font = Math.round(H * 0.045) + "px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, H * 0.004);
+    ctx.strokeStyle = "rgba(16,32,40,0.85)";
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    active.forEach((o, i) => {
+      const y = H * 0.16 + i * H * 0.055;
+      ctx.strokeText(o.text, W * 0.5, y);
+      ctx.fillText(o.text, W * 0.5, y);
+    });
+    ctx.restore();
+  }
   function draw(t) {
     if (!stage) return;
     const px = frameWH(360);
@@ -1511,6 +1535,7 @@
     seekVideo(at);
     stage.setScene(scene(at));
     stage.drawFrame(at);
+    paintOverlays(at, $("#stage"));
   }
   function paintLooks() {
     const row = $("#looks");
@@ -1884,6 +1909,7 @@
     undoArmed = false;
     if (!LS().nudgeWords(ln.words, delta, state.length || 20)) return;
     paintLines();
+    syncRegions();
     paintTimeline();
     draw(state.t || ln.words[0].start);
     saveProject();
@@ -1903,6 +1929,7 @@
     state.selectedWord = 0;
     writeLyrics(state.lines.map(lineText).join("\n"));
     paintLines();
+    syncRegions();
     paintTimeline();
     draw(state.t || 1);
     paintSheet();
@@ -1922,6 +1949,7 @@
     state.selectedWord = 0;
     writeLyrics(state.lines.map(lineText).join("\n"));
     paintLines();
+    syncRegions();
     paintTimeline();
     draw(state.t || 1);
     paintSheet();
@@ -1994,6 +2022,7 @@
           const words = $("#sheetWords");
           if (words && document.activeElement !== words) words.value = lineText(state.lines[i]);
           $("#syncStatus").textContent = "Line updated.";
+          syncRegions();
         }
       });
       edit.addEventListener("blur", () => {
@@ -2238,6 +2267,7 @@
       state.clips = [freshClip(0, state.length || 20, 0, 1)];
       state.thumbs = syntheticThumbs();
       if (!state.videoName) state.videoName = "glass-static";
+      state.overlays = [];
     }
   }
 
@@ -2300,7 +2330,7 @@
     const pin = $("#previewPin");
     const host = pin && pin.parentElement;
     const dock = document.querySelector(".dock");
-    if (!host || !host.classList.contains("pinhost") || !dock || state.screen === "time") return;
+    if (!host || !host.classList.contains("pinhost") || !dock || state.screen === "video") return;
     const lead = document.querySelector(".screen.on .screenhead .lead");
     const root = document.documentElement;
     root.removeAttribute("data-compact");
@@ -2434,8 +2464,8 @@
   window.addEventListener("scroll", () => { pinPreview(); placeSheet(); }, { passive: true });
   window.addEventListener("resize", () => {
     sizePreview();
-    if (state.screen === "time") fitTimeFold();
-    else if (state.screen === "look" || state.screen === "render" || state.screen === "video" || state.screen === "sync") fitPinClear();
+    if (state.screen === "video") fitVideoFold();
+    else if (state.screen === "look" || state.screen === "render" || state.screen === "time" || state.screen === "sync") fitPinClear();
   });
 
   function videoDuration() {
@@ -2545,6 +2575,7 @@
       const at = Math.max(0, Math.min((state.length || 20) - 0.05, state.t || 0));
       stage.setScene(scene(at));
       stage.drawFrame(at);
+      paintOverlays(at, $("#stage"));
     };
     v.addEventListener("seeked", finish);
     try { v.currentTime = want; } catch (e) { finish(); }
@@ -2564,6 +2595,7 @@
         vscale: state.vscale,
         vx: state.vx,
         vy: state.vy,
+        overlays: state.overlays,
       }));
     } catch (e) {}
   }
@@ -2586,6 +2618,16 @@
       if (typeof o.vscale === "number") state.vscale = Math.max(1, Math.min(2.5, o.vscale));
       if (typeof o.vx === "number") state.vx = Math.max(0, Math.min(1, o.vx));
       if (typeof o.vy === "number") state.vy = Math.max(0, Math.min(1, o.vy));
+      if (Array.isArray(o.overlays)) {
+        state.overlays = o.overlays.filter((item) => item && typeof item.text === "string").map((item) => ({
+          id: item.id != null ? item.id : state.nextOverlayId++,
+          text: String(item.text).slice(0, 48),
+          start: Math.max(0, +item.start || 0),
+          end: Math.max(0.12, +item.end || 0),
+        }));
+        const maxId = state.overlays.reduce((m, item) => Math.max(m, +item.id || 0), 0);
+        if (maxId >= state.nextOverlayId) state.nextOverlayId = maxId + 1;
+      }
     } catch (e) {}
   }
   function syncBgPills() {
@@ -2656,7 +2698,7 @@
   }
   function followPlayhead() {
     const sc = $("#tlscroll");
-    if (!sc || state.screen !== "time") return;
+    if (!sc || state.screen !== "video") return;
     state.lockScroll = true;
     sc.scrollLeft = (state.t || 0) * (state.pxPerSec || 46);
     requestAnimationFrame(() => { state.lockScroll = false; });
@@ -2707,7 +2749,7 @@
       saveEditor();
       paintFlow();
       syncBgPills();
-      if (state.screen === "time") paintEditor();
+      if (state.screen === "video") paintEditor();
       updatePreviewChrome();
       seekVideo(state.t || 0.45);
       draw(state.t > 0.05 ? state.t : 0.45);
@@ -2837,6 +2879,37 @@
       libs.waiters.push(() => { clearTimeout(timer); resolve(); });
     });
   }
+  function handlesReady() {
+    const handles = regionHandles();
+    if (handles.length < 2) return false;
+    return handles.every((h) => {
+      const r = h.getBoundingClientRect();
+      return r.width >= 48 && r.height >= 48;
+    });
+  }
+  function settleSync() {
+    if (libs.syncSettled || !handlesReady()) return;
+    libs.syncSettled = true;
+    const waiters = libs.syncWaiters.splice(0);
+    waiters.forEach((fn) => fn());
+  }
+  function whenSync() {
+    if (handlesReady()) {
+      libs.syncSettled = true;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, 1800);
+      libs.syncWaiters.push(() => { clearTimeout(timer); resolve(); });
+      const poll = () => {
+        if (libs.syncSettled) return;
+        syncRegions();
+        if (handlesReady()) settleSync();
+        else setTimeout(poll, 80);
+      };
+      poll();
+    });
+  }
   function libCanvas(sel) {
     const host = document.querySelector(sel);
     if (!host) return null;
@@ -2905,21 +2978,20 @@
   }
   function atlModel() {
     const video = [];
-    const lyrics = [];
+    const titles = [];
     (state.clips || []).forEach((c) => {
       const a = Math.round((+c.t0 || 0) * 1000);
       const b = Math.round(Math.max((+c.t0 || 0) + 0.12, +c.t1 || 0) * 1000);
       video.push({ val: a, group: "c:" + c.id }, { val: Math.max(a + 120, b), group: "c:" + c.id });
     });
-    (state.lines || []).forEach((ln, i) => {
-      if (!ln.words || !ln.words.length) return;
-      const a = Math.round((+ln.words[0].start) * 1000);
-      const b = Math.round((+ln.words[ln.words.length - 1].end) * 1000);
-      lyrics.push({ val: a, group: "l:" + i, draggable: false }, { val: Math.max(a + 50, b), group: "l:" + i, draggable: false });
+    (state.overlays || []).forEach((o) => {
+      const a = Math.round((+o.start || 0) * 1000);
+      const b = Math.round(Math.max((+o.start || 0) + 0.12, +o.end || 0) * 1000);
+      titles.push({ val: a, group: "o:" + o.id }, { val: Math.max(a + 120, b), group: "o:" + o.id });
     });
     return { rows: [
       { keyframes: video },
-      { keyframes: lyrics, keyframesDraggable: false, groupsDraggable: false },
+      { keyframes: titles },
     ] };
   }
   function pushAtl() {
@@ -2961,6 +3033,7 @@
   function readAtlNow() {
     const model = libs.atl.getModel ? libs.atl.getModel() : null;
     if (!model || !model.rows) return;
+    const before = window.LucielLayers.lyricStamp(state.lines, state.textStyle);
     const map = {};
     for (const kf of (model.rows[0] && model.rows[0].keyframes) || []) {
       const g = typeof kf.group === "string" ? kf.group : "";
@@ -2983,7 +3056,27 @@
         commitVideo({ op: "trim", index: i, edge: "right", dt: t1 - base.t1, inplace: true, base: base });
       }
     });
+    const titles = {};
+    for (const kf of (model.rows[1] && model.rows[1].keyframes) || []) {
+      const g = typeof kf.group === "string" ? kf.group : "";
+      if (!g.startsWith("o:")) continue;
+      (titles[g] = titles[g] || []).push(kf.val / 1000);
+    }
+    let list = state.overlays || [];
+    list.slice().forEach((o) => {
+      const vals = (titles["o:" + o.id] || []).slice().sort((a, b) => a - b);
+      if (vals.length < 2) return;
+      const t0 = vals[0];
+      const t1 = Math.max(t0 + 0.12, vals[1]);
+      if (Math.abs(t0 - o.start) < 0.02 && Math.abs(t1 - o.end) < 0.02) return;
+      list = window.LucielLayers.applyOverlayEdit(list, { op: "move", id: o.id, start: t0, end: t1 }, state.length || 20);
+    });
+    state.overlays = list;
+    if (window.LucielLayers.lyricStamp(state.lines, state.textStyle) !== before) {
+      throw new Error("video edit changed lyric text");
+    }
     pushAtl();
+    paintOverlayList();
     saveEditor();
     draw(state.t || 0);
   }
@@ -3032,8 +3125,35 @@
       w.end = +Math.max(w.start + 0.02, a + (b - a) * u1).toFixed(3);
     });
     paintLines();
-    pushAtl();
     saveProject();
+  }
+  function commitOverlay(edit) {
+    const before = window.LucielLayers.lyricStamp(state.lines, state.textStyle);
+    state.overlays = window.LucielLayers.applyOverlayEdit(state.overlays, edit, state.length || 20);
+    if (window.LucielLayers.lyricStamp(state.lines, state.textStyle) !== before) {
+      throw new Error("video edit changed lyric text");
+    }
+    paintOverlayList();
+    pushAtl();
+    saveEditor();
+    draw(state.t || 0);
+  }
+  function paintOverlayList() {
+    const ul = $("#overlayList");
+    if (!ul) return;
+    ul.innerHTML = "";
+    (state.overlays || []).forEach((o) => {
+      const li = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent = o.text;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill";
+      btn.textContent = "Remove";
+      btn.addEventListener("click", () => commitOverlay({ op: "remove", id: o.id }));
+      li.append(label, btn);
+      ul.append(li);
+    });
   }
   function paintLibFilm(cssW) {
     const cv = document.getElementById("film");
@@ -3065,7 +3185,7 @@
     const canvas = document.getElementById("stage");
     const wrap = document.querySelector("#previewPin .stagewrap");
     if (!handle || !canvas || !wrap) return;
-    const show = state.screen === "video" || state.screen === "time";
+    const show = state.screen === "video";
     handle.hidden = !show;
     document.documentElement.dataset.handles = show ? "1" : "0";
     if (!show) {
@@ -3155,13 +3275,14 @@
     libs.mv.on("resizeEnd", () => saveEditor());
     libs.mv.on("pinchEnd", () => saveEditor());
   }
-  function mountLibs(span) {
-    const box = document.getElementById("wsBox");
-    const atlEl = document.getElementById("atl");
-    if (!box || !atlEl || !window.WaveSurfer || !window.WaveSurfer.Regions || !window.WaveSurfer.Timeline || !window.timelineModule) return;
-    if (box.clientWidth < 20 && !(document.getElementById("tlview") && document.getElementById("tlview").clientWidth > 20)) return;
-    if (libs.ready && Math.abs((libs.span || 0) - span) < 0.2) {
-      mountMoveable();
+  function mountSyncWave() {
+    const box = document.getElementById("syncWsBox");
+    if (!box || !window.WaveSurfer || !window.WaveSurfer.Regions || !window.WaveSurfer.Timeline) return;
+    if (box.clientWidth < 20) return;
+    const span = Math.max(1, state.length || 20);
+    if (libs.ws && Math.abs((libs.waveSpan || 0) - span) < 0.2) {
+      syncRegions();
+      if (regionHandles().length >= 2) settleSync();
       return;
     }
     if (libs.ws) {
@@ -3173,20 +3294,21 @@
       try { URL.revokeObjectURL(libs.url); } catch (e) {}
       libs.url = "";
     }
-    libs.settled = false;
+    libs.syncSettled = false;
     try {
       const regions = WaveSurfer.Regions.create();
       libs.regions = regions;
-      libs.span = span;
+      libs.waveSpan = span;
       libs.url = URL.createObjectURL(silentWav(span));
+      const pps = Math.max(8, (box.clientWidth - 8) / span);
       libs.ws = WaveSurfer.create({
         container: box,
         url: libs.url,
         peaks: [sectionPeaks()],
         duration: span,
-        height: 40,
-        minPxPerSec: state.pxPerSec || 46,
-        fillParent: false,
+        height: 48,
+        minPxPerSec: pps,
+        fillParent: true,
         hideScrollbar: true,
         autoCenter: false,
         autoScroll: false,
@@ -3194,20 +3316,25 @@
         cursorWidth: 0,
         waveColor: cssVar("--wave-on", "#1aa9d6"),
         progressColor: cssVar("--wave-on", "#1aa9d6"),
-        plugins: [regions, WaveSurfer.Timeline.create({ container: "#wsTime", height: 20 })],
+        plugins: [regions, WaveSurfer.Timeline.create({ container: "#syncWsTime", height: 20 })],
       });
       regions.on("region-updated", onRegionUpdated);
-      libs.ws.on("ready", () => {
-        try { libs.ws.zoom(state.pxPerSec || 46); } catch (e) {}
+      const finish = () => {
+        try { libs.ws.zoom(pps); } catch (e) {}
         syncRegions();
-        if (state.tlOrigin != null) layoutLibs(state.tlOrigin, Math.round(span * (state.pxPerSec || 46)), state.pxPerSec || 46, span);
-        settleEditor();
-      });
-      libs.ws.on("error", () => settleEditor());
+        settleSync();
+      };
+      libs.ws.on("ready", finish);
+      libs.ws.on("error", () => {});
     } catch (e) {
       libs.ws = null;
       return;
     }
+  }
+  function mountVideoLibs(span) {
+    const atlEl = document.getElementById("atl");
+    if (!atlEl || !window.timelineModule) return;
+    if (atlEl.clientWidth < 20 && !(document.getElementById("tlview") && document.getElementById("tlview").clientWidth > 20)) return;
     if (!libs.atl) {
       try {
         libs.atl = new timelineModule.Timeline({
@@ -3229,14 +3356,11 @@
       }
     }
     mountMoveable();
-    setTimeout(() => {
-      if (libs.settled) return;
-      syncRegions();
-      settleEditor();
-    }, 700);
-    libs.ready = !!(libs.ws && libs.atl);
+    libs.ready = !!libs.atl;
+    libs.span = span;
     if (libs.ready) document.documentElement.dataset.editor = "libs";
     else document.documentElement.removeAttribute("data-editor");
+    settleEditor();
   }
   function layoutLibs(origin, cssW, pps, span) {
     const host = document.getElementById("librows");
@@ -3245,10 +3369,6 @@
       host.style.width = cssW + "px";
     }
     paintLibFilm(cssW);
-    if (libs.ws && libs.ws.getDecodedData && libs.ws.getDecodedData()) {
-      try { libs.ws.zoom(pps); } catch (e) {}
-    }
-    syncRegions();
     pushAtl();
     lockAtlScroll();
     libs.span = span;
@@ -3264,13 +3384,11 @@
     const origin = view / 2;
     state.tlOrigin = origin;
     inner.style.width = (view + cssW) + "px";
-    mountLibs(span);
+    mountVideoLibs(span);
     if (libs.ready) layoutLibs(origin, cssW, pps, span);
     else {
       paintRuler(origin, span, pps);
       paintVideoTrack(origin, cssW, pps);
-      paintLyricTrack(origin, pps);
-      paintZoomTrack(origin, pps);
       const cv = $("#tl");
       if (cv) {
         cv.style.position = "absolute";
@@ -3280,8 +3398,10 @@
       }
       paintTimeline();
     }
-    syncLyricInput();
+    const input = $("#lyricInput");
+    if (input) input.hidden = true;
     layoutVidHandle();
+    paintOverlayList();
   }
   function paintEditor() {
     layoutEditor();
@@ -3578,6 +3698,7 @@
       if (state.videoEl && state.bg === "video" && src) await seekTo(state.videoEl, src.in);
       rs.setScene(scene(t));
       rs.drawFrame(t);
+      paintOverlays(t, rs.cv);
       const data = rs.cv.getContext("2d").getImageData(0, 0, w, h).data;
       const probe = (x, y) => {
         const o = (y * w + x) * 4;
@@ -3703,14 +3824,15 @@
     async function publish(screen) {
       if (screen === "look" || screen === "videocheck") paintLooks();
       await settle();
-      if (screen === "time") await whenEditor();
+      if (screen === "sync" || screen === "syncshot" || screen === "sheet") await whenSync();
+      if (screen === "video") await whenEditor();
       fitAll();
       const msg = measure(screen);
       document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
       window.__audits.push(msg);
       document.documentElement.dataset.audit = msg;
       if (demo !== "audit") {
-        if (screen === "time") frameUnderPin(document.querySelector("#screen-time .editorcard"));
+        if (screen === "video") frameUnderPin(document.querySelector("#screen-video .editorcard"));
         if (screen === "render") frameUnderPin($("#quality"));
       }
       const log = document.getElementById("auditlog");
@@ -3886,6 +4008,7 @@
   const stageCv = $("#stage");
   let wordDrag = null;
   stageCv.addEventListener("pointerdown", (e) => {
+    if (state.screen === "video") return;
     wordDrag = { x: e.clientX, y: e.clientY, moved: false };
   });
   stageCv.addEventListener("pointermove", (e) => {
@@ -3967,7 +4090,8 @@
     $("#start").max = String(Math.max(0, state.duration - state.length));
     paintWave();
     updatePreviewChrome();
-    if (state.screen === "time") paintEditor();
+    if (state.screen === "video") paintEditor();
+    if (state.screen === "sync") mountSyncWave();
   };
   $("#title").oninput = () => { state.title = $("#title").value; draw(state.t || 1.2); };
   $("#artist").oninput = () => { state.artist = $("#artist").value; draw(state.t || 1.2); };
@@ -4008,6 +4132,7 @@
       $("#syncStatus").textContent = state.lines.length + " lines from your lyrics.";
     }
     paintLines();
+    syncRegions();
     paintFlow();
     saveProject();
     draw(state.t || 1.2);
@@ -4023,6 +4148,20 @@
   $("#tlAdd").onclick = () => { addClip(); };
   $("#tlReplace").onclick = () => { requestVideo(); };
   $("#tlSpeed").onclick = () => { cycleSpeed(); };
+  $("#addOverlay").onclick = () => {
+    const text = ($("#overlayText").value || "").trim();
+    if (!text) return;
+    const len = state.length || 20;
+    const start = Math.max(0, Math.min(len - 0.5, state.t || 0));
+    commitOverlay({
+      op: "add",
+      id: state.nextOverlayId++,
+      text: text,
+      start: start,
+      end: Math.min(len, start + 3),
+    });
+    $("#overlayText").value = "";
+  };
   $("#lyricInput").addEventListener("change", () => { commitLyricInput(); });
   $("#lyricInput").addEventListener("input", () => { commitLyricInput(); });
   $("#fontBtn").onclick = () => { if (window.Luciel) Luciel.pickFont(); };
@@ -4073,7 +4212,7 @@
       ln.confidence = 1;
     });
     paintLines();
-    if (state.screen === "time") paintEditor();
+    syncRegions();
     draw(state.t || 0);
     const now = $("#tapNow");
     if (now) now.textContent = "Marked " + tapMarks.length + "/" + state.lines.length;
@@ -4223,11 +4362,13 @@
     let vidBase = 0;
     let vidScale0 = 1;
     stageWrap.addEventListener("pointerdown", (e) => {
+      if (state.screen !== "video") return;
       if (e.target.closest && (e.target.closest("#vidHandle") || e.target.closest(".moveable-control"))) return;
       vidPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (vidPointers.size === 2) vidScale0 = state.vscale || 1;
     });
     stageWrap.addEventListener("pointermove", (e) => {
+      if (state.screen !== "video") return;
       if (!vidPointers.has(e.pointerId)) return;
       vidPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (vidPointers.size < 2) return;
@@ -4283,6 +4424,7 @@
       }
       rs.setScene(scene(t, out));
       rs.drawFrame(t);
+      paintOverlays(t, rs.cv);
       const data = rs.cv.getContext("2d").getImageData(0, 0, out.w, out.h).data;
       for (let y = 0; y < out.h; y += rows) {
         const rh = Math.min(rows, out.h - y);

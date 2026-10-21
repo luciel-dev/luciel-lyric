@@ -136,6 +136,40 @@
     { op: "swap", name: "second-take.mp4" },
   ];
 
+  function copyOverlay(o) {
+    return {
+      id: o && o.id != null ? o.id : 0,
+      text: o && typeof o.text === "string" ? o.text.slice(0, 48) : "",
+      start: Math.max(0, num(o && o.start, 0)),
+      end: Math.max(0, num(o && o.end, 0)),
+    };
+  }
+
+  function applyOverlayEdit(overlays, edit, length) {
+    const len = Math.max(0.25, num(length, 20));
+    let list = (overlays || []).map(copyOverlay);
+    const op = edit && edit.op;
+    if (op === "add") {
+      const start = clamp(num(edit.start, 0), 0, Math.max(0, len - 0.25));
+      const end = Math.min(len, Math.max(start + 0.25, num(edit.end, start + 3)));
+      const text = typeof edit.text === "string" ? edit.text.slice(0, 48) : "";
+      list = list.concat([{ id: edit.id, text: text, start: start, end: end }]);
+    } else if (op === "remove") {
+      list = list.filter((o) => o.id !== edit.id);
+    } else if (op === "move") {
+      list = list.map((o) => {
+        if (o.id !== edit.id) return o;
+        const start = clamp(num(edit.start, o.start), 0, len);
+        const end = Math.min(len, Math.max(start + 0.12, num(edit.end, o.end)));
+        return { id: o.id, text: o.text, start: start, end: end };
+      });
+    } else if (op === "text") {
+      const text = typeof edit.text === "string" ? edit.text.slice(0, 48) : "";
+      list = list.map((o) => (o.id === edit.id ? { id: o.id, text: text, start: o.start, end: o.end } : o));
+    }
+    return list;
+  }
+
   function runVideoEdits(video, lines, textStyle, edits) {
     const before = lyricStamp(lines, textStyle);
     let v = readVideo(video);
@@ -161,6 +195,7 @@
   G.LucielLayers = {
     lyricStamp: lyricStamp,
     applyVideoEdit: applyVideoEdit,
+    applyOverlayEdit: applyOverlayEdit,
     runVideoEdits: runVideoEdits,
     VIDEO_EDITS: VIDEO_EDITS,
   };

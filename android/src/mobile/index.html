@@ -161,6 +161,13 @@ try {
         <ol id="lineList" class="lines"></ol>
         <button class="pill" id="editText" type="button">Edit text</button>
       </div>
+      <div class="card syncwave" id="syncWave">
+        <h2>Line timing</h2>
+        <div id="syncWsTime"></div>
+        <div id="syncWsBox"></div>
+        <p class="hint">Drag a line to move its timing.</p>
+      </div>
+      <input id="lyricInput" type="text" hidden maxlength="80" aria-label="Line text" placeholder="Line text">
       <p class="hint stephint" id="hintSync">Line up the lyrics to continue.</p>
       <button class="pill big primary stepnext" id="nextSync" type="button" data-next="video">Next</button>
     </section>
@@ -168,9 +175,34 @@ try {
     <section class="screen" id="screen-video" data-screen="video">
       <header class="screenhead">
         <h1>Video</h1>
-        <p class="lead">Add the picture, then set the size.</p>
+        <p class="lead">Edit the picture and add a title.</p>
       </header>
       <div class="pinhost" id="pin-video"></div>
+      <div class="card editorcard">
+        <div class="tlview" id="tlview">
+          <div class="playhead" aria-hidden="true"></div>
+          <div class="tlscroll" id="tlscroll">
+            <div class="tlinner" id="tlinner">
+              <div class="librows" id="librows">
+                <div class="atline">
+                  <div id="atl"></div>
+                  <canvas id="film" width="320" height="32"></canvas>
+                </div>
+              </div>
+              <div class="ruler" id="ruler"></div>
+              <div class="track vtrack" id="videoTrack"></div>
+              <canvas id="tl" width="640" height="64"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="tlactions">
+          <button class="pill" id="tlSplit" type="button">Split</button>
+          <button class="pill" id="tlDelete" type="button">Delete</button>
+          <button class="pill" id="tlAdd" type="button">Add</button>
+          <button class="pill" id="tlReplace" type="button">Replace</button>
+          <button class="pill" id="tlSpeed" type="button">Speed</button>
+        </div>
+      </div>
       <div class="emptycard" id="videoEmpty">
         <img class="emptymascot" src="mascot/emote-surprised.webp" alt="">
         <h2>Add a video</h2>
@@ -204,6 +236,12 @@ try {
         <label class="slider">Down <b id="vyVal">Center</b>
           <input id="vy" type="range" min="0" max="1" step="0.01" value="0.5">
         </label>
+      </div>
+      <div class="card">
+        <h2>Extra text</h2>
+        <input id="overlayText" maxlength="48" placeholder="Title or caption" aria-label="Extra text">
+        <button class="pill" id="addOverlay" type="button">Add title</button>
+        <ul id="overlayList" class="keys"></ul>
       </div>
       <p class="hint stephint" id="hintVideo">Add a video to continue.</p>
       <button class="pill big primary stepnext" id="nextVideo" type="button" data-next="look">Next</button>
@@ -270,39 +308,9 @@ try {
     <section class="screen" id="screen-time" data-screen="time">
       <header class="screenhead">
         <h1>Time</h1>
-        <p class="lead">Trim the picture, the lines, and the zoom.</p>
+        <p class="lead">Set the zoom and the background.</p>
       </header>
       <div class="pinhost" id="pin-time"></div>
-      <div class="card editorcard">
-        <div class="tlview" id="tlview">
-          <div class="playhead" aria-hidden="true"></div>
-          <div class="tlscroll" id="tlscroll">
-            <div class="tlinner" id="tlinner">
-              <div class="librows" id="librows">
-                <div id="wsTime"></div>
-                <div id="wsBox"></div>
-                <div class="atline">
-                  <div id="atl"></div>
-                  <canvas id="film" width="320" height="32"></canvas>
-                </div>
-              </div>
-              <div class="ruler" id="ruler"></div>
-              <div class="track vtrack" id="videoTrack"></div>
-              <div class="track ltrack" id="lyricTrack"></div>
-              <div class="track ztrack" id="zoomTrack"></div>
-              <canvas id="tl" width="640" height="64"></canvas>
-            </div>
-          </div>
-        </div>
-        <input id="lyricInput" type="text" hidden maxlength="80" aria-label="Line text" placeholder="Line text">
-        <div class="tlactions">
-          <button class="pill" id="tlSplit" type="button">Split</button>
-          <button class="pill" id="tlDelete" type="button">Delete</button>
-          <button class="pill" id="tlAdd" type="button">Add</button>
-          <button class="pill" id="tlReplace" type="button">Replace</button>
-          <button class="pill" id="tlSpeed" type="button">Speed</button>
-        </div>
-      </div>
       <div class="card">
         <h2>Background</h2>
         <div class="pills" id="bgModes">
@@ -319,7 +327,7 @@ try {
         <button class="pill" id="addKey" type="button">Add a zoom</button>
         <ul id="keys" class="keys"></ul>
       </div>
-      <p class="hint stephint" id="hintTime">Trim the clip, or continue.</p>
+      <p class="hint stephint" id="hintTime">Set a zoom, or continue.</p>
       <button class="pill big primary stepnext" id="nextTime" type="button" data-next="render">Next</button>
     </section>
 
