@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
             allowFileAccess = false
             builtInZoomControls = false
             displayZoomControls = false
+            minimumFontSize = 1
         }
         webView.addJavascriptInterface(bridge, "Luciel")
         webView.webViewClient = object : WebViewClient() {
