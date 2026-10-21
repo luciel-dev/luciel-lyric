@@ -62,6 +62,9 @@ input[type=number]{width:90px}
 input[type=range]{accent-color:var(--acc)}
 textarea{width:100%;resize:vertical}
 .check{display:flex;gap:6px;align-items:center;color:var(--mut);cursor:pointer}
+#sepLabel{flex-wrap:wrap}
+.sepnote{flex-basis:100%;margin:1px 0 0 22px;font-size:12px;line-height:1.35;font-weight:600;letter-spacing:0;text-transform:none;color:var(--txt)}
+.check:has(input:disabled){cursor:default}
 .btn{border:0;border-radius:999px;padding:9px 18px;font:700 14px var(--font);cursor:pointer;color:var(--btn-txt);text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:transform .08s,filter .15s,background .15s}
 .btn:active{transform:translateY(1px)}
 .btn.primary{background:var(--acc);color:var(--acc-txt)}
@@ -136,12 +139,12 @@ textarea{width:100%;resize:vertical}
 @keyframes s{to{transform:rotate(360deg)}}
 
 /* ---- mascot (theme frames in themes.css) ---- */
-.mascot{position:fixed;right:18px;bottom:18px;z-index:30;width:128px;user-select:none}
+.mascot{position:fixed;right:12px;bottom:12px;z-index:30;width:128px;max-width:calc(100vw - 24px);user-select:none}
 .mascot.off{display:none}
-.mascot-win{position:relative}
+.mascot-win{position:relative;max-width:100%}
 .mascot-bar{display:contents}
 .mtitle{display:none}
-.mascot-body{position:relative;width:128px;height:128px;cursor:pointer}
+.mascot-body{position:relative;width:128px;max-width:100%;height:128px;cursor:pointer}
 .mascot-body img,.mascot-body video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
 .mascot-body video{opacity:0}
 .mascot.playing .mascot-body video{opacity:1}
@@ -150,7 +153,7 @@ textarea{width:100%;resize:vertical}
 @keyframes mpop{0%{transform:scale(.85)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
 .mascot.idle .mascot-body img{animation:mbob 3.2s ease-in-out infinite}
 @keyframes mbob{50%{transform:translateY(-3px)}}
-.mascot-bubble{position:absolute;right:calc(100% - 18px);bottom:96px;max-width:210px;width:max-content;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.3;background:#fff;color:#222;box-shadow:0 6px 20px #0004;opacity:0;transform:translateY(6px) scale(.96);transition:.25s;pointer-events:none}
+.mascot-bubble{position:absolute;right:calc(100% + 10px);bottom:96px;box-sizing:border-box;max-width:min(220px,calc(100vw - 16px));width:max-content;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.35;background:#fff;color:#222;box-shadow:0 6px 20px #0004;opacity:0;transform:translateY(6px) scale(.96);transition:opacity .25s,transform .25s;pointer-events:none;white-space:normal;overflow-wrap:anywhere}
 .mascot-bubble.show{opacity:1;transform:none}
 .mascot-bubble::after{content:"";position:absolute;right:14px;bottom:-7px;border:8px solid transparent;border-top-color:inherit;border-bottom:0}
 .mascot-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:#0007;color:#fff;font-size:13px;line-height:20px;cursor:pointer;opacity:0;transition:.2s;z-index:2}

@@ -70,7 +70,7 @@
       </div>
       <p class="muted syncnote" id="tierNote"></p>
       <div class="row syncactions">
-        <label class="check"><input type="checkbox" id="sepIn"> Isolate vocals first</label>
+        <label class="check" id="sepLabel"><input type="checkbox" id="sepIn" aria-describedby="sepNote"> Isolate vocals first<span id="sepNote" class="sepnote" hidden>Vocal isolation not installed</span></label>
         <button id="syncBtn" class="btn primary" disabled>Sync lyrics</button>
       </div>
       <div id="syncProgress" class="syncprogress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
