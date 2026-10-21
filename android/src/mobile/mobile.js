@@ -15,7 +15,7 @@
   const $ = (s) => document.querySelector(s);
   const QUALITY = {
     draft: { label: "Draft", w: 540, h: 960, fps: 24, bitrate: 2000000 },
-    standard: { label: "Standard", w: 720, h: 1280, fps: 30, bitrate: 6000000 },
+    standard: { label: "Std", name: "Standard", w: 720, h: 1280, fps: 30, bitrate: 6000000 },
     high: { label: "High", w: 1080, h: 1920, fps: 30, bitrate: 12000000 },
     max: { label: "Max", w: 1080, h: 1920, fps: 30, bitrate: 16000000 },
   };
@@ -63,7 +63,11 @@
     pinPreview();
     sizePreview();
     if (id === "look" || id === "time" || id === "render") draw(state.t > 0.05 ? state.t : 1.2);
-    if (id === "time") { paintEditor(); paintTimeline(); }
+    if (id === "time") { paintEditor(); paintTimeline(); fitTimeFold(); }
+    else {
+      const timeHost = document.getElementById("pin-time");
+      if (timeHost) { timeHost.style.height = ""; timeHost.style.maxHeight = ""; }
+    }
     updatePreviewChrome();
   }
   function mascot(name) {
@@ -99,23 +103,54 @@
       ".screen.on h1", ".screen.on h2", ".screen.on .sum",
       ".screen.on .lcd", ".screen.on .hint", ".screen.on .lead",
       ".screen.on button", ".screen.on small", ".screen.on .fx span",
-      ".screen.on .colors label"
+      ".screen.on .colors label", "#previewTime", "#previewMeta"
     ].join(", ");
     document.querySelectorAll(sel).forEach((el) => {
       if (el.closest("#dock") || el.clientWidth < 2) return;
       el.style.letterSpacing = "";
       el.style.setProperty("--fit", "1");
-      const floor = el.matches(".themes button, .brand, .tag") ? 0.4 : 0.55;
+      const floor = el.matches(".themes button, .brand, .tag") ? 0.4 : 0.5;
       let fit = 1;
       let guard = 0;
-      while (guard++ < 16 && fit > floor && overflowsX(el)) {
+      while (guard++ < 18 && fit > floor && visualTooWide(el)) {
         if (!el.style.letterSpacing) el.style.letterSpacing = "0px";
         fit = Math.round((fit - 0.04) * 100) / 100;
         el.style.setProperty("--fit", String(fit));
       }
     });
+    fitThemes();
     fitDock();
     fitLines();
+  }
+  function visualTooWide(el) {
+    if (!el || el.clientWidth < 2) return false;
+    if (el.closest(".hscroll") || el.closest(".tlscroll")) return false;
+    const wide = overflowsX(el);
+    const cs = getComputedStyle(el);
+    const single = cs.whiteSpace === "nowrap" || el.matches("button, .brand, .tag, #previewTime");
+    if (!single) return wide;
+    const box = contentBox(el);
+    const inner = box.right - box.left;
+    if (inner < 8) return wide;
+    return wide || measuredGlyph(el).width > inner + 1;
+  }
+  function fitThemes() {
+    const buttons = [...document.querySelectorAll("#themes button")];
+    if (!buttons.length) return;
+    buttons.forEach((b) => {
+      b.style.letterSpacing = "0px";
+      b.style.setProperty("--fit", "1");
+    });
+    const tooWide = (b) => {
+      const inner = contentBox(b).right - contentBox(b).left;
+      return measuredGlyph(b).width > inner - 6 || labelOverflow(b);
+    };
+    let fit = 1;
+    let guard = 0;
+    while (guard++ < 22 && fit > 0.4 && buttons.some(tooWide)) {
+      fit = Math.round((fit - 0.03) * 100) / 100;
+      buttons.forEach((b) => b.style.setProperty("--fit", String(fit)));
+    }
   }
   function contentBox(el) {
     const rect = el.getBoundingClientRect();
@@ -392,7 +427,7 @@
     return bad;
   }
   function textWide() {
-    const sel = ".brand, .tag, .themes button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label";
+    const sel = ".brand, .tag, .themes button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label, #previewTime, #previewMeta";
     const bad = [];
     document.querySelectorAll(sel).forEach((el) => {
       if (el.closest("#dock") || el.clientWidth < 2) return;
@@ -630,6 +665,159 @@
     }
     return problems;
   }
+  function fitTimeFold() {
+    const host = document.getElementById("pin-time");
+    const actions = document.querySelector("#screen-time .tlactions");
+    const dock = document.querySelector(".dock");
+    if (!host || !actions || !dock || state.screen !== "time") return;
+    host.style.height = "";
+    host.style.maxHeight = "";
+    sizePreview();
+    let guard = 0;
+    while (guard++ < 24) {
+      const limit = dock.getBoundingClientRect().top - 4;
+      const bottom = actions.getBoundingClientRect().bottom;
+      if (bottom <= limit) break;
+      const h = host.getBoundingClientRect().height;
+      const next = Math.floor(h - (bottom - limit) - 1);
+      if (!(next < h - 0.5)) break;
+      const clamped = Math.max(72, next);
+      host.style.height = clamped + "px";
+      host.style.maxHeight = clamped + "px";
+      sizePreview();
+      if (clamped <= 72) break;
+    }
+  }
+  function labelNodes() {
+    const sel = "button, h1, h2, .sum, .brand, .tag, .docklabel, .lead, .hint, .lcd, #previewTime, #previewMeta, .clipname, .colors label, .lookgrid small, .fx span";
+    return [...document.querySelectorAll(sel)].filter((el) => {
+      if (el.closest(".tlscroll") || el.closest(".hscroll") || el.closest(".lineedit")) return false;
+      return el.clientWidth >= 2 && el.clientHeight >= 2;
+    });
+  }
+  function splitWord(el) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const text = node.textContent || "";
+      const re = /[^\s\u00ad\-–—/]+/g;
+      let m;
+      while ((m = re.exec(text))) {
+        const range = document.createRange();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        const tops = [];
+        [...range.getClientRects()].forEach((r) => {
+          if (r.width > 1 && r.height > 1 && !tops.some((t) => Math.abs(t - r.top) < 2)) tops.push(r.top);
+        });
+        if (tops.length > 1) return m[0];
+      }
+      node = walker.nextNode();
+    }
+    return "";
+  }
+  function midWordWraps() {
+    const bad = [];
+    labelNodes().forEach((el) => {
+      const word = splitWord(el);
+      if (word) bad.push(describe(el) + ":" + word);
+    });
+    return bad;
+  }
+  function ellipsisHits() {
+    const bad = [];
+    labelNodes().forEach((el) => {
+      const cs = getComputedStyle(el);
+      const clipped = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+      if (cs.textOverflow === "ellipsis" && clipped) bad.push(describe(el));
+      if (el.id === "previewTime" && el.scrollWidth > el.clientWidth + 1) bad.push("time");
+    });
+    return bad;
+  }
+  function headingClear() {
+    const head = document.querySelector(".screen.on .screenhead");
+    const h1 = head && head.querySelector("h1");
+    const lead = head && head.querySelector(".lead");
+    if (!h1 || !lead) return false;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const blockers = [document.getElementById("safebar"), document.querySelector(".dock"), document.querySelector(".dockplate"), document.getElementById("previewPin")];
+    function problem(el) {
+      const r = el.getBoundingClientRect();
+      if (r.height < 8 || r.width < 8) return "size";
+      if (r.top < sys - 1) return "top";
+      if (r.bottom > dock.top + 1) return "dock";
+      if (r.left < -1 || r.right > window.innerWidth + 1) return "x";
+      for (let i = 0; i < blockers.length; i++) {
+        const b = blockers[i];
+        if (!b) continue;
+        const br = b.getBoundingClientRect();
+        if (br.width < 2 || br.height < 2) continue;
+        const overlap = r.left < br.right - 1 && r.right > br.left + 1 && r.top < br.bottom - 1 && r.bottom > br.top + 1;
+        if (overlap) return b.id || "plate";
+      }
+      const x = Math.round(Math.min(window.innerWidth - 2, Math.max(2, r.left + 12)));
+      const y = Math.round(r.top + Math.min(10, r.height / 2));
+      const hit = document.elementFromPoint(x, y);
+      if (!hit) return "miss";
+      if (hit.id === "safebar" || (hit.closest && (hit.closest(".dock") || hit.closest(".dockplate") || hit.closest("#previewPin")))) return "hit";
+      if (hit !== el && !el.contains(hit) && !head.contains(hit)) return "cover";
+      return "";
+    }
+    const why = [problem(h1), problem(lead)].filter(Boolean).join("/");
+    state.headWhy = why;
+    return !why;
+  }
+  function timeFoldOk() {
+    const dockTop = document.querySelector(".dock").getBoundingClientRect().top;
+    const view = document.getElementById("tlview");
+    if (!view) return false;
+    const vr = view.getBoundingClientRect();
+    if (vr.height < 120 || vr.top < -1 || vr.bottom > dockTop + 1) return false;
+    if (vr.left < -1 || vr.right > window.innerWidth + 1) return false;
+    const rows = ["#ruler", "#videoTrack", "#lyricTrack", "#zoomTrack", "#tl"];
+    for (let i = 0; i < rows.length; i++) {
+      const el = document.querySelector(rows[i]);
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.height < 12 || r.top < -1 || r.bottom > dockTop + 1) return false;
+      if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return false;
+    }
+    const bands = ["#videoTrack", "#lyricTrack", "#zoomTrack"];
+    for (let i = 0; i < bands.length; i++) {
+      const h = document.querySelector(bands[i]).getBoundingClientRect().height;
+      if (h < 34 || h > 48) return false;
+    }
+    const actions = ["#tlSplit", "#tlDelete", "#tlAdd", "#tlReplace", "#tlSpeed"];
+    for (let i = 0; i < actions.length; i++) {
+      const el = document.querySelector(actions[i]);
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.height < 40 || r.width < 28 || r.top < -1 || r.bottom > dockTop + 1) return false;
+      if (r.left < -1 || r.right > window.innerWidth + 1) return false;
+    }
+    return true;
+  }
+  function filmReady() {
+    const cv = document.querySelector("#videoTrack canvas");
+    if (!cv || cv.width < 48 || cv.height < 20) return false;
+    const rect = cv.getBoundingClientRect();
+    if (rect.width < 24 || rect.height < 16) return false;
+    let prev = -1;
+    let changes = 0;
+    try {
+      const ctx = cv.getContext("2d");
+      const y = Math.max(1, Math.floor(cv.height * 0.3));
+      const step = Math.max(8, Math.floor(cv.width / 36));
+      for (let x = 1; x < cv.width; x += step) {
+        const p = ctx.getImageData(x, y, 1, 1).data;
+        const lum = p[0] + p[1] + p[2];
+        if (prev >= 0 && Math.abs(lum - prev) > 18) changes++;
+        prev = lum;
+      }
+    } catch (e) { return false; }
+    return changes >= 1;
+  }
   function measure(screen) {
     const logical = screen === "syncshot" ? "sync" : screen === "videocheck" ? "look" : screen;
     const sc = document.scrollingElement || document.documentElement;
@@ -637,7 +825,19 @@
     sc.scrollLeft = 0;
     sizePreview();
     fitAll();
+    if (logical === "time") fitTimeFold();
+    dropOverflowMeta();
+    const wrapHits = midWordWraps();
+    const ellHits = ellipsisHits();
+    const headVisible = headingClear() ? 1 : 0;
+    const foldOk = logical === "time" ? (timeFoldOk() ? 1 : 0) : 1;
+    const filmOk = logical === "time" ? (filmReady() ? 1 : 0) : 1;
     const { expect, flags } = contentFlags(logical);
+    if (wrapHits.length) flags.push("wrap:" + wrapHits.slice(0, 2).join("|").replace(/\s+/g, ""));
+    if (ellHits.length) flags.push("ellipsis:" + ellHits.slice(0, 2).join("|").replace(/\s+/g, ""));
+    if (!headVisible) flags.push("headclear" + (state.headWhy ? ":" + state.headWhy : ""));
+    if (!foldOk) flags.push("fold");
+    if (!filmOk) flags.push("film");
     const wide = pageWide();
     const box = textWide();
     const clear = clearsDock() ? 1 : 0;
@@ -730,6 +930,11 @@
       "frames=" + framesOk,
       "edited=" + editedOk,
       "previewpin=" + pinOk,
+      "wrap=" + wrapHits.length,
+      "ellipsis=" + ellHits.length,
+      "headclear=" + headVisible,
+      "fold=" + foldOk,
+      "film=" + filmOk,
       "bgvideo=" + (checks.bgvideo || 0),
       "split=" + (checks.split || 0),
       "trim=" + (checks.trim || 0),
@@ -895,7 +1100,7 @@
       row.append(b);
     });
     const q = QUALITY[state.quality];
-    $("#qualityHint").textContent = q.label + ": " + q.w + "×" + q.h + " · " + q.fps + " fps. Phone Max is 1080p30 (desktop Max is 60 fps).";
+    $("#qualityHint").textContent = (q.name || q.label) + ": " + q.w + "×" + q.h + " · " + q.fps + " fps. Phone Max is 1080p30 (desktop Max is 60 fps).";
   }
   function paintWave() {
     const cv = $("#wave");
@@ -1136,6 +1341,11 @@
     for (let i = 0; i < n; i++) samples[i] = 0.4 * Math.sin(i / 18) * (0.5 + 0.5 * Math.sin(i / 400));
     paintWave();
     paintLines();
+    if (!state.videoEl && !state.clips.length) {
+      state.clips = [freshClip(0, state.length || 20, 0, 1)];
+      state.thumbs = syntheticThumbs();
+      if (!state.videoName) state.videoName = "glass-static";
+    }
   }
 
   function frameUnderPin(el) {
@@ -1232,7 +1442,7 @@
     return why.length === 0;
   }
   window.addEventListener("scroll", () => { pinPreview(); }, { passive: true });
-  window.addEventListener("resize", () => { sizePreview(); });
+  window.addEventListener("resize", () => { sizePreview(); if (state.screen === "time") fitTimeFold(); });
 
   function videoDuration() {
     const v = state.videoEl;
@@ -1337,16 +1547,32 @@
   function syncBgPills() {
     document.querySelectorAll("#bgModes button").forEach((b) => b.classList.toggle("on", b.dataset.bg === state.bg));
   }
+  function clockText(t) {
+    const whole = Math.floor(Math.max(0, t) + 1e-3);
+    const m = Math.floor(whole / 60);
+    const s = whole % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  function dropOverflowMeta() {
+    const meta = document.getElementById("previewMeta");
+    if (!meta) return;
+    if (!meta.textContent) { meta.hidden = true; return; }
+    meta.hidden = false;
+    if (meta.clientWidth > 8 && meta.scrollWidth > meta.clientWidth + 1) meta.hidden = true;
+  }
   function updatePreviewChrome() {
     const len = state.length || 20;
     const t = Math.max(0, Math.min(len, state.t || 0));
     const time = $("#previewTime");
-    if (time) time.textContent = t.toFixed(1) + " / " + len.toFixed(1) + "s";
-    const label = state.playing ? "Pause" : "Play";
+    if (time) time.textContent = clockText(t) + " / " + clockText(len);
+    const playing = !!state.playing;
     const toggle = $("#previewToggle");
-    if (toggle) toggle.textContent = label;
+    if (toggle) {
+      toggle.classList.toggle("on", playing);
+      toggle.setAttribute("aria-label", playing ? "Pause" : "Play");
+    }
     const previewBtn = $("#previewBtn");
-    if (previewBtn) previewBtn.textContent = label;
+    if (previewBtn) previewBtn.textContent = playing ? "Pause" : "Play";
     const meta = $("#previewMeta");
     if (meta) {
       if (state.screen === "render") {
@@ -1354,6 +1580,7 @@
         meta.textContent = q.w + "×" + q.h;
       } else if (state.videoName) meta.textContent = state.videoName;
       else meta.textContent = "9:16";
+      dropOverflowMeta();
     }
     const labelEl = $("#clipLabel");
     if (labelEl) labelEl.textContent = state.videoName || "No video yet";
@@ -1596,21 +1823,44 @@
       ruler.append(b);
     }
   }
+  function syntheticThumbs() {
+    if (syntheticThumbs.cache) return syntheticThumbs.cache;
+    const colors = ["#8d1d2c", "#c23b22", "#d4782a", "#1f6f8b", "#2a4f8f", "#3d2a55"];
+    syntheticThumbs.cache = colors.map((color, i) => {
+      const c = document.createElement("canvas");
+      c.width = 48;
+      c.height = 64;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 48, 64);
+      ctx.fillStyle = "rgba(255,255,255,.9)";
+      ctx.fillRect(6, 8 + (i % 3) * 10, 22 + (i % 2) * 8, 14);
+      ctx.fillStyle = "rgba(0,0,0,.35)";
+      ctx.fillRect(0, 52, 48, 12);
+      return c;
+    });
+    return syntheticThumbs.cache;
+  }
   function paintFilm(canvas, clip) {
     const pps = state.pxPerSec || 46;
     const w = Math.max(48, Math.round((clip.t1 - clip.t0) * pps));
+    const h = 36;
     canvas.width = w;
-    canvas.height = 44;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
-    const thumbs = state.thumbs || [];
-    if (!thumbs.length) {
-      ctx.fillStyle = "#143044";
-      ctx.fillRect(0, 0, w, 44);
-      return;
-    }
-    const tw = 36;
-    for (let x = 0; x < w; x += tw) {
-      ctx.drawImage(thumbs[Math.floor(x / tw) % thumbs.length], x, 0, tw, 44);
+    const thumbs = state.thumbs && state.thumbs.length ? state.thumbs : syntheticThumbs();
+    const tw = 34;
+    const gap = 3;
+    let i = 0;
+    for (let x = 0; x < w; x += tw, i++) {
+      const slice = Math.max(1, Math.min(tw - gap, w - x));
+      ctx.drawImage(thumbs[i % thumbs.length], x, 0, slice, h);
+      ctx.fillStyle = "rgba(255,255,255,.8)";
+      ctx.fillRect(x + 2, 3 + (i % 4) * 4, 8, 3);
+      if (x + slice < w) {
+        ctx.fillStyle = "#07090c";
+        ctx.fillRect(x + slice, 0, Math.min(gap, w - x - slice), h);
+      }
     }
   }
   function watchDrag(el, onDown, onMove) {
