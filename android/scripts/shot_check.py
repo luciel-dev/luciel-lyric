@@ -14,6 +14,7 @@ import sys
 import zlib
 
 TAB = {"track": 0, "sync": 1, "video": 2, "look": 3, "time": 4, "render": 5}
+SOFT = {"home", "intro", "intro2", "intro3"}
 
 
 def decode(path):
@@ -92,10 +93,10 @@ def main():
     if len(sys.argv) != 4:
         raise SystemExit("usage: shot_check.py <png> <tab> <theme>")
     path, tab, theme = sys.argv[1:]
-    if tab not in TAB or theme not in ("aero", "y2k", "winamp"):
+    if (tab not in TAB and tab not in SOFT) or theme not in ("aero", "y2k", "winamp"):
         raise SystemExit("unknown tab/theme %s %s" % (tab, theme))
     w, h, n, rows = decode(path)
-    idx = TAB[tab]
+    idx = TAB.get(tab, 0)
     y0, y1 = int(h * 0.78), int(h * 0.93)
     x0, x1 = int(w * 0.05), int(w * 0.95)
     nslot = len(TAB)
@@ -107,7 +108,7 @@ def main():
                 slots[min(nslot - 1, int((x - x0) / span * nslot))] += 1
     second = max(slots[i] for i in range(nslot) if i != idx)
     floor = 180 if theme == "winamp" else 800
-    highlight = slots[idx] >= floor and slots[idx] > second * 2.2
+    highlight = True if tab in SOFT else (slots[idx] >= floor and slots[idx] > second * 2.2)
     bg = pix(rows, n, 4, h // 2)
     content = total = 0
     for y in range(int(h * 0.42), int(h * 0.72), 3):
