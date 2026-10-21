@@ -57,6 +57,7 @@ canvas#wave{width:100%;height:120px;background:var(--wave-bg);border-radius:var(
 .field.grow{flex:1;min-width:200px}
 .field.grow input{flex:1}
 input,select,textarea{background:var(--input-bg);color:var(--input-txt);border:1px solid var(--input-border);border-radius:8px;padding:7px 9px;font:inherit}
+select{field-sizing:content;min-width:max-content;max-width:100%;flex:none}
 input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--acc) 60%,transparent);outline-offset:1px}
 input[type=number]{width:90px}
 input[type=range]{accent-color:var(--acc)}
@@ -355,8 +356,9 @@ body.video-edit .work{grid-area:side;min-width:0;min-height:0;overflow:hidden;di
 body.video-edit #dock{display:contents}
 body.video-edit #step3{flex:1;min-height:0;overflow:auto;margin:0}
 body.video-edit #step3 .drop{min-height:72px;padding:12px}
-body.video-edit #step3 .field{min-width:0;flex:1 1 140px}
+body.video-edit #step3 .field{flex:1 1 auto;min-width:min(100%,12rem)}
 body.video-edit #step3 .field.grow{min-width:0}
+body.video-edit #step3 select{flex:none;width:auto;max-width:100%;min-width:max-content;field-sizing:content}
 body.video-edit.side-shut #step3 > :not(.titlebar){display:none}
 body.video-edit.side-shut #step3 .titlebar h2,
 body.video-edit.side-shut #step3 .titlebar .wdots,
@@ -383,7 +385,13 @@ body.video-edit #videoTl .tltrack,
 body.video-edit #videoTl .tltexts,
 body.video-edit #videoTl .tllyrics,
 body.video-edit #videoTl .tlaudiohost{height:100%;min-height:52px}
-body.video-edit .mascot{bottom:calc(var(--tl-h, 33%) + 16px)}
+body.video-edit #step3{padding-bottom:108px}
+body.video-edit .mascot{left:14px;right:auto;top:auto;bottom:calc(var(--tl-h, 33%) + 12px);width:76px;z-index:25}
+body.video-edit .mascot-body{width:72px;height:72px}
+body.video-edit .mascot-bubble{left:0;right:auto;bottom:calc(100% + 8px);max-width:200px}
+body.video-edit.side-shut .mascot{display:none}
+[data-theme=y2k] body.video-edit .mascot-win::after{display:none}
+[data-theme=y2k] body.video-edit .mascot-body,[data-theme=winamp] body.video-edit .mascot-body{width:72px;height:64px}
 [data-theme=winamp] body.video-edit #step3 .titlebar{height:auto;min-height:24px;flex-wrap:wrap}
 [data-theme=winamp] body.video-edit #sideToggle{padding:1px 5px;font-size:8px}
 [data-theme=y2k] body.video-edit #step3 .titlebar{flex-wrap:wrap}

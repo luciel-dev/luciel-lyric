@@ -119,6 +119,7 @@
     const handle = $('#vidHandle');
     if (handle) handle.classList.toggle('on', n === 3 && S.bgMode === 'video');
     document.body.classList.toggle('video-edit', n === 3);
+    dockMascot();
     if (n === 3) requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     if (window.ED && ED.onStep) ED.onStep(n);
     if (n === 5 && typeof drawWave === 'function') drawWave();
@@ -229,6 +230,23 @@
 
   window.LCFlow = {show, step: () => step, hints, fail, ready};
   window.LCHist = {capture, touch, undo, redo};
+
+  function dockMascot() {
+    const mascot = $('#mascot');
+    if (!mascot) return;
+    const editing = document.body.classList.contains('video-edit') && !document.body.classList.contains('side-shut');
+    if (!editing) {
+      mascot.style.left = '';
+      mascot.style.bottom = '';
+      return;
+    }
+    const tl = $('#videoTl');
+    if (!tl) return;
+    const top = tl.getBoundingClientRect().top;
+    mascot.style.left = '14px';
+    mascot.style.bottom = Math.max(8, window.innerHeight - top + 10) + 'px';
+  }
+  addEventListener('resize', dockMascot);
 
   const splitKey = 'lc-tl-frac';
   const sideKey = 'lc-side-shut';
