@@ -157,19 +157,21 @@
       const dy = points[i][1] - centers[i][1];
       const outsideX = (i === 0 || i === 3) ? dx < -0.4 : dx > 0.4;
       const outsideY = i < 2 ? dy < -0.4 : dy > 0.4;
-      if (outsideX && outsideY && dx * dx + dy * dy > radius * radius) return true;
+      if (outsideX && outsideY && Math.sqrt(dx * dx + dy * dy) > radius + 1.5) return true;
     }
     return false;
   }
   function labelOverflow(btn) {
     const label = btn.querySelector(".docklabel") || btn;
-    if (btn.clientWidth < 2) return false;
-    const scrollBad = btn.scrollWidth > btn.clientWidth + 1 || label.scrollWidth > label.clientWidth + 1;
+    if (btn.clientWidth < 2 || label.clientWidth < 2) return false;
+    // The button's own scrollWidth stays larger than its clientWidth in the
+    // Android WebView even when the label fits, so the label is what we measure.
+    const scrollBad = label.scrollWidth > label.clientWidth + 2 || label.scrollHeight > label.clientHeight + 2;
     const text = textBounds(label);
     if (!text) return scrollBad;
     const box = contentBox(btn);
-    const outside = text.left < box.left - 0.5 || text.right > box.right + 0.5
-      || text.top < box.top - 0.5 || text.bottom > box.bottom + 0.5;
+    const outside = text.left < box.left - 1 || text.right > box.right + 1
+      || text.top < box.top - 1 || text.bottom > box.bottom + 1;
     return scrollBad || outside || curveClips(btn, text);
   }
   function fitDock() {
@@ -189,13 +191,15 @@
     return [...document.querySelectorAll(".screen.on #lineList .lineedit")].filter((el) => el.clientWidth >= 8);
   }
   function lineRows(el) {
-    const text = textBounds(el);
-    const cs = getComputedStyle(el);
-    const lh = parseFloat(cs.lineHeight);
-    const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const fromBox = lh > 1 ? (el.scrollHeight - pad) / lh : 1;
-    const fromRects = text ? text.lines : 1;
-    return Math.max(fromRects, fromBox);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 2 && r.height > 2);
+    if (!rects.length) return 1;
+    const tops = [];
+    rects.forEach((r) => {
+      if (!tops.some((top) => Math.abs(top - r.top) < 3)) tops.push(r.top);
+    });
+    return tops.length;
   }
   function fitLines() {
     const edits = lineEdits();

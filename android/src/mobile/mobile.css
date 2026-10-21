@@ -495,8 +495,8 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
   height: 44px;
   min-height: 44px;
   margin: 0 2px;
-  padding: 4px 6px;
-  --fs: 12;
+  padding: 4px 7px;
+  --fs: 11;
   line-height: 1;
   border-radius: 14px;
   white-space: nowrap;
