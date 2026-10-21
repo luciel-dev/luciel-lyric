@@ -289,7 +289,7 @@ textarea { min-height: 120px; resize: vertical; }
   max-width: 100%;
   overflow-wrap: anywhere;
 }
-.dock button { --fs: 12; }
+.dock button { --fs: 11; }
 .themes button { --fs: 14; }
 .hscroll button { --fs: 14; max-width: none; }
 .actions, .pills { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; }
