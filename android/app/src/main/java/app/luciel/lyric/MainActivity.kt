@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
     private var pageReady = false
     private var insetTopPx = 0
     private var insetBottomPx = 0
+    private var textZoom = 100
 
     private val pickAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) bridge.onPickedAudio(uri)
@@ -80,13 +81,20 @@ class MainActivity : ComponentActivity() {
         loadDemo(intent)
     }
 
+    private fun applyTextZoom(intent: Intent?) {
+        val extra = intent?.getStringExtra("textZoom")?.toFloatOrNull()
+        val zoom = (extra ?: (resources.configuration.fontScale * 100f)).toInt().coerceIn(80, 200)
+        textZoom = zoom
+        if (::webView.isInitialized) webView.settings.textZoom = zoom
+    }
+
     private fun pushInsets() {
         if (!pageReady || !::webView.isInitialized) return
-        val density = resources.displayMetrics.density
-        val top = insetTopPx / density
-        val bottom = insetBottomPx / density
+        val density = resources.displayMetrics.density.coerceAtLeast(0.5f)
+        val top = maxOf(insetTopPx / density, 48f)
+        val bottom = maxOf(insetBottomPx / density, 32f)
         webView.evaluateJavascript(
-            "document.documentElement.style.setProperty('--sys-top','${top}px');document.documentElement.style.setProperty('--sys-bottom','${bottom}px');",
+            "document.documentElement.style.setProperty('--sys-top','${top}px');document.documentElement.style.setProperty('--sys-bottom','${bottom}px');document.documentElement.dataset.textZoom='${textZoom}';",
             null
         )
     }
@@ -100,10 +108,12 @@ class MainActivity : ComponentActivity() {
     private fun loadDemo(intent: Intent?) {
         val demo = intent?.getStringExtra("demo").orEmpty()
         val theme = intent?.getStringExtra("theme").orEmpty()
+        applyTextZoom(intent)
         val parts = ArrayList<String>()
         if (demo.isNotBlank()) parts.add("demo=" + Uri.encode(demo))
         if (theme.isNotBlank()) parts.add("theme=" + Uri.encode(theme))
-        val q = if (parts.isEmpty()) "" else "?" + parts.joinToString("&")
+        parts.add("textZoom=" + textZoom)
+        val q = "?" + parts.joinToString("&")
         pageReady = false
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html$q")
     }

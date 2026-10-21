@@ -134,8 +134,17 @@
 
   function show(id) {
     state.screen = id;
-    document.querySelectorAll(".screen").forEach((el) => el.classList.toggle("on", el.dataset.screen === id));
+    document.querySelectorAll(".screen").forEach((el) => {
+      const on = el.dataset.screen === id;
+      el.classList.toggle("on", on);
+      el.style.display = on ? "block" : "none";
+    });
     document.querySelectorAll("#dock button").forEach((b) => b.setAttribute("aria-current", b.dataset.screen === id ? "true" : "false"));
+    const sc = document.scrollingElement || document.documentElement;
+    sc.scrollTop = 0;
+    sc.scrollLeft = 0;
+    const main = document.querySelector("main");
+    if (main) { main.scrollTop = 0; main.scrollLeft = 0; }
     if (id === "look" || id === "time" || id === "render") draw(state.t || 1.2);
     if (id === "time") paintTimeline();
   }
@@ -156,6 +165,246 @@
     document.querySelectorAll("#themes button").forEach((b) => b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false"));
     paintWave();
     paintTimeline();
+  }
+  function settle() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+  function overflowsX(el) {
+    return el.clientWidth > 1 && el.scrollWidth > el.clientWidth + 2;
+  }
+  function fitAll() {
+    const sel = [
+      ".brand", ".tag", ".themes button", ".dock button",
+      ".screen.on h1", ".screen.on h2", ".screen.on .sum",
+      ".screen.on .lcd", ".screen.on .hint", ".screen.on .lead",
+      ".screen.on button", ".screen.on small", ".screen.on .fx span",
+      ".screen.on .colors label"
+    ].join(", ");
+    document.querySelectorAll(sel).forEach((el) => {
+      if (el.clientWidth < 2) return;
+      el.style.letterSpacing = "";
+      el.style.setProperty("--fit", "1");
+      const floor = el.matches(".dock button, .themes button, .brand, .tag") ? 0.4 : 0.55;
+      let fit = 1;
+      let guard = 0;
+      while (guard++ < 16 && fit > floor && overflowsX(el)) {
+        if (!el.style.letterSpacing) el.style.letterSpacing = "0px";
+        fit = Math.round((fit - 0.04) * 100) / 100;
+        el.style.setProperty("--fit", String(fit));
+      }
+    });
+  }
+  function canvasBusy(cv) {
+    if (!cv || cv.width < 2 || cv.height < 2) return false;
+    const rect = cv.getBoundingClientRect();
+    if (rect.width < 16 || rect.height < 16) return false;
+    let min = 1e9, max = 0;
+    try {
+      const ctx = cv.getContext("2d");
+      const spots = [[2, 2], [cv.width * 0.5, cv.height * 0.35], [cv.width * 0.5, cv.height * 0.7]];
+      spots.forEach((spot) => {
+        const x = Math.max(0, Math.min(cv.width - 2, Math.floor(spot[0])));
+        const y = Math.max(0, Math.min(cv.height - 2, Math.floor(spot[1])));
+        const w = Math.min(12, cv.width - x);
+        const h = Math.min(12, cv.height - y);
+        const data = ctx.getImageData(x, y, w, h).data;
+        for (let i = 0; i < data.length; i += 16) {
+          const l = data[i] + data[i + 1] + data[i + 2];
+          if (l < min) min = l;
+          if (l > max) max = l;
+        }
+      });
+    } catch (e) { return false; }
+    return max - min > 18;
+  }
+  function inView(el, minH, full) {
+    if (!el) return false;
+    try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch (e) {}
+    const r = el.getBoundingClientRect();
+    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const vw = window.innerWidth;
+    if (r.left < -1 || r.right > vw + 1) return false;
+    if (full === false) {
+      const visibleH = Math.min(r.bottom, dock.top) - Math.max(r.top, 0);
+      return visibleH >= minH && r.width >= 8;
+    }
+    return r.width >= 8 && r.height >= minH && r.top >= -1 && r.bottom <= dock.top + 1;
+  }
+  function describe(el) {
+    if (!el || !el.tagName) return "?";
+    const id = el.id ? "#" + el.id : "";
+    let cls = "";
+    if (typeof el.className === "string" && el.className.trim()) cls = "." + el.className.trim().split(/\s+/).slice(0, 2).join(".");
+    return el.tagName.toLowerCase() + id + cls;
+  }
+  function pageWide() {
+    const vw = document.documentElement.clientWidth;
+    const bad = [];
+    const roots = [document.querySelector(".top"), document.querySelector(".dock"), document.querySelector(".screen.on")];
+    const seen = new Set();
+    roots.forEach((root) => {
+      if (!root) return;
+      [root, ...root.querySelectorAll("*")].forEach((el) => {
+        if (seen.has(el)) return;
+        seen.add(el);
+        if (el.closest(".hscroll") && !el.classList.contains("hscroll")) return;
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 && r.height < 1) return;
+        if (r.right > vw + 1.5 || r.left < -1.5) bad.push(describe(el));
+      });
+    });
+    const sc = document.scrollingElement;
+    if (sc && sc.scrollWidth > vw + 2) bad.push("page");
+    return bad;
+  }
+  function textWide() {
+    const sel = ".brand, .tag, .themes button, .dock button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label";
+    const bad = [];
+    document.querySelectorAll(sel).forEach((el) => {
+      if (el.clientWidth < 2) return;
+      const wide = el.scrollWidth > el.clientWidth + 2;
+      const single = el.matches("button, .brand, .tag, .lcd, .sum, h1, h2");
+      const tall = single && el.scrollHeight > el.clientHeight + 4;
+      if (wide || tall) bad.push(describe(el));
+    });
+    return bad;
+  }
+  function clearsDock() {
+    const screen = document.querySelector(".screen.on");
+    if (!screen) return false;
+    const kids = [...screen.children].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.height > 8 && el.offsetParent !== null;
+    });
+    const last = kids[kids.length - 1];
+    if (!last) return false;
+    const sc = document.scrollingElement || document.documentElement;
+    sc.scrollTop = sc.scrollHeight;
+    document.documentElement.scrollTop = sc.scrollHeight;
+    document.body.scrollTop = document.body.scrollHeight;
+    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const r = last.getBoundingClientRect();
+    const ok = r.height > 8 && r.bottom <= dock.top + 2 && r.left >= -1 && r.right <= window.innerWidth + 1;
+    sc.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    return ok;
+  }
+  function contentFlags(screen) {
+    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0 };
+    const flags = [];
+    if (!inView(document.querySelector(".screen.on h1"), 12)) flags.push("title");
+    else expect.title = 1;
+    if (screen === "track") {
+      expect.wave = canvasBusy($("#wave")) ? 1 : 0;
+      expect.start = inView($("#start"), 12) ? 1 : 0;
+      expect.play = inView($("#playClip"), 28) ? 1 : 0;
+      if (!expect.wave) flags.push("wave");
+      if (!expect.start) flags.push("start");
+      if (!expect.play) flags.push("play");
+    } else if (screen === "sync") {
+      expect.lyrics = inView($("#lyrics"), 32) ? 1 : 0;
+      expect.syncbtn = inView($("#syncBtn"), 28) ? 1 : 0;
+      if (!expect.lyrics) flags.push("lyrics");
+      if (!expect.syncbtn) flags.push("syncbtn");
+    } else if (screen === "look") {
+      const stage = $("#stage");
+      const cards = [...document.querySelectorAll("#looks button")];
+      const drawn = cards.length === 13 && cards.every((b) => {
+        const cv = b.querySelector("canvas");
+        return cv && cv.getBoundingClientRect().height >= 16 && cv.getBoundingClientRect().width >= 16;
+      });
+      const grid = $("#looks");
+      if (grid && cards.length) {
+        grid.scrollTop = 0;
+        const firstOk = canvasBusy(cards[0].querySelector("canvas"));
+        grid.scrollTop = grid.scrollHeight;
+        const lastCv = cards[12] && cards[12].querySelector("canvas");
+        const gr = grid.getBoundingClientRect();
+        const lr = lastCv ? lastCv.getBoundingClientRect() : null;
+        const lastSeen = lr && lr.bottom > gr.top + 4 && lr.top < gr.bottom - 4;
+        expect.stage = canvasBusy(stage) && inView(stage, 32) ? 1 : 0;
+        expect.looks = drawn && firstOk && lastSeen && inView(grid, 32) ? 13 : 0;
+      }
+      const pals = document.querySelectorAll("#palettes button");
+      const anims = document.querySelectorAll("#anims button");
+      expect.palettes = pals.length === 12 && inView($("#palettes"), 20) ? 12 : pals.length;
+      expect.anims = anims.length === 15 && inView($("#anims"), 20) ? 15 : anims.length;
+      if (!expect.stage) flags.push("stage");
+      if (expect.looks !== 13) flags.push("looks");
+      if (expect.palettes !== 12) flags.push("palettes");
+      if (expect.anims !== 15) flags.push("anims");
+    } else if (screen === "time") {
+      expect.timeline = canvasBusy($("#tl")) && inView($("#tl"), 16) ? 1 : 0;
+      const zooms = document.querySelectorAll("#zooms button");
+      expect.zooms = zooms.length === 5 && inView($("#zooms"), 16) ? 5 : zooms.length;
+      if (!expect.timeline) flags.push("timeline");
+      if (expect.zooms !== 5) flags.push("zooms");
+    } else if (screen === "render") {
+      const q = document.querySelectorAll("#quality button");
+      const fx = document.querySelectorAll("#fx label");
+      expect.quality = q.length;
+      expect.fx = fx.length;
+      expect.renderbtn = inView($("#renderBtn"), 28) ? 1 : 0;
+      if (q.length !== 4 || !inView($("#quality"), 20, false)) flags.push("quality");
+      if (fx.length < 1 || !inView($("#fx"), 24, false)) flags.push("fx");
+      if (!expect.renderbtn) flags.push("renderbtn");
+    }
+    return { expect, flags };
+  }
+  function measure(screen) {
+    const sc = document.scrollingElement || document.documentElement;
+    sc.scrollTop = 0;
+    sc.scrollLeft = 0;
+    fitAll();
+    const { expect, flags } = contentFlags(screen);
+    const wide = pageWide();
+    const box = textWide();
+    const clear = clearsDock() ? 1 : 0;
+    sc.scrollTop = 0;
+    sc.scrollLeft = 0;
+    if (!clear) flags.push("clear");
+    wide.slice(0, 4).forEach((w) => flags.push("wide:" + w));
+    box.slice(0, 4).forEach((w) => flags.push("box:" + w));
+    const labels = [...document.querySelectorAll("#themes button")].map((b) => b.textContent.trim()).join("/");
+    const dockWords = [...document.querySelectorAll("#dock button")].map((b) => b.textContent.trim()).join("/");
+    const themesOk = labels === "Aero/Y2K/Winamp" ? 1 : 0;
+    const dockOk = dockWords === "Track/Sync/Look/Time/Render" ? 1 : 0;
+    if (!themesOk) flags.push("themes");
+    if (!dockOk) flags.push("dock");
+    const pad = parseFloat(getComputedStyle(document.querySelector(".app")).paddingTop) || 0;
+    const inset = pad >= 40 ? 1 : 0;
+    if (!inset) flags.push("inset");
+    const themeName = document.documentElement.dataset.theme || "aero";
+    const zoom = parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100;
+    const parts = [
+      screen, themeName, flags.length ? "fail" : "ok",
+      "zoom=" + zoom,
+      "title=" + expect.title,
+      "wave=" + expect.wave,
+      "start=" + expect.start,
+      "play=" + expect.play,
+      "lyrics=" + expect.lyrics,
+      "syncbtn=" + expect.syncbtn,
+      "stage=" + expect.stage,
+      "looks=" + expect.looks,
+      "palettes=" + expect.palettes,
+      "anims=" + expect.anims,
+      "timeline=" + expect.timeline,
+      "zooms=" + expect.zooms,
+      "quality=" + expect.quality,
+      "fx=" + expect.fx,
+      "renderbtn=" + expect.renderbtn,
+      "clear=" + clear,
+      "fit=" + (box.length ? 0 : 1),
+      "overflow=" + wide.length,
+      "box=" + box.length,
+      "inset=" + inset,
+      "themes=" + themesOk,
+      "dock=" + dockOk
+    ];
+    if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
+    return parts.join(" ");
   }
   function resolved() {
     const lk = P.looks[state.look] || P.looks.noir;
@@ -453,11 +702,32 @@
     if (demo) demoFill();
     paintLooks(); paintAnims(); paintPalettes(); paintZooms(); paintFx(); paintQuality(); paintTimeline();
     syncColors();
+    try { await document.fonts.ready; } catch (e) {}
+    window.__audits = [];
+    async function publish(screen) {
+      await settle();
+      fitAll();
+      const msg = measure(screen);
+      window.__audits.push(msg);
+      document.documentElement.dataset.audit = msg;
+      if (window.Luciel && Luciel.ready) Luciel.ready(msg);
+    }
+    if (demo === "audit") {
+      for (const th of ["aero", "y2k", "winamp"]) {
+        theme(th);
+        for (const sc of ["track", "sync", "look", "time", "render"]) {
+          show(sc);
+          if (sc === "look" || sc === "time" || sc === "render") draw(1.35);
+          await publish(sc);
+        }
+      }
+      return;
+    }
     theme(document.documentElement.dataset.theme || "aero");
     const screen = ["track", "sync", "look", "time", "render"].includes(demo) ? demo : "track";
     show(screen);
     if (screen === "look" || screen === "time" || screen === "render") draw(1.35);
-    if (window.Luciel && Luciel.ready) Luciel.ready(screen);
+    await publish(screen);
     if (window.Luciel && Luciel.info) {
       try {
         const info = JSON.parse(Luciel.info());

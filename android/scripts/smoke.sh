@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install the release APK on a booted emulator and capture the five main screens.
+# Install the release APK, assert every screen/theme has real content and no
+# overflow at font scale 1.3, then capture the phone screenshots.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -13,18 +14,100 @@ adb wait-for-device
 adb install -r -d "${APK}"
 adb shell wm size 1080x2400 || true
 adb shell wm density 440 || true
+adb shell settings put system font_scale 1.3 || true
 
 mkdir -p docs/screenshots
 fail=0
 last_hash=""
+
+check_line() {
+  local line="$1" screen="$2" theme="$3"
+  python3 - "$line" "$screen" "$theme" <<'PY'
+import sys
+line, screen, theme = sys.argv[1:]
+if f"{screen} {theme} ok" not in line:
+    raise SystemExit("audit not ok: " + line.strip())
+need = {
+    "track": ["title=1", "wave=1", "start=1", "play=1"],
+    "sync": ["title=1", "lyrics=1", "syncbtn=1"],
+    "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15"],
+    "time": ["title=1", "timeline=1", "zooms=5"],
+    "render": ["title=1", "quality=4", "fx=7", "renderbtn=1"],
+}[screen]
+need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1"]
+have = set(line.split())
+missing = [tok for tok in need if tok not in have]
+if missing:
+    raise SystemExit("missing " + ",".join(missing) + " in " + line.strip())
+print("content ok", screen, theme)
+PY
+}
+
+audit_matrix() {
+  adb logcat -c || true
+  adb shell am force-stop app.luciel.lyric || true
+  adb shell am start -n app.luciel.lyric/.MainActivity --es demo audit --es theme aero --es textZoom 130
+  local dump="" rc=0
+  for _ in $(seq 1 120); do
+    dump=$(adb logcat -d -s LucielReady:I || true)
+    if printf '%s\n' "$dump" | grep -F "error:" >/dev/null; then
+      echo "page error during layout audit"
+      printf '%s\n' "$dump" | tail -40
+      fail=1
+      return
+    fi
+    printf '%s\n' "$dump" > /tmp/luciel-ready.txt
+    set +e
+    python3 - /tmp/luciel-ready.txt <<'PY'
+import pathlib, sys
+text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+screens = ("track", "sync", "look", "time", "render")
+themes = ("aero", "y2k", "winamp")
+found = {}
+for line in text.splitlines():
+    parts = line.split()
+    for i in range(len(parts) - 2):
+        if parts[i] in screens and parts[i + 1] in themes and parts[i + 2] in ("ok", "fail"):
+            found[(parts[i], parts[i + 1])] = " ".join(parts[i:])
+need = [(s, t) for t in themes for s in screens]
+if len(found) < len(need):
+    raise SystemExit(2)
+bad = []
+for key in need:
+    msg = found[key]
+    print(msg)
+    if msg.split()[2] != "ok":
+        bad.append("/".join(key))
+if bad:
+    raise SystemExit("matrix failures " + " ".join(bad))
+print("matrix", len(found))
+PY
+    rc=$?
+    set -e
+    if [ "${rc}" -eq 0 ]; then
+      return
+    fi
+    if [ "${rc}" -ne 2 ]; then
+      echo "layout audit failed"
+      fail=1
+      return
+    fi
+    sleep 1
+  done
+  echo "timed out waiting for the 15 screen/theme audits"
+  printf '%s\n' "$dump" | tail -80
+  fail=1
+}
+
 capture() {
   local demo="$1" theme="$2" file="$3"
   adb logcat -c || true
   adb shell am force-stop app.luciel.lyric || true
-  adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}"
+  adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}" --es textZoom 130
   ok=0
   err=0
-  for _ in $(seq 1 60); do
+  ready=""
+  for _ in $(seq 1 90); do
     if adb logcat -d -s LucielReady:I | grep -F "error:" >/dev/null; then
       echo "page error on ${demo}"
       adb logcat -d -s LucielReady:I | tail -40
@@ -39,24 +122,29 @@ capture() {
       err=1
       break
     fi
-    if adb logcat -d -s LucielReady:I | grep -F "${demo}" >/dev/null; then
+    ready=$(adb logcat -d -s LucielReady:I | grep -F "${demo} ${theme} " | tail -1 || true)
+    if [ -n "${ready}" ]; then
       ok=1
       break
     fi
     sleep 1
   done
   if [ "${ok}" != 1 ] && [ "${err}" != 1 ]; then
-    echo "timed out waiting for ${demo}"
+    echo "timed out waiting for ${demo} ${theme}"
     adb logcat -d | tail -120
     fail=1
   fi
+  if [ -n "${ready}" ]; then
+    echo "${ready}"
+    if ! check_line "${ready}" "${demo}" "${theme}"; then
+      echo "content assertion failed for ${file}"
+      fail=1
+    fi
+  fi
   out="docs/screenshots/${file}"
-  # SwiftShader sometimes hands screencap a blank WebView frame. Keep the first
-  # shot whose page area is not one flat colour.
   blank=1
   for _try in 1 2 3 4 5 6; do
     sleep 2
-    # exec-out screencap sometimes returns the previous frame unchanged.
     adb shell screencap -p /sdcard/luciel-shot.png >/dev/null || true
     adb pull /sdcard/luciel-shot.png "${out}" >/dev/null || true
     hash=$(sha256sum "${out}" | awk '{print $1}')
@@ -122,17 +210,22 @@ for y in range(h):
         raise SystemExit(f"bad filter {f}")
     prev = row
     rows.append(row)
-lums = []
-for y in range(int(h * 0.12), int(h * 0.88), 12):
+
+def span(y):
+    cols = set()
     row = rows[y]
-    for x in range(0, w, 12):
+    for x in range(0, w, 3):
         o = x * n
-        lums.append(0.3 * row[o] + 0.59 * row[o + 1] + 0.11 * row[o + 2])
-mean = sum(lums) / len(lums)
-var = sum((v - mean) ** 2 for v in lums) / len(lums)
-if var < 40:
-    raise SystemExit(f"blank frame var={var:.1f}")
-print(p, len(b), f"var={var:.0f}")
+        cols.add((row[o] // 8, row[o + 1] // 8, row[o + 2] // 8))
+    return len(cols)
+
+busy = 0
+for y in range(int(h * 0.20), int(h * 0.78)):
+    if span(y) > 8:
+        busy += 1
+print(p, len(b), f"busy={busy}")
+if busy < 40:
+    raise SystemExit(f"empty screen busy={busy}")
 PY
     then
       blank=0
@@ -147,6 +240,7 @@ PY
   fi
 }
 
+audit_matrix
 capture track aero android-track.png
 capture sync aero android-sync.png
 capture look aero android-look.png

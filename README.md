@@ -110,7 +110,7 @@ The Android build is a WebView shell around the same lyric engine (`static/engin
 
 On the phone, whisper.cpp transcribes the section you picked and the page aligns pasted lyrics the same way as the desktop aligner. Rendering is MediaCodec H.264 + AAC, including black and green backgrounds. Phone Max is 1080p30. Demucs vocal isolation is not in the APK: a phone build of htdemucs is hundreds of megabytes and too slow, so sync uses the full mix. The English `ggml-tiny.en` model (~75 MB) is downloaded on first Sync into app storage and is not inside the APK. After that download, picking a song, syncing, and rendering do not need a network.
 
-`minSdk` is 26. The release APK contains `arm64-v8a` (phones) and `x86_64` (the CI emulator). CI signs with `LUCIEL_KEYSTORE_B64` when that secret is set, using `LUCIEL_KEY_ALIAS`, `LUCIEL_KEYSTORE_PASSWORD`, and `LUCIEL_KEY_PASSWORD`. The 1.3.0 key was created inside that CI job and never stored, so nothing can install over the 1.3.0 APK. Those secrets are not on the repo yet, so each job still mints a new key and a later APK will not replace the previous one until you uninstall.
+`minSdk` is 26. The release APK contains `arm64-v8a` (phones) and `x86_64` (the CI emulator). CI signs with `LUCIEL_KEYSTORE_B64` when that secret is set, using `LUCIEL_KEY_ALIAS`, `LUCIEL_KEYSTORE_PASSWORD`, and `LUCIEL_KEY_PASSWORD`. The 1.3.0 and 1.3.1 keys were created inside CI and never stored, so nothing can install over those APKs. Those secrets are not on the repo yet, so each job still mints a new key and a later APK will not replace 1.3.0, 1.3.1, or the previous build until you uninstall.
 
 ## Using it
 

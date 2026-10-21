@@ -6,11 +6,17 @@
 <title>Luciel Lyric</title>
 <script>
 try {
-  var q = new URLSearchParams(location.search).get("theme");
+  var params0 = new URLSearchParams(location.search);
+  var q = params0.get("theme");
   var saved = localStorage.getItem("lc-theme");
   var t = (q === "aero" || q === "y2k" || q === "winamp") ? q : (saved || "aero");
   document.documentElement.dataset.theme = t;
   if (q === "aero" || q === "y2k" || q === "winamp") localStorage.setItem("lc-theme", q);
+  var tz = params0.get("textZoom");
+  if (tz) document.documentElement.dataset.textZoom = String(parseInt(tz, 10) || 100);
+  if (tz && params0.get("chromeZoom") === "1") {
+    document.documentElement.style.setProperty("--tz", String((parseInt(tz, 10) || 100) / 100));
+  }
 } catch (e) {
   document.documentElement.dataset.theme = "aero";
 }
@@ -24,15 +30,17 @@ try {
 </div>
 <div class="app">
   <header class="top">
-    <img id="mascot" class="mascot" alt="" src="mascot/idle.png">
-    <div>
-      <div class="brand">Luciel Lyric</div>
-      <div class="tag" id="tagline">15–30s lyric videos</div>
+    <div class="brandrow">
+      <img id="mascot" class="mascot" alt="" src="mascot/idle.png">
+      <div class="brandblock">
+        <div class="brand">Luciel Lyric</div>
+        <div class="tag" id="tagline">15–30s lyric videos</div>
+      </div>
     </div>
     <div class="themes" id="themes" role="radiogroup" aria-label="Theme">
       <button type="button" data-theme="aero" aria-label="Frutiger Aero">Aero</button>
       <button type="button" data-theme="y2k" aria-label="Muted cyber">Y2K</button>
-      <button type="button" data-theme="winamp" aria-label="Winamp">Amp</button>
+      <button type="button" data-theme="winamp" aria-label="Winamp">Winamp</button>
     </div>
   </header>
 
@@ -97,14 +105,14 @@ try {
           </div>
         </div>
       </div>
-      <details class="group" open>
-        <summary>Looks</summary>
+      <section class="group">
+        <h2 class="sum">Looks</h2>
         <div class="body">
           <div class="lookwrap"><div class="lookgrid" id="looks"></div></div>
         </div>
-      </details>
-      <details class="group" open>
-        <summary>Colours</summary>
+      </section>
+      <section class="group">
+        <h2 class="sum">Colours</h2>
         <div class="body">
           <div class="colors">
             <label>Lyric <input id="cLyric" type="color" value="#ffffff" aria-label="Lyric colour"></label>
@@ -112,19 +120,19 @@ try {
             <label>Artist <input id="cArtist" type="color" value="#ffffff" aria-label="Artist colour"></label>
           </div>
         </div>
-      </details>
-      <details class="group" open>
-        <summary>Palettes</summary>
+      </section>
+      <section class="group">
+        <h2 class="sum">Palettes</h2>
         <div class="body">
           <div class="scroller"><div class="hscroll" id="palettes"></div></div>
         </div>
-      </details>
-      <details class="group" open>
-        <summary>Animation</summary>
+      </section>
+      <section class="group">
+        <h2 class="sum">Animation</h2>
         <div class="body">
           <div class="scroller"><div class="hscroll" id="anims"></div></div>
         </div>
-      </details>
+      </section>
     </section>
 
     <section class="screen" id="screen-time" data-screen="time">
