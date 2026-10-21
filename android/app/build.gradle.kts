@@ -47,8 +47,8 @@ android {
         applicationId = "app.luciel.lyric"
         minSdk = 26
         targetSdk = 35
-        versionCode = 132
-        versionName = "1.3.2"
+        versionCode = 133
+        versionName = "1.3.3"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }

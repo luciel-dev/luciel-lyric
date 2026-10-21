@@ -4,7 +4,9 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <cmath>
 #include "whisper.h"
+#include "word_merge.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "lucielwhisper", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "lucielwhisper", __VA_ARGS__)
@@ -54,7 +56,7 @@ Java_app_luciel_lyric_WhisperEngine_nativeFree(JNIEnv *, jobject, jlong handle) 
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_app_luciel_lyric_WhisperEngine_nativeTranscribe(JNIEnv *env, jobject, jlong handle, jfloatArray pcm, jint threads) {
-    if (!handle) return to_jstring(env, "[]");
+    if (!handle) return to_jstring(env, "");
     auto *ctx = reinterpret_cast<whisper_context *>(handle);
     jsize n = env->GetArrayLength(pcm);
     std::vector<float> samples(static_cast<size_t>(n));
@@ -71,33 +73,62 @@ Java_app_luciel_lyric_WhisperEngine_nativeTranscribe(JNIEnv *env, jobject, jlong
     params.language = "en";
     params.n_threads = threads > 0 ? threads : 2;
     params.suppress_blank = true;
+    // Token t0/t1 stay 0 unless this is on. Segment times are the fallback.
+    params.token_timestamps = true;
 
     if (whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size())) != 0) {
         LOGE("whisper_full failed");
-        return to_jstring(env, "[]");
+        return to_jstring(env, "");
+    }
+
+    const whisper_token eot = whisper_token_eot(ctx);
+    std::vector<MergedWord> words;
+    const int nseg = whisper_full_n_segments(ctx);
+    for (int i = 0; i < nseg; ++i) {
+        const double seg0 = whisper_full_get_segment_t0(ctx, i) / 100.0;
+        const double seg1 = whisper_full_get_segment_t1(ctx, i) / 100.0;
+        std::vector<RawTok> toks;
+        const int nt = whisper_full_n_tokens(ctx, i);
+        for (int j = 0; j < nt; ++j) {
+            const whisper_token id = whisper_full_get_token_id(ctx, i, j);
+            if (id >= eot) continue;
+            const char *raw = whisper_full_get_token_text(ctx, i, j);
+            if (!raw || !raw[0]) continue;
+            whisper_token_data data = whisper_full_get_token_data(ctx, i, j);
+            double t0 = data.t0 > 0 ? data.t0 / 100.0 : 0;
+            double t1 = data.t1 > 0 ? data.t1 / 100.0 : t0;
+            if (t1 < t0) t1 = t0;
+            toks.push_back({std::string(raw), t0, t1});
+        }
+        auto segWords = merge_tokens(toks);
+        if (segWords.empty()) continue;
+        if (!times_varied(segWords)) assign_span(segWords, seg0, std::max(seg1, seg0));
+        words.insert(words.end(), segWords.begin(), segWords.end());
+    }
+
+    double maxEnd = 0;
+    for (const auto &w : words) maxEnd = std::max(maxEnd, w.end);
+    const double audioLen = static_cast<double>(samples.size()) / 16000.0;
+    if (words.empty() || (maxEnd < 0.25 && audioLen > 1.0)) {
+        LOGE("no word timings (words=%d maxEnd=%.3f audio=%.2f)", static_cast<int>(words.size()), maxEnd, audioLen);
+        return to_jstring(env, "");
+    }
+
+    double prevEnd = 0;
+    for (auto &w : words) {
+        if (w.start < prevEnd) w.start = prevEnd;
+        if (w.end < w.start + 0.02) w.end = w.start + 0.02;
+        prevEnd = w.end;
     }
 
     std::ostringstream json;
     json << std::fixed << std::setprecision(3);
     json << "[";
-    bool first = true;
-    const int nseg = whisper_full_n_segments(ctx);
-    for (int i = 0; i < nseg; ++i) {
-        const int nt = whisper_full_n_tokens(ctx, i);
-        for (int j = 0; j < nt; ++j) {
-            const char *raw = whisper_full_get_token_text(ctx, i, j);
-            if (!raw || !raw[0]) continue;
-            std::string text = raw;
-            while (!text.empty() && (text[0] == ' ' || text[0] == '\n')) text.erase(text.begin());
-            if (text.empty() || text[0] == '[' || text[0] == '<') continue;
-            whisper_token_data data = whisper_full_get_token_data(ctx, i, j);
-            double t0 = data.t0 / 100.0;
-            double t1 = data.t1 / 100.0;
-            if (t1 < t0) t1 = t0 + 0.05;
-            if (!first) json << ",";
-            first = false;
-            json << "{\"text\":\"" << json_escape(text.c_str()) << "\",\"start\":" << t0 << ",\"end\":" << t1 << "}";
-        }
+    for (size_t i = 0; i < words.size(); ++i) {
+        if (i) json << ",";
+        json << "{\"text\":\"" << json_escape(words[i].text.c_str())
+             << "\",\"start\":" << words[i].start
+             << ",\"end\":" << words[i].end << "}";
     }
     json << "]";
     return to_jstring(env, json.str());

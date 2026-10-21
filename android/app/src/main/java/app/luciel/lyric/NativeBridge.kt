@@ -21,7 +21,7 @@ class NativeBridge(private val activity: MainActivity) {
     fun info(): String {
         val model = ModelStore.ready(activity)
         return JSONObject()
-            .put("version", "1.3.2")
+            .put("version", "1.3.3")
             .put("model", model)
             .put("whisper", whisper.available)
             .put("demucs", false)
@@ -67,7 +67,10 @@ class NativeBridge(private val activity: MainActivity) {
                 whisper.ensure(ModelStore.file(activity))
                 val pcm = AudioKit.clip16k(tr, start, length)
                 val words = whisper.transcribe(pcm)
-                emit("sync", JSONObject().put("phase", "words").put("words", org.json.JSONArray(words)))
+                if (words.isBlank()) error("sync didn't return word timings")
+                val arr = org.json.JSONArray(words)
+                if (arr.length() == 0) error("nothing was heard in this section")
+                emit("sync", JSONObject().put("phase", "words").put("words", arr))
             } catch (e: Exception) {
                 emit("sync", JSONObject().put("phase", "error").put("error", e.message ?: "sync failed"))
             }

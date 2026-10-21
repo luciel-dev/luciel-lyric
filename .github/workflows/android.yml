@@ -81,9 +81,21 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Lyric timing checks
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++
+          g++ -std=c++17 -I android/app/src/main/cpp android/scripts/merge_test.cpp -o /tmp/luciel-merge-test
+          /tmp/luciel-merge-test fixture
+          node android/scripts/lyricsync-test.mjs
+
       - name: Assemble release APK
         working-directory: android
         run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Whisper word times on a real clip
+        run: bash android/scripts/whisper-words.sh
 
       - name: Publish a stable APK name
         run: |
@@ -156,10 +168,18 @@ jobs:
         with:
           name: LucielLyric-android
           path: out
-      - run: ls -la out
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: android-screenshots
+          path: shots
+      - run: |
+          ls -la out
+          if compgen -G "shots/*.png" > /dev/null; then cp shots/*.png out/; fi
+          ls -la out
       - uses: softprops/action-gh-release@v2
         with:
-          files: out/*.apk
+          files: out/*
           draft: false
           prerelease: false
           body: |

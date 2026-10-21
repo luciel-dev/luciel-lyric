@@ -29,7 +29,8 @@ if f"{screen} {theme} ok" not in line:
     raise SystemExit("audit not ok: " + line.strip())
 need = {
     "track": ["title=1", "wave=1", "start=1", "play=1"],
-    "sync": ["title=1", "lyrics=1", "syncbtn=1"],
+    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1"],
+    "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1"],
     "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15"],
     "time": ["title=1", "timeline=1", "zooms=5"],
     "render": ["title=1", "quality=4", "fx=7", "renderbtn=1"],
@@ -48,7 +49,7 @@ audit_matrix() {
   adb shell am force-stop app.luciel.lyric || true
   adb shell am start -n app.luciel.lyric/.MainActivity --es demo audit --es theme aero --es textZoom 130
   local dump="" rc=0
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 180); do
     dump=$(adb logcat -d -s LucielReady:I || true)
     if printf '%s\n' "$dump" | grep -F "error:" >/dev/null; then
       echo "page error during layout audit"
@@ -242,7 +243,9 @@ PY
 
 audit_matrix
 capture track aero android-track.png
-capture sync aero android-sync.png
+capture syncshot aero android-sync.png
+capture syncshot y2k android-sync-y2k.png
+capture syncshot winamp android-sync-winamp.png
 capture look aero android-look.png
 capture time aero android-time.png
 capture render aero android-render.png

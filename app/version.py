@@ -1,4 +1,4 @@
 """Single source of the app version (used by the desktop build, installer and /api/status)."""
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 APP_NAME = "Luciel Lyric"
 APP_ID = "app.luciel.lyric"
