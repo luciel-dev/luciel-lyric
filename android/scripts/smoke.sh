@@ -29,13 +29,13 @@ if f"{screen} {theme} ok" not in line:
     raise SystemExit("audit not ok: " + line.strip())
 need = {
     "track": ["title=1", "wave=1", "start=1", "play=1"],
-    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1"],
-    "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1"],
+    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1"],
+    "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1"],
     "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15"],
     "time": ["title=1", "timeline=1", "zooms=5"],
     "render": ["title=1", "quality=4", "fx=7", "renderbtn=1"],
 }[screen]
-need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1"]
+need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1"]
 have = set(line.split())
 missing = [tok for tok in need if tok not in have]
 if missing:

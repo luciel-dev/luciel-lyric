@@ -85,7 +85,7 @@ try {
       <button class="pill big primary" id="syncBtn" type="button">Sync lyrics</button>
       <p class="hint" id="syncStatus">Vocal isolation is desktop-only. The phone syncs the full mix.</p>
       <div class="card">
-        <h2>Lines</h2>
+        <h2 id="linesHead">Lines</h2>
         <ol id="lineList" class="lines"></ol>
       </div>
     </section>
@@ -190,11 +190,11 @@ try {
   </main>
 
   <nav class="dock" id="dock">
-    <button type="button" data-screen="track">Track</button>
-    <button type="button" data-screen="sync">Sync</button>
-    <button type="button" data-screen="look">Look</button>
-    <button type="button" data-screen="time">Time</button>
-    <button type="button" data-screen="render">Render</button>
+    <button type="button" data-screen="track"><span class="docklabel">Track</span></button>
+    <button type="button" data-screen="sync"><span class="docklabel">Sync</span></button>
+    <button type="button" data-screen="look"><span class="docklabel">Look</span></button>
+    <button type="button" data-screen="time"><span class="docklabel">Time</span></button>
+    <button type="button" data-screen="render"><span class="docklabel">Render</span></button>
   </nav>
 </div>
 <audio id="audio" preload="auto"></audio>

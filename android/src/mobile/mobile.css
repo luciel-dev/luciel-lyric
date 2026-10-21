@@ -97,7 +97,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 html { overflow-x: auto; }
-html { max-width: 100%; overflow-x: hidden; }
+html { max-width: 100%; overflow-x: hidden; scroll-padding-top: calc(var(--sys-top) + 12px); }
 body {
   --fs: 16;
   font-family: var(--font);
@@ -259,7 +259,7 @@ main {
   font-family: var(--head);
   font-weight: 700;
 }
-.card h2 { --fs: 16; margin: 0; }
+.card h2 { --fs: 16; margin: 0; scroll-margin-top: calc(var(--sys-top) + 12px); }
 
 textarea, input[type="text"], .row2 input {
   --fs: 16;
@@ -428,20 +428,23 @@ canvas#tl { height: 72px; }
 .lines, .keys { margin: 0; padding-left: 28px; }
 .lines li, .keys li { margin: 8px 0 0; max-width: 100%; overflow-wrap: anywhere; }
 .lineedit {
+  --fs: 14;
   display: block;
   width: 100%;
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: 36px;
   margin: 0;
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   background: var(--field);
   border: 1px solid var(--line-strong);
   color: var(--ink);
+  font-weight: 500;
+  font-size: calc(var(--fs) * 1px * var(--tz) * var(--fit, 1));
   white-space: normal;
   overflow-wrap: break-word;
-  word-break: break-word;
-  line-height: 1.35;
+  word-break: normal;
+  line-height: 1.25;
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
@@ -489,14 +492,30 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
 .dock button {
   flex: 1 1 0;
   min-width: 0;
+  height: 44px;
+  min-height: 44px;
   margin: 0 2px;
-  padding: 4px 0;
+  padding: 4px 6px;
   --fs: 12;
-  line-height: 1.05;
+  line-height: 1;
+  border-radius: 14px;
   white-space: nowrap;
   letter-spacing: 0;
   text-overflow: clip;
-  overflow: visible;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.docklabel {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 1;
+  font-size: inherit;
+  pointer-events: none;
 }
 
 button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible {
@@ -699,7 +718,18 @@ html[data-theme="y2k"] .themes button[data-theme="y2k"],
 [data-theme="winamp"] .hscroll button,
 [data-theme="winamp"] .lookgrid button { --fs: 10; }
 [data-theme="winamp"] .themes button { --fs: 11; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; box-shadow: none; background: transparent; color: #8f94ab; }
-[data-theme="winamp"] .dock button { --fs: 10; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; }
+[data-theme="winamp"] .dock button { --fs: 8; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; border-radius: 2px; }
+[data-theme="winamp"] .lineedit {
+  font-family: "VT323", monospace;
+  --fs: 16;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  background: #000;
+  color: #00e000;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #4a4e63;
+}
 [data-theme="winamp"] textarea,
 [data-theme="winamp"] input[type="text"] {
   font-family: "VT323", monospace;

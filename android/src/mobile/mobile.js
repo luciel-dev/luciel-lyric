@@ -35,6 +35,7 @@
   let samples = null;
   let sampleMode = "clip";
   let mascotTimer = 0;
+  let leadWhy = "";
   const params = new URLSearchParams(location.search);
   const demo = params.get("demo");
 
@@ -82,17 +83,17 @@
   }
   function fitAll() {
     const sel = [
-      ".brand", ".tag", ".themes button", ".dock button",
+      ".brand", ".tag", ".themes button",
       ".screen.on h1", ".screen.on h2", ".screen.on .sum",
       ".screen.on .lcd", ".screen.on .hint", ".screen.on .lead",
       ".screen.on button", ".screen.on small", ".screen.on .fx span",
       ".screen.on .colors label"
     ].join(", ");
     document.querySelectorAll(sel).forEach((el) => {
-      if (el.clientWidth < 2) return;
+      if (el.closest("#dock") || el.clientWidth < 2) return;
       el.style.letterSpacing = "";
       el.style.setProperty("--fit", "1");
-      const floor = el.matches(".dock button, .themes button, .brand, .tag") ? 0.4 : 0.55;
+      const floor = el.matches(".themes button, .brand, .tag") ? 0.4 : 0.55;
       let fit = 1;
       let guard = 0;
       while (guard++ < 16 && fit > floor && overflowsX(el)) {
@@ -101,6 +102,143 @@
         el.style.setProperty("--fit", String(fit));
       }
     });
+    fitDock();
+    fitLines();
+  }
+  function contentBox(el) {
+    const rect = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return {
+      left: rect.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0),
+      right: rect.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0),
+      top: rect.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0),
+      bottom: rect.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0),
+    };
+  }
+  function textBounds(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0.5 && r.height > 0.5);
+    if (!rects.length) return null;
+    let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+    rects.forEach((r) => {
+      left = Math.min(left, r.left);
+      right = Math.max(right, r.right);
+      top = Math.min(top, r.top);
+      bottom = Math.max(bottom, r.bottom);
+    });
+    return { left, right, top, bottom, lines: rects.length };
+  }
+  function curveClips(btn, text) {
+    const rect = btn.getBoundingClientRect();
+    const cs = getComputedStyle(btn);
+    const radii = [
+      parseFloat(cs.borderTopLeftRadius) || 0,
+      parseFloat(cs.borderTopRightRadius) || 0,
+      parseFloat(cs.borderBottomRightRadius) || 0,
+      parseFloat(cs.borderBottomLeftRadius) || 0,
+    ];
+    const centers = [
+      [rect.left + radii[0], rect.top + radii[0]],
+      [rect.right - radii[1], rect.top + radii[1]],
+      [rect.right - radii[2], rect.bottom - radii[2]],
+      [rect.left + radii[3], rect.bottom - radii[3]],
+    ];
+    const points = [
+      [text.left, text.top],
+      [text.right, text.top],
+      [text.right, text.bottom],
+      [text.left, text.bottom],
+    ];
+    for (let i = 0; i < 4; i++) {
+      const radius = radii[i];
+      if (radius < 1) continue;
+      const dx = points[i][0] - centers[i][0];
+      const dy = points[i][1] - centers[i][1];
+      const outsideX = (i === 0 || i === 3) ? dx < -0.4 : dx > 0.4;
+      const outsideY = i < 2 ? dy < -0.4 : dy > 0.4;
+      if (outsideX && outsideY && dx * dx + dy * dy > radius * radius) return true;
+    }
+    return false;
+  }
+  function labelOverflow(btn) {
+    const label = btn.querySelector(".docklabel") || btn;
+    if (btn.clientWidth < 2) return false;
+    const scrollBad = btn.scrollWidth > btn.clientWidth + 1 || label.scrollWidth > label.clientWidth + 1;
+    const text = textBounds(label);
+    if (!text) return scrollBad;
+    const box = contentBox(btn);
+    const outside = text.left < box.left - 0.5 || text.right > box.right + 0.5
+      || text.top < box.top - 0.5 || text.bottom > box.bottom + 0.5;
+    return scrollBad || outside || curveClips(btn, text);
+  }
+  function fitDock() {
+    const buttons = [...document.querySelectorAll("#dock button")];
+    buttons.forEach((b) => {
+      b.style.letterSpacing = "0px";
+      b.style.setProperty("--fit", "1");
+    });
+    let fit = 1;
+    let guard = 0;
+    while (guard++ < 20 && fit > 0.46 && buttons.some(labelOverflow)) {
+      fit = Math.round((fit - 0.03) * 100) / 100;
+      buttons.forEach((b) => b.style.setProperty("--fit", String(fit)));
+    }
+  }
+  function lineEdits() {
+    return [...document.querySelectorAll(".screen.on #lineList .lineedit")].filter((el) => el.clientWidth >= 8);
+  }
+  function lineRows(el) {
+    const text = textBounds(el);
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight);
+    const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const fromBox = lh > 1 ? (el.scrollHeight - pad) / lh : 1;
+    const fromRects = text ? text.lines : 1;
+    return Math.max(fromRects, fromBox);
+  }
+  function fitLines() {
+    const edits = lineEdits();
+    if (!edits.length) return;
+    edits.forEach((el) => el.style.setProperty("--fit", "1"));
+    let fit = 1;
+    let guard = 0;
+    while (guard++ < 16 && fit > 0.62 && edits.some((el) => lineRows(el) > 2.05)) {
+      fit = Math.round((fit - 0.04) * 100) / 100;
+      edits.forEach((el) => el.style.setProperty("--fit", String(fit)));
+    }
+  }
+  function dockFits() {
+    const buttons = [...document.querySelectorAll("#dock button")];
+    if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
+    const sizes = buttons.map((b) => getComputedStyle(b.querySelector(".docklabel") || b).fontSize);
+    return sizes.every((size) => size === sizes[0]);
+  }
+  function placeSyncLines() {
+    const head = document.getElementById("linesHead");
+    const sc = document.scrollingElement || document.documentElement;
+    if (!head) return;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const y = Math.max(0, Math.round(head.getBoundingClientRect().top + sc.scrollTop - sys - 12));
+    sc.scrollTop = y;
+    document.documentElement.scrollTop = y;
+    document.body.scrollTop = y;
+  }
+  function linesHeadOk() {
+    const head = document.getElementById("linesHead");
+    if (!head) return false;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const rect = head.getBoundingClientRect();
+    const dock = document.querySelector(".dock").getBoundingClientRect();
+    if (rect.height < 10 || rect.top < sys - 1 || rect.bottom > dock.top - 1) return false;
+    if (rect.left < -1 || rect.right > window.innerWidth + 1) return false;
+    const hit = document.elementFromPoint(Math.round(rect.left + Math.min(28, rect.width / 2)), Math.round(rect.top + rect.height / 2));
+    if (!hit || hit.id === "safebar" || (hit !== head && !head.contains(hit))) return false;
+    const edited = lineEdits().find((el) => /edited/i.test(el.textContent));
+    if (!edited) return false;
+    const editedRect = edited.getBoundingClientRect();
+    const visible = Math.min(editedRect.bottom, dock.top) - Math.max(editedRect.top, sys);
+    return visible >= 20 && editedRect.left >= -1 && editedRect.right <= window.innerWidth + 1;
   }
   function canvasBusy(cv) {
     if (!cv || cv.width < 2 || cv.height < 2) return false;
@@ -166,14 +304,17 @@
     return bad;
   }
   function textWide() {
-    const sel = ".brand, .tag, .themes button, .dock button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label";
+    const sel = ".brand, .tag, .themes button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label";
     const bad = [];
     document.querySelectorAll(sel).forEach((el) => {
-      if (el.clientWidth < 2) return;
+      if (el.closest("#dock") || el.clientWidth < 2) return;
       const wide = el.scrollWidth > el.clientWidth + 2;
       const single = el.matches("button, .brand, .tag, .lcd, .sum, h1, h2");
       const tall = single && el.scrollHeight > el.clientHeight + 4;
       if (wide || tall) bad.push(describe(el));
+    });
+    document.querySelectorAll("#dock button").forEach((el) => {
+      if (labelOverflow(el)) bad.push(describe(el));
     });
     return bad;
   }
@@ -272,17 +413,25 @@
     sc.scrollTop = 0;
     const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
     const r = lead.getBoundingClientRect();
-    const wrapped = lead.scrollWidth <= lead.clientWidth + 2
-      && r.left >= 4 && r.right <= window.innerWidth - 4
-      && r.top >= sys - 1 && r.height > 8
-      && lead.textContent.indexOf("Paste the lyrics") !== -1;
+    const wide = lead.scrollWidth > lead.clientWidth + 2;
+    const xBad = r.left < 4 || r.right > window.innerWidth - 4;
+    const yBad = r.top < sys - 1 || r.height <= 8;
+    const textBad = lead.textContent.indexOf("Paste the lyrics") === -1;
     const br = bar.getBoundingClientRect();
     const barOk = br.top <= 1 && br.height + 0.5 >= sys && br.left <= 1 && br.right >= window.innerWidth - 1;
     sc.scrollTop = 360;
     const y = Math.max(4, Math.round(Math.min(sys, br.height) / 2));
     const hit = document.elementFromPoint(Math.round(window.innerWidth / 2), y);
     sc.scrollTop = saved;
-    return !!(wrapped && barOk && hit === bar);
+    const why = [];
+    if (wide) why.push("wide");
+    if (xBad) why.push("x" + Math.round(r.left) + "-" + Math.round(r.right));
+    if (yBad) why.push("y" + Math.round(r.top));
+    if (textBad) why.push("text");
+    if (!barOk) why.push("bar" + Math.round(br.height));
+    if (hit !== bar) why.push("hit" + (hit ? describe(hit) : "none"));
+    leadWhy = why.join("/");
+    return why.length === 0;
   }
   function activeWordAt(t) {
     draw(t);
@@ -418,7 +567,7 @@
     let lead = 0, wordsOk = 0, editOk = 0, framesOk = 0, editedOk = 0;
     if (logical === "sync") {
       lead = leadFits() ? 1 : 0;
-      if (!lead) flags.push("lead");
+      if (!lead) flags.push("lead" + (leadWhy ? ":" + leadWhy : ""));
       const problems = screen === "syncshot" ? shotProblems() : proveSync();
       const wordBad = ["times", "align", "line1", "beavers", "space", "split", "silent", "throw"];
       const editBad = ["edit", "keeptime", "shown", "persist", "rewrite", "edited"];
@@ -432,6 +581,20 @@
       if (screen === "syncshot" && !editedOk) flags.push("edited");
       sc.scrollTop = 0;
       sc.scrollLeft = 0;
+    }
+    fitDock();
+    fitLines();
+    const dockFit = dockFits() ? 1 : 0;
+    if (!dockFit) flags.push("dockfit");
+    const edits = lineEdits();
+    const maxRows = edits.reduce((max, el) => Math.max(max, lineRows(el)), 0);
+    const lineOk = edits.every((el) => lineRows(el) <= 2.35) ? 1 : 0;
+    if (!lineOk) flags.push("linerows");
+    let headOk = 1;
+    if (screen === "syncshot") {
+      placeSyncLines();
+      headOk = linesHeadOk() ? 1 : 0;
+      if (!headOk) flags.push("lineshead");
     }
     const themeName = document.documentElement.dataset.theme || "aero";
     const zoom = parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100;
@@ -460,6 +623,10 @@
       "inset=" + inset,
       "themes=" + themesOk,
       "dock=" + dockOk,
+      "dockfit=" + dockFit,
+      "linerows=" + lineOk,
+      "lineshead=" + headOk,
+      "rows=" + maxRows.toFixed(2),
       "lead=" + lead,
       "words=" + wordsOk,
       "edit=" + editOk,
@@ -849,19 +1016,7 @@
       await settle();
       fitAll();
       const msg = measure(screen);
-      if (screen === "syncshot") {
-        const edited = [...document.querySelectorAll("#lineList .lineedit")].find((el) => /edited/i.test(el.textContent));
-        const sc = document.scrollingElement || document.documentElement;
-        if (edited) {
-          const top = edited.getBoundingClientRect().top + sc.scrollTop - window.innerHeight * 0.32;
-          const y = Math.max(0, top);
-          sc.scrollTop = y;
-          document.documentElement.scrollTop = y;
-          document.body.scrollTop = y;
-        }
-        document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
-        await settle();
-      }
+      document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
       window.__audits.push(msg);
       document.documentElement.dataset.audit = msg;
       const log = document.getElementById("auditlog");
