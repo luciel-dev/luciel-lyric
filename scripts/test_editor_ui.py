@@ -81,8 +81,27 @@ def overflow(page):
         const s = getComputedStyle(el);
         if (s.display === 'none' || s.visibility === 'hidden' || s.position === 'fixed') continue;
         if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') continue;
-        if (['CANVAS','VIDEO','INPUT','TEXTAREA','SELECT','IMG'].includes(el.tagName)) continue;
         if (el.clientWidth < 8 || el.clientHeight < 8) continue;
+        if (['CANVAS','VIDEO','INPUT','TEXTAREA','IMG'].includes(el.tagName)) continue;
+        if (el.tagName === 'SELECT') {
+          const opt = el.options[el.selectedIndex];
+          const label = opt ? (opt.textContent || '').trim() : '';
+          if (label) {
+            const probe = document.createElement('span');
+            probe.textContent = label;
+            probe.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;white-space:nowrap;pointer-events:none';
+            probe.style.font = s.font;
+            probe.style.letterSpacing = s.letterSpacing;
+            probe.style.textTransform = s.textTransform;
+            document.body.appendChild(probe);
+            const textW = probe.getBoundingClientRect().width;
+            probe.remove();
+            const pad = parseFloat(s.paddingLeft) + parseFloat(s.paddingRight);
+            const arrow = (s.appearance === 'none' || s.webkitAppearance === 'none') ? 0 : 20;
+            if (textW > el.clientWidth - pad - arrow + 1) bad.push((el.id || 'select') + ' ' + label.slice(0, 48));
+          }
+          continue;
+        }
         const clipped = (s.overflowX === 'hidden' || s.overflow === 'hidden' || s.textOverflow === 'ellipsis')
           && el.scrollWidth > el.clientWidth + 6;
         if (!clipped) continue;
@@ -259,6 +278,26 @@ def main():
           return cut;
         }""")
         assert caught, "overflow check did not catch a clipped LCD title"
+        page.evaluate("""() => {
+          const sel = document.querySelector('#aspectIn');
+          sel.dataset.label = sel.options[sel.selectedIndex].text;
+          sel.options[sel.selectedIndex].text = '9:16 vertical frame that should not fit';
+          sel.style.width = '52px';
+          sel.style.minWidth = '0';
+          sel.style.maxWidth = '52px';
+          sel.style.fieldSizing = 'fixed';
+        }""")
+        page.evaluate("() => LCFlow.show(3)")
+        clipped = overflow(page)
+        assert any('aspectIn' in item for item in clipped), clipped
+        page.evaluate("""() => {
+          const sel = document.querySelector('#aspectIn');
+          sel.options[sel.selectedIndex].text = sel.dataset.label;
+          sel.style.width = '';
+          sel.style.minWidth = '';
+          sel.style.maxWidth = '';
+          sel.style.fieldSizing = '';
+        }""")
         leaks = []
         for step, label in ((1, "step1"), (2, "step2_lock"), (3, "step3_handles"), (4, "step4"), (5, "step5")):
             page.evaluate(f"() => LCFlow.show({step})")
@@ -298,6 +337,27 @@ def main():
                         bad = overflow(page)
                         if bad:
                             leaks.append(f"{label} {theme} {tag}: {bad}")
+                        placed = page.evaluate("""() => {
+                          const bubble = document.querySelector('#mascotBubble');
+                          bubble.textContent = 'Nice frame.';
+                          bubble.classList.add('show');
+                          function hit(a, b) {
+                            if (a.width < 2 || a.height < 2) return false;
+                            return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
+                          }
+                          const stage = document.querySelector('.stagecol').getBoundingClientRect();
+                          const tl = document.querySelector('#videoTl').getBoundingClientRect();
+                          const nodes = ['#mascot', '#mascotBubble'].map(sel => document.querySelector(sel).getBoundingClientRect());
+                          const btn = document.querySelector('#overlayList [data-del]');
+                          const ref = document.querySelector('#sideToggle');
+                          const ba = btn ? getComputedStyle(btn) : null;
+                          const br = ref ? getComputedStyle(ref) : null;
+                          return {
+                            clear: nodes.every(r => !hit(r, stage) && !hit(r, tl)),
+                            themed: !!(btn && btn.classList.contains('btn') && ba && br && ba.backgroundColor === br.backgroundColor && ba.color === br.color),
+                          };
+                        }""")
+                        assert placed["clear"] and placed["themed"], (theme, tag, placed)
                         if tag != "1366768":
                             page.screenshot(path=str(SHOTS / f"video_{theme}_{tag}.png"))
                     bar = page.locator("#tlSplitBar").bounding_box()

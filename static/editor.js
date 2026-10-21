@@ -846,7 +846,7 @@
   function paintOverlays() {
     const box = $('#overlayList');
     if (!box) return;
-    box.innerHTML = E.overlays.length ? E.overlays.map((o, i) => `<div class="row"><input data-i="${i}" value="${esc(o.text)}" title="Extra text on its own track"><button type="button" data-del="${i}" title="Remove this text">Remove</button></div>`).join('') : '<p class="muted">No extra text yet.</p>';
+    box.innerHTML = E.overlays.length ? E.overlays.map((o, i) => `<div class="row"><input data-i="${i}" value="${esc(o.text)}" title="Extra text on its own track"><button type="button" class="btn ghost small" data-del="${i}" title="Remove this text">Remove</button></div>`).join('') : '<p class="muted">No extra text yet.</p>';
     box.querySelectorAll('input').forEach(inp => inp.oninput = () => { E.overlays[+inp.dataset.i].text = inp.value; refresh(); window.LCHist && LCHist.touch(); });
     box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { E.overlays.splice(+b.dataset.del, 1); paintOverlays(); refresh(); });
   }
