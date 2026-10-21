@@ -326,7 +326,7 @@
     if (!cv || cv.width < 2 || cv.height < 2) return false;
     const rect = cv.getBoundingClientRect();
     if (rect.width < 16 || rect.height < 16) return false;
-    let min = 1e9, max = 0;
+    let min = 1e9, max = 0, n = 0;
     try {
       const ctx = cv.getContext("2d");
       const spots = [[2, 2], [cv.width * 0.5, cv.height * 0.35], [cv.width * 0.5, cv.height * 0.7]];
@@ -340,10 +340,13 @@
           const l = data[i] + data[i + 1] + data[i + 2];
           if (l < min) min = l;
           if (l > max) max = l;
+          n++;
         }
       });
     } catch (e) { return false; }
-    return max - min > 18;
+    // A gradient has range. A flat video frame (the red/blue test clip) does not,
+    // but it is still painted. An empty canvas stays near black and fails both.
+    return max - min > 18 || (n > 0 && min > 24 && max > 48);
   }
   function inView(el, minH, full) {
     if (!el) return false;
@@ -461,13 +464,15 @@
         gridOk = inView(grid, 24, false);
       }
       const bitmaps = canvases.length === 13 && canvases.every((cv) => cv.width >= 80 && cv.height >= 80);
-      expect.stage = canvasBusy(stage) && inView(stage, 24) ? 1 : 0;
+      const stageBusy = canvasBusy(stage);
+      const stageSeen = inView(stage, 24);
+      expect.stage = stageBusy && stageSeen ? 1 : 0;
       expect.looks = bitmaps && firstOk && lastOk && gridOk ? 13 : 0;
       const pals = document.querySelectorAll("#palettes button");
       const anims = document.querySelectorAll("#anims button");
       expect.palettes = pals.length === 12 && inView($("#palettes"), 20) ? 12 : pals.length;
       expect.anims = anims.length === 15 && inView($("#anims"), 20) ? 15 : anims.length;
-      if (!expect.stage) flags.push("stage");
+      if (!expect.stage) flags.push(stageBusy ? "stageview" : stageSeen ? "stagepx" : "stage");
       if (expect.looks !== 13) flags.push("looks" + [bitmaps ? 1 : 0, firstOk ? 1 : 0, lastOk ? 1 : 0, gridOk ? 1 : 0, canvases.length].join(""));
       if (expect.palettes !== 12) flags.push("palettes");
       if (expect.anims !== 15) flags.push("anims");
