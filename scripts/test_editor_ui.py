@@ -104,7 +104,7 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
-        page.add_init_script("localStorage.setItem('lc-tour-skip','1'); localStorage.removeItem('lc-draft');")
+        page.add_init_script("localStorage.setItem('lc-tour-skip','1'); localStorage.removeItem('lc-draft'); localStorage.removeItem('lc-tl-frac'); localStorage.removeItem('lc-side-shut');")
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.on("dialog", lambda d: d.accept())
         page.goto("http://127.0.0.1:8765/", wait_until="networkidle")
@@ -271,7 +271,51 @@ def main():
                     leaks.append(f"{label} {theme}: {bad}")
                 shot(page, f"{label}_{theme}")
                 if step == 3:
-                    page.locator("#dock").screenshot(path=str(SHOTS / f"resize_handles_{theme}.png"))
+                    page.locator(".stagecol").screenshot(path=str(SHOTS / f"resize_handles_{theme}.png"))
+                    for w, h, tag in ((1280, 800, "1280800"), (1920, 1080, "19201080"), (1366, 768, "1366768")):
+                        page.set_viewport_size({"width": w, "height": h})
+                        page.wait_for_timeout(200)
+                        box = page.evaluate("""() => {
+                          const stage = document.querySelector('.stagecol').getBoundingClientRect();
+                          const tl = document.querySelector('#videoTl').getBoundingClientRect();
+                          const row = document.querySelector('#videoTl .tlrow').getBoundingClientRect();
+                          const ruler = document.querySelector('#videoTl .tlruler').getBoundingClientRect();
+                          const edge = document.querySelector('#videoTl .tlclip .edge');
+                          const stepbar = document.querySelector('.stepper').getBoundingClientRect();
+                          return {
+                            ratio: stage.width / innerWidth,
+                            tlRatio: tl.height / innerHeight,
+                            wide: tl.width > innerWidth * 0.9,
+                            row: row.height,
+                            ruler: ruler.height,
+                            edge: edge ? edge.getBoundingClientRect().width : 0,
+                            step: stepbar.width > 80 && stepbar.bottom <= innerHeight,
+                          };
+                        }""")
+                        assert 0.55 <= box["ratio"] <= 0.65, (theme, tag, box)
+                        assert 0.28 <= box["tlRatio"] <= 0.40, (theme, tag, box)
+                        assert box["wide"] and box["row"] >= 48 and box["ruler"] >= 22 and box["edge"] >= 18 and box["step"], (theme, tag, box)
+                        bad = overflow(page)
+                        if bad:
+                            leaks.append(f"{label} {theme} {tag}: {bad}")
+                        if tag != "1366768":
+                            page.screenshot(path=str(SHOTS / f"video_{theme}_{tag}.png"))
+                    bar = page.locator("#tlSplitBar").bounding_box()
+                    before = page.evaluate("() => document.querySelector('#videoTl').getBoundingClientRect().height")
+                    page.mouse.move(bar["x"] + 40, bar["y"] + 4)
+                    page.mouse.down()
+                    page.mouse.move(bar["x"] + 40, bar["y"] - 70, steps=6)
+                    page.mouse.up()
+                    page.wait_for_timeout(150)
+                    after = page.evaluate("() => ({h: document.querySelector('#videoTl').getBoundingClientRect().height, saved: localStorage.getItem('lc-tl-frac')})")
+                    assert after["h"] > before + 20, (theme, before, after)
+                    assert after["saved"], (theme, after)
+                    page.evaluate("() => localStorage.removeItem('lc-tl-frac')")
+                    page.evaluate("() => document.documentElement.style.removeProperty('--tl-h')")
+                    page.click("#sideToggle")
+                    assert page.evaluate("() => document.body.classList.contains('side-shut') && localStorage.getItem('lc-side-shut') === '1'")
+                    page.click("#sideToggle")
+                    page.set_viewport_size({"width": 1440, "height": 1000})
         if leaks:
             print("OVERFLOW", json.dumps(leaks, indent=2))
             raise SystemExit("text overflow: " + json.dumps(leaks))

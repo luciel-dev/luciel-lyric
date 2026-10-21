@@ -529,7 +529,7 @@
   }
   function tlHead() {
     const head = $('#tlHead');
-    if (head) head.style.left = (54 + E.t * E.tlPps) + 'px';
+    if (head) head.style.left = (68 + E.t * E.tlPps) + 'px';
   }
   function tlRender() {
     const inner = $('#tlInner'); if (!inner) return;

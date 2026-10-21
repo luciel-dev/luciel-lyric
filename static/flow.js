@@ -118,6 +118,8 @@
     if (tt) tt.classList.toggle('step-off', n !== 4);
     const handle = $('#vidHandle');
     if (handle) handle.classList.toggle('on', n === 3 && S.bgMode === 'video');
+    document.body.classList.toggle('video-edit', n === 3);
+    if (n === 3) requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     if (window.ED && ED.onStep) ED.onStep(n);
     if (n === 5 && typeof drawWave === 'function') drawWave();
     hints();
@@ -227,6 +229,52 @@
 
   window.LCFlow = {show, step: () => step, hints, fail, ready};
   window.LCHist = {capture, touch, undo, redo};
+
+  const splitKey = 'lc-tl-frac';
+  const sideKey = 'lc-side-shut';
+  function splitFrac(f) {
+    f = Math.max(0.24, Math.min(0.48, f));
+    document.documentElement.style.setProperty('--tl-h', (f * 100).toFixed(2) + '%');
+    try { localStorage.setItem(splitKey, String(f)); } catch (e) {}
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }
+  const sideBtn = $('#sideToggle');
+  try {
+    const saved = parseFloat(localStorage.getItem(splitKey));
+    if (saved) splitFrac(saved);
+    if (localStorage.getItem(sideKey) === '1') {
+      document.body.classList.add('side-shut');
+      if (sideBtn) sideBtn.textContent = 'Show';
+    }
+  } catch (e) {}
+  const bar = $('#tlSplitBar');
+  if (bar) {
+    bar.addEventListener('pointerdown', (e) => {
+      if (!document.body.classList.contains('video-edit')) return;
+      e.preventDefault();
+      const main = document.querySelector('main');
+      const move = (ev) => {
+        const r = main.getBoundingClientRect();
+        if (r.height <= 0) return;
+        splitFrac((r.bottom - ev.clientY) / r.height);
+      };
+      const up = () => {
+        bar.releasePointerCapture(e.pointerId);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+      bar.setPointerCapture(e.pointerId);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  }
+  if (sideBtn) sideBtn.addEventListener('click', () => {
+    document.body.classList.toggle('side-shut');
+    const shut = document.body.classList.contains('side-shut');
+    sideBtn.textContent = shut ? 'Show' : 'Panel';
+    try { localStorage.setItem(sideKey, shut ? '1' : '0'); } catch (e) {}
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  });
   show(1);
   capture();
   let skipped = false;

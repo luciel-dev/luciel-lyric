@@ -191,7 +191,7 @@ jobs:
           body: |
             Luciel Lyric 1.5.0 — desktop lyric video editor.
 
-            Five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style.
+            Five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it.
 
             Android 1.4.3 is still in progress and is not this desktop release. If an Android APK is attached, it is the phone build already on this commit (versionName 1.4.2), not the 1.5.0 desktop editor.
 

@@ -125,44 +125,47 @@
   </section>
 
   <section class="card step-off" id="step3">
-    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">3</span> Video</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
+    <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">3</span> Video</h2><button type="button" class="btn ghost small" id="sideToggle" title="Collapse or expand the control panel">Panel</button><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
     <p class="stepline">Resize, crop, and trim the picture. Lyric text in the preview is read-only and is not changed here.</p>
     <label class="drop" id="videoDrop" title="Drop an mp4, mov, or webm">
       <input type="file" id="bgVideoFile" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v">
       <div><b>Drop a video</b> or click to browse<br><small>mp4 · mov · webm</small></div>
     </label>
     <div id="bgVideoName" class="muted">No video yet</div>
-    <div class="row">
-      <div class="field" title="Output frame shape"><span>Frame</span>
-        <select id="aspectIn">
-          <option value="9:16">9:16 vertical</option>
-          <option value="4:5">4:5 portrait</option>
-          <option value="1:1">1:1 square</option>
-          <option value="16:9">16:9 wide</option>
-        </select>
+    <details class="subbox" open>
+      <summary class="sublbl">Frame</summary>
+      <div class="row">
+        <div class="field" title="Output frame shape"><span>Frame</span>
+          <select id="aspectIn">
+            <option value="9:16">9:16 vertical</option>
+            <option value="4:5">4:5 portrait</option>
+            <option value="1:1">1:1 square</option>
+            <option value="16:9">16:9 wide</option>
+          </select>
+        </div>
+        <div class="field" title="How the video meets the frame"><span>Fit</span>
+          <select id="fitSel">
+            <option value="fill">Fill</option>
+            <option value="fit">Fit</option>
+            <option value="crop">Crop</option>
+          </select>
+        </div>
+        <div class="field" title="Video size inside the frame"><span>Scale</span><input type="number" id="scaleIn" min="0.2" max="4" step="0.05" value="1"></div>
+        <div class="field" title="Horizontal center, 0 to 1"><span>X</span><input type="number" id="posX" min="0" max="1" step="0.01" value="0.5"></div>
+        <div class="field" title="Vertical center, 0 to 1"><span>Y</span><input type="number" id="posY" min="0" max="1" step="0.01" value="0.5"></div>
       </div>
-      <div class="field" title="How the video meets the frame"><span>Fit</span>
-        <select id="fitSel">
-          <option value="fill">Fill</option>
-          <option value="fit">Fit</option>
-          <option value="crop">Crop</option>
-        </select>
-      </div>
-      <div class="field" title="Video size inside the frame"><span>Scale</span><input type="number" id="scaleIn" min="0.2" max="4" step="0.05" value="1"></div>
-      <div class="field" title="Horizontal center, 0 to 1"><span>X</span><input type="number" id="posX" min="0" max="1" step="0.01" value="0.5"></div>
-      <div class="field" title="Vertical center, 0 to 1"><span>Y</span><input type="number" id="posY" min="0" max="1" step="0.01" value="0.5"></div>
-    </div>
-    <div class="subbox">
-      <div class="sublbl">Extra text</div>
+    </details>
+    <details class="subbox" open>
+      <summary class="sublbl">Extra text</summary>
       <p class="muted">Titles, credits, and captions that are not lyrics. They sit on their own track.</p>
       <div class="row">
         <input type="text" id="overlayText" placeholder="Title or credit" title="Extra text" maxlength="80">
         <button type="button" id="overlayAdd" class="btn ghost" title="Add this text on its own track">Add text</button>
       </div>
       <div id="overlayList"></div>
-    </div>
-    <div class="subbox" id="zoomBox">
-      <div class="sublbl">Video camera</div>
+    </details>
+    <details class="subbox" id="zoomBox" open>
+      <summary class="sublbl">Video camera</summary>
       <div class="row">
         <div class="field" title="Camera move on the video only"><span>Preset</span><select id="zoomPreset"></select></div>
         <div class="field"><span>Apply to</span><select id="zoomTarget" title="The camera stays on the video. Lyrics stay on the frame."><option value="bg">Video only</option></select></div>
@@ -181,7 +184,7 @@
         <div class="field"><span>Pan X</span><input type="number" id="kfX" step="0.01" min="0" max="1" value="0.5" title="Camera pan X"></div>
         <div class="field"><span>Pan Y</span><input type="number" id="kfY" step="0.01" min="0" max="1" value="0.5" title="Camera pan Y"></div>
       </div>
-    </div>
+    </details>
     <div class="stepfoot">
       <p class="stephint" id="hint3">Add a video, or continue with a gradient background.</p>
       <button type="button" class="btn ghost" id="skipVideo" title="Keep a gradient behind the lyrics">No video</button>
@@ -361,6 +364,7 @@
       <div id="wsTime"></div>
       <p class="muted small">Drag a bar to retiming that line. This is the only waveform that moves word times.</p>
     </div>
+    <div id="tlSplitBar" class="tlsplit" role="separator" aria-orientation="horizontal" title="Drag to resize the timeline"></div>
     <div id="videoTl" class="dockline step-off">
       <div class="sublbl">Tracks</div>
       <div class="tlbar">
