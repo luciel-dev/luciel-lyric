@@ -232,8 +232,10 @@ def _pack_lines(groups, ok: bool):
     overall = sum(means) / len(means) if means else 0.0
     out = []
     for group, mean in packed:
-        # A line well below the rest of the clip, or simply very weak.
-        low = (not ok) or mean < 0.16 or (mean < overall - 0.12 and mean < overall * 0.55)
+        # A line well below the rest of the clip, or simply very weak. The absolute
+        # floor stays under ~0.15: a correct line on CPU can land there, and the
+        # wrong line in the sung fixture is the one that falls away from the others.
+        low = (not ok) or mean < 0.12 or (mean < overall - 0.12 and mean < overall * 0.55)
         out.append({
             "words": [{
                 "text": w["text"], "start": w["start"], "end": w["end"],
