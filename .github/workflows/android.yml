@@ -135,7 +135,13 @@ jobs:
           script: bash android/scripts/smoke.sh
 
       # sdkmanager sometimes unpacks a corrupt system image ("unknown archive") and the
-      # emulator never boots. A second attempt on the same runner usually gets a good zip.
+      # emulator never boots. Drop that zip so the retry downloads a fresh image.
+      - name: Drop a corrupt system image
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          rm -rf "$sdk/system-images/android-30" "$sdk/.downloadIntermediates" "$sdk/temp" "$sdk/.temp"
+          find "$sdk" -iname '*x86_64*android-30*' -delete || true
       - name: Retry emulator smoke
         if: steps.smoke.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
