@@ -80,6 +80,17 @@
         }
         c.speed = speed;
       }
+    } else if (op === "shift") {
+      const i = edit.index | 0;
+      const c = v.clips[i];
+      if (c) {
+        const span = Math.max(0.25, c.t1 - c.t0);
+        let t0 = c.t0 + num(edit.dt, 0);
+        if (t0 < 0) t0 = 0;
+        if (t0 + span > v.length) t0 = Math.max(0, v.length - span);
+        c.t0 = t0;
+        c.t1 = t0 + span;
+      }
     } else if (op === "speed") {
       const i = edit.index | 0;
       const speed = num(edit.speed, 1);

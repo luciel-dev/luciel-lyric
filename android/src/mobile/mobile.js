@@ -35,6 +35,10 @@
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
     checks: null,
   };
+  const libs = {
+    ws: null, regions: null, atl: null, mv: null, mute: false, ready: false,
+    settled: false, span: 0, url: "", waiters: [], pinchBase: 1,
+  };
   let P = null;
   let stage = null;
   let samples = null;
@@ -68,7 +72,9 @@
     sizePreview();
     if (id === "look" || id === "time" || id === "render" || id === "video" || id === "sync") draw(state.t > 0.05 ? state.t : 1.2);
     if (id === "time") { paintEditor(); paintTimeline(); }
-    else {
+    if (id === "video" || id === "time") mountMoveable();
+    layoutVidHandle();
+    if (id !== "time") {
       const timeHost = document.getElementById("pin-time");
       if (timeHost) { timeHost.style.height = ""; timeHost.style.maxHeight = ""; }
       document.documentElement.style.removeProperty("--pin-h");
@@ -821,7 +827,10 @@
       if (expect.fits !== 3) flags.push("fits");
       if (!expect.vzoom) flags.push("vzoom");
     } else if (kind === "time") {
-      expect.timeline = canvasBusy($("#tl")) && inView($("#tlview"), 16, false) ? 1 : 0;
+      const waveCv = libCanvas("#wsBox");
+      const atlCv = document.querySelector("#atl canvas");
+      const painted = canvasBusy(waveCv) || canvasBusy(atlCv) || canvasBusy($("#tl"));
+      expect.timeline = painted && inView($("#tlview"), 16, false) ? 1 : 0;
       const zooms = document.querySelectorAll("#zooms button");
       expect.zooms = zooms.length === 5 && inView($("#zooms"), 16) ? 5 : zooms.length;
       if (!expect.timeline) flags.push("timeline");
@@ -1024,18 +1033,21 @@
     document.documentElement.style.removeProperty("--pin-h");
     sizePreview();
     let guard = 0;
+    const timeline = document.getElementById("tlview");
     while (guard++ < 24) {
-      const limit = dock.getBoundingClientRect().top - 4;
-      const bottom = actions.getBoundingClientRect().bottom;
-      if (bottom <= limit) break;
+      const dockLimit = dock.getBoundingClientRect().top - 4;
+      const barTop = actions.getBoundingClientRect().top - 4;
+      const limit = Math.min(dockLimit, barTop);
+      const bottom = timeline ? timeline.getBoundingClientRect().bottom : actions.getBoundingClientRect().bottom;
+      if (bottom <= limit && actions.getBoundingClientRect().bottom <= dockLimit + 4) break;
       const h = host.getBoundingClientRect().height;
       const next = Math.floor(h - (bottom - limit) - 1);
       if (!(next < h - 0.5)) break;
-      const clamped = Math.max(88, next);
+      const clamped = Math.max(72, next);
       host.style.height = clamped + "px";
       host.style.maxHeight = clamped + "px";
       sizePreview();
-      if (clamped <= 88) break;
+      if (clamped <= 72) break;
     }
     const fitted = Math.round(host.getBoundingClientRect().height);
     if (fitted > 48) document.documentElement.style.setProperty("--pin-h", fitted + "px");
@@ -1129,37 +1141,70 @@
     return !why;
   }
   function timeFoldOk() {
+    const why = (msg) => { document.documentElement.dataset.foldWhy = msg; return false; };
     const dockTop = document.querySelector(".dock").getBoundingClientRect().top;
     const view = document.getElementById("tlview");
-    if (!view) return false;
+    const bar = document.querySelector("#screen-time .tlactions");
+    if (!view) return why("view");
     const vr = view.getBoundingClientRect();
-    if (vr.height < 120 || vr.top < -1 || vr.bottom > dockTop + 1) return false;
-    if (vr.left < -1 || vr.right > window.innerWidth + 1) return false;
-    const rows = ["#ruler", "#videoTrack", "#lyricTrack", "#zoomTrack", "#tl"];
-    for (let i = 0; i < rows.length; i++) {
-      const el = document.querySelector(rows[i]);
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      if (r.height < 12 || r.top < -1 || r.bottom > dockTop + 1) return false;
-      if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return false;
-    }
-    const bands = ["#videoTrack", "#lyricTrack", "#zoomTrack"];
-    for (let i = 0; i < bands.length; i++) {
-      const h = document.querySelector(bands[i]).getBoundingClientRect().height;
-      if (h < 34 || h > 48) return false;
+    const barTop = bar ? bar.getBoundingClientRect().top : dockTop;
+    const limit = Math.min(dockTop, barTop);
+    if (vr.height < 120 || vr.top < -1 || vr.bottom > limit + 1) return why("viewbox" + Math.round(vr.top) + "-" + Math.round(vr.bottom) + "/" + Math.round(limit));
+    if (vr.left < -1 || vr.right > window.innerWidth + 1) return why("viewx");
+    if (document.documentElement.dataset.editor === "libs") {
+      const rows = ["#wsTime", "#wsBox", "#atl"];
+      for (let i = 0; i < rows.length; i++) {
+        const el = document.querySelector(rows[i]);
+        if (!el) return why("miss" + rows[i]);
+        const r = el.getBoundingClientRect();
+        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why(rows[i] + "out" + Math.round(r.top) + "-" + Math.round(r.bottom));
+        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why(rows[i] + "clip" + Math.round(r.bottom) + "/" + Math.round(vr.bottom));
+      }
+      const waveH = document.querySelector("#wsBox").getBoundingClientRect().height;
+      const atlH = document.querySelector("#atl").getBoundingClientRect().height;
+      if (waveH < 32 || waveH > 56 || atlH < 64 || atlH > 100) return why("band" + Math.round(waveH) + "/" + Math.round(atlH));
+      const handles = regionHandles();
+      if (handles.length < 2) return why("handles" + handles.length);
+      for (let i = 0; i < handles.length; i++) {
+        const hr = handles[i].getBoundingClientRect();
+        if (hr.width < 48 || hr.height < 48) return why("handle" + Math.round(hr.width) + "x" + Math.round(hr.height));
+      }
+      const controls = [...document.querySelectorAll(".moveable-control")];
+      if (controls.length < 2) return why("controls" + controls.length);
+      for (let i = 0; i < controls.length; i++) {
+        const cr = controls[i].getBoundingClientRect();
+        if (cr.width < 48 || cr.height < 48) return why("control" + Math.round(cr.width) + "x" + Math.round(cr.height));
+      }
+    } else {
+      const rows = ["#ruler", "#videoTrack", "#lyricTrack", "#zoomTrack", "#tl"];
+      for (let i = 0; i < rows.length; i++) {
+        const el = document.querySelector(rows[i]);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return false;
+        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return false;
+      }
+      const bands = ["#videoTrack", "#lyricTrack", "#zoomTrack"];
+      for (let i = 0; i < bands.length; i++) {
+        const h = document.querySelector(bands[i]).getBoundingClientRect().height;
+        if (h < 34 || h > 48) return false;
+      }
     }
     const actions = ["#tlSplit", "#tlDelete", "#tlAdd", "#tlReplace", "#tlSpeed"];
     for (let i = 0; i < actions.length; i++) {
       const el = document.querySelector(actions[i]);
-      if (!el) return false;
+      if (!el) return why("act");
       const r = el.getBoundingClientRect();
-      if (r.height < 40 || r.width < 28 || r.top < -1 || r.bottom > dockTop + 1) return false;
-      if (r.left < -1 || r.right > window.innerWidth + 1) return false;
+      if (r.height < 48 || r.width < 28 || r.top < -1 || r.bottom > dockTop + 1) return why(actions[i] + Math.round(r.height) + "x" + Math.round(r.width) + "b" + Math.round(r.bottom) + "/" + Math.round(dockTop));
+      if (r.left < -1 || r.right > window.innerWidth + 1) return why(actions[i] + "x");
     }
+    document.documentElement.dataset.foldWhy = "";
     return true;
   }
   function filmReady() {
-    const cv = document.querySelector("#videoTrack canvas");
+    const cv = document.getElementById("film")
+      || document.querySelector("#atl canvas")
+      || document.querySelector("#videoTrack canvas");
     if (!cv || cv.width < 48 || cv.height < 20) return false;
     const rect = cv.getBoundingClientRect();
     if (rect.width < 24 || rect.height < 16) return false;
@@ -2355,6 +2400,7 @@
     }
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
+    layoutVidHandle();
   }
   function previewPinned() {
     const pin = $("#previewPin");
@@ -2779,6 +2825,434 @@
     layoutEditor();
     draw(state.t || t || 0);
   }
+  function settleEditor() {
+    libs.settled = true;
+    const waiters = libs.waiters.splice(0);
+    waiters.forEach((fn) => fn());
+  }
+  function whenEditor() {
+    if (libs.settled) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, 1800);
+      libs.waiters.push(() => { clearTimeout(timer); resolve(); });
+    });
+  }
+  function libCanvas(sel) {
+    const host = document.querySelector(sel);
+    if (!host) return null;
+    if (host.tagName === "CANVAS") return host;
+    const inner = host.querySelector("canvas");
+    if (inner) return inner;
+    const root = host.shadowRoot;
+    return root ? root.querySelector("canvas") : null;
+  }
+  function regionHandles() {
+    const out = [];
+    const regions = libs.regions && libs.regions.getRegions ? libs.regions.getRegions() : [];
+    regions.forEach((region) => {
+      if (!region.element) return;
+      region.element.querySelectorAll('[part*="region-handle"]').forEach((h) => out.push(h));
+    });
+    return out;
+  }
+  function tuneRegionHandles() {
+    regionHandles().forEach((h) => {
+      h.style.width = "48px";
+      h.style.minWidth = "48px";
+      h.style.height = "48px";
+      h.style.minHeight = "48px";
+      h.style.touchAction = "none";
+    });
+    const wrap = libs.ws && libs.ws.getWrapper && libs.ws.getWrapper();
+    const root = wrap && wrap.getRootNode ? wrap.getRootNode() : null;
+    if (root && root.appendChild && root !== document && !root.querySelector("[data-touch='1']")) {
+      const style = document.createElement("style");
+      style.dataset.touch = "1";
+      style.textContent = '[part*="region-handle"]{width:48px!important;min-width:48px!important;height:48px!important;min-height:48px!important;touch-action:none;}';
+      root.appendChild(style);
+    }
+  }
+  function sectionPeaks() {
+    const src = state.peaks && state.peaks.length ? state.peaks : fakePeaks(240);
+    const dur = Math.max(state.duration || 0, (state.start || 0) + (state.length || 0), state.length || 1);
+    const a = dur > 0 ? (state.start || 0) / dur : 0;
+    const b = dur > 0 ? Math.min(1, ((state.start || 0) + (state.length || 0)) / dur) : 1;
+    const i0 = Math.max(0, Math.floor(a * src.length));
+    const i1 = Math.max(i0 + 8, Math.min(src.length, Math.ceil(b * src.length)));
+    const slice = src.slice(i0, i1);
+    return slice.length ? slice : src;
+  }
+  function silentWav(seconds) {
+    const sr = 8000;
+    const n = Math.max(1, Math.floor(sr * Math.max(0.2, seconds || 1)));
+    const buffer = new ArrayBuffer(44 + n * 2);
+    const view = new DataView(buffer);
+    const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + n * 2, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sr, true);
+    view.setUint32(28, sr * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, "data");
+    view.setUint32(40, n * 2, true);
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+  function atlModel() {
+    const video = [];
+    const lyrics = [];
+    (state.clips || []).forEach((c) => {
+      const a = Math.round((+c.t0 || 0) * 1000);
+      const b = Math.round(Math.max((+c.t0 || 0) + 0.12, +c.t1 || 0) * 1000);
+      video.push({ val: a, group: "c:" + c.id }, { val: Math.max(a + 120, b), group: "c:" + c.id });
+    });
+    (state.lines || []).forEach((ln, i) => {
+      if (!ln.words || !ln.words.length) return;
+      const a = Math.round((+ln.words[0].start) * 1000);
+      const b = Math.round((+ln.words[ln.words.length - 1].end) * 1000);
+      lyrics.push({ val: a, group: "l:" + i, draggable: false }, { val: Math.max(a + 50, b), group: "l:" + i, draggable: false });
+    });
+    return { rows: [
+      { keyframes: video },
+      { keyframes: lyrics, keyframesDraggable: false, groupsDraggable: false },
+    ] };
+  }
+  function pushAtl() {
+    if (!libs.atl) return;
+    libs.mute = true;
+    try {
+      libs.atl.setOptions({
+        max: Math.max(1000, (state.length || 20) * 1000),
+        stepPx: state.pxPerSec || 46,
+        stepVal: 1000,
+        leftMargin: 0,
+      });
+      libs.atl.setModel(atlModel());
+      lockAtlScroll();
+    } catch (e) {}
+    libs.mute = false;
+  }
+  function lockAtlScroll() {
+    const root = document.getElementById("atl");
+    if (!root) return;
+    const sc = root.querySelector("div");
+    if (sc) {
+      sc.style.overflow = "hidden";
+      sc.scrollLeft = 0;
+      sc.scrollTop = 0;
+    }
+    const cv = root.querySelector("canvas");
+    if (cv) cv.style.width = "100%";
+    if (libs.atl && libs.atl.redraw) {
+      try { libs.atl.redraw(); } catch (e) {}
+    }
+    if (cv) cv.style.width = "100%";
+  }
+  function readAtl() {
+    if (!libs.atl || libs.mute || libs.reading) return;
+    libs.reading = true;
+    try { readAtlNow(); } finally { libs.reading = false; }
+  }
+  function readAtlNow() {
+    const model = libs.atl.getModel ? libs.atl.getModel() : null;
+    if (!model || !model.rows) return;
+    const map = {};
+    for (const kf of (model.rows[0] && model.rows[0].keyframes) || []) {
+      const g = typeof kf.group === "string" ? kf.group : "";
+      if (!g.startsWith("c:")) continue;
+      (map[g] = map[g] || []).push(kf.val / 1000);
+    }
+    (state.clips || []).forEach((c, i) => {
+      const vals = (map["c:" + c.id] || []).slice().sort((a, b) => a - b);
+      if (vals.length < 2) return;
+      const t0 = vals[0];
+      const t1 = Math.max(t0 + 0.12, vals[1]);
+      const span0 = c.t1 - c.t0;
+      const span1 = t1 - t0;
+      const base = { t0: c.t0, t1: c.t1, srcIn: c.srcIn || 0, speed: c.speed > 0 ? c.speed : 1 };
+      if (Math.abs(span1 - span0) < 0.05 && Math.abs(t0 - c.t0) >= 0.02) {
+        commitVideo({ op: "shift", index: i, dt: t0 - c.t0, inplace: true });
+      } else if (Math.abs(t0 - c.t0) >= 0.02 && Math.abs(t1 - c.t1) < 0.05) {
+        commitVideo({ op: "trim", index: i, edge: "left", dt: t0 - base.t0, inplace: true, base: base });
+      } else if (Math.abs(t1 - c.t1) >= 0.02) {
+        commitVideo({ op: "trim", index: i, edge: "right", dt: t1 - base.t1, inplace: true, base: base });
+      }
+    });
+    pushAtl();
+    saveEditor();
+    draw(state.t || 0);
+  }
+  function syncRegions() {
+    if (!libs.regions) return;
+    libs.mute = true;
+    try {
+      libs.regions.clearRegions();
+      const dur = Math.max(0.2, state.length || libs.span || 20);
+      (state.lines || []).forEach((ln, li) => {
+        if (!ln.words || !ln.words.length) return;
+        const a = Math.max(0, +ln.words[0].start || 0);
+        const b = Math.max(a + 0.05, +ln.words[ln.words.length - 1].end || 0);
+        libs.regions.addRegion({
+          id: "L" + li,
+          start: Math.max(0, Math.min(dur - 0.05, a)),
+          end: Math.max(0.05, Math.min(dur, b)),
+          content: ln.words.map((w) => w.text).join(" "),
+          drag: true,
+          resize: true,
+          color: "rgba(32,180,220,0.28)",
+        });
+      });
+      tuneRegionHandles();
+    } catch (e) {}
+    libs.mute = false;
+  }
+  function onRegionUpdated(region) {
+    if (libs.mute || !region) return;
+    const m = /^L(\d+)$/.exec(region.id || "");
+    if (!m) return;
+    const ln = state.lines[+m[1]];
+    if (!ln || !ln.words || !ln.words.length) return;
+    const ws = ln.words;
+    const oldA = +ws[0].start;
+    const oldB = +ws[ws.length - 1].end;
+    const len = state.length || 20;
+    const a = Math.max(0, region.start);
+    const b = Math.min(len, Math.max(a + 0.05, region.end));
+    if (Math.abs(a - oldA) < 0.02 && Math.abs(b - oldB) < 0.02) return;
+    const span = Math.max(0.05, oldB - oldA);
+    ws.forEach((w) => {
+      const u0 = (+w.start - oldA) / span;
+      const u1 = (+w.end - oldA) / span;
+      w.start = +(a + (b - a) * u0).toFixed(3);
+      w.end = +Math.max(w.start + 0.02, a + (b - a) * u1).toFixed(3);
+    });
+    paintLines();
+    pushAtl();
+    saveProject();
+  }
+  function paintLibFilm(cssW) {
+    const cv = document.getElementById("film");
+    if (!cv) return;
+    const w = Math.max(48, Math.round(cssW));
+    const h = 32;
+    cv.width = w;
+    cv.height = h;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    const ctx = cv.getContext("2d");
+    const thumbs = state.thumbs && state.thumbs.length ? state.thumbs : syntheticThumbs();
+    const tw = 34;
+    const gap = 3;
+    let i = 0;
+    for (let x = 0; x < w; x += tw, i++) {
+      const slice = Math.max(1, Math.min(tw - gap, w - x));
+      ctx.drawImage(thumbs[i % thumbs.length], x, 0, slice, h);
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.fillRect(x + 2, 3 + (i % 4) * 4, 8, 3);
+      if (x + slice < w) {
+        ctx.fillStyle = "#07090c";
+        ctx.fillRect(x + slice, 0, Math.min(gap, w - x - slice), h);
+      }
+    }
+  }
+  function layoutVidHandle() {
+    const handle = document.getElementById("vidHandle");
+    const canvas = document.getElementById("stage");
+    const wrap = document.querySelector("#previewPin .stagewrap");
+    if (!handle || !canvas || !wrap) return;
+    const show = state.screen === "video" || state.screen === "time";
+    handle.hidden = !show;
+    document.documentElement.dataset.handles = show ? "1" : "0";
+    if (!show) {
+      if (libs.mv) { try { libs.mv.updateRect(); } catch (e) {} }
+      return;
+    }
+    const cr = canvas.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    if (cr.width < 8 || cr.height < 8) return;
+    const scale = Math.max(1, +state.vscale || 1);
+    const w = cr.width * scale;
+    const h = cr.height * scale;
+    const vx = state.vx == null ? 0.5 : state.vx;
+    const vy = state.vy == null ? 0.5 : state.vy;
+    handle.style.left = ((cr.left - wr.left) + (cr.width - w) * vx) + "px";
+    handle.style.top = ((cr.top - wr.top) + (cr.height - h) * vy) + "px";
+    handle.style.width = w + "px";
+    handle.style.height = h + "px";
+    if (libs.mv) { try { libs.mv.updateRect(); } catch (e) {} }
+  }
+  function readVidHandle() {
+    const handle = document.getElementById("vidHandle");
+    const canvas = document.getElementById("stage");
+    const wrap = document.querySelector("#previewPin .stagewrap");
+    if (!handle || !canvas || !wrap) return;
+    const cr = canvas.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    const left = parseFloat(handle.style.left) || 0;
+    const top = parseFloat(handle.style.top) || 0;
+    const w = parseFloat(handle.style.width) || cr.width;
+    const h = parseFloat(handle.style.height) || cr.height;
+    const scale = Math.max(1, Math.min(2.5, w / Math.max(1, cr.width)));
+    let vx = state.vx == null ? 0.5 : state.vx;
+    let vy = state.vy == null ? 0.5 : state.vy;
+    if (Math.abs(cr.width - w) > 1) vx = (left - (cr.left - wr.left)) / (cr.width - w);
+    if (Math.abs(cr.height - h) > 1) vy = (top - (cr.top - wr.top)) / (cr.height - h);
+    commitVideo({ op: "zoom", vscale: scale });
+    commitVideo({ op: "pan", vx: vx, vy: vy });
+    paintFrame();
+    draw(state.t || 0);
+  }
+  function mountMoveable() {
+    if (libs.mv || !window.Moveable) return;
+    const wrap = document.querySelector("#previewPin .stagewrap");
+    const handle = document.getElementById("vidHandle");
+    if (!wrap || !handle) return;
+    try {
+      libs.mv = new Moveable(wrap, {
+        target: handle,
+        draggable: true,
+        resizable: true,
+        pinchable: true,
+        origin: false,
+        snappable: false,
+        keepRatio: true,
+        renderDirections: ["nw", "ne", "sw", "se", "w", "e"],
+      });
+    } catch (e) {
+      libs.mv = null;
+      return;
+    }
+    const pull = (e) => {
+      const h = e.target;
+      if (e.drag) {
+        h.style.left = e.drag.left + "px";
+        h.style.top = e.drag.top + "px";
+      } else {
+        if (e.left != null) h.style.left = e.left + "px";
+        if (e.top != null) h.style.top = e.top + "px";
+        if (e.width != null) h.style.width = e.width + "px";
+        if (e.height != null) h.style.height = e.height + "px";
+      }
+      h.style.transform = "";
+      readVidHandle();
+    };
+    libs.mv.on("drag", pull);
+    libs.mv.on("resize", pull);
+    libs.mv.on("pinchStart", () => { libs.pinchBase = state.vscale || 1; });
+    libs.mv.on("pinch", (e) => {
+      const scale = e && e.scale ? e.scale : 1;
+      commitVideo({ op: "zoom", vscale: libs.pinchBase * scale });
+      layoutVidHandle();
+      paintFrame();
+      draw(state.t || 0);
+    });
+    libs.mv.on("dragEnd", () => saveEditor());
+    libs.mv.on("resizeEnd", () => saveEditor());
+    libs.mv.on("pinchEnd", () => saveEditor());
+  }
+  function mountLibs(span) {
+    const box = document.getElementById("wsBox");
+    const atlEl = document.getElementById("atl");
+    if (!box || !atlEl || !window.WaveSurfer || !window.WaveSurfer.Regions || !window.WaveSurfer.Timeline || !window.timelineModule) return;
+    if (box.clientWidth < 20 && !(document.getElementById("tlview") && document.getElementById("tlview").clientWidth > 20)) return;
+    if (libs.ready && Math.abs((libs.span || 0) - span) < 0.2) {
+      mountMoveable();
+      return;
+    }
+    if (libs.ws) {
+      try { libs.ws.destroy(); } catch (e) {}
+      libs.ws = null;
+      libs.regions = null;
+    }
+    if (libs.url) {
+      try { URL.revokeObjectURL(libs.url); } catch (e) {}
+      libs.url = "";
+    }
+    libs.settled = false;
+    try {
+      const regions = WaveSurfer.Regions.create();
+      libs.regions = regions;
+      libs.span = span;
+      libs.url = URL.createObjectURL(silentWav(span));
+      libs.ws = WaveSurfer.create({
+        container: box,
+        url: libs.url,
+        peaks: [sectionPeaks()],
+        duration: span,
+        height: 40,
+        minPxPerSec: state.pxPerSec || 46,
+        fillParent: false,
+        hideScrollbar: true,
+        autoCenter: false,
+        autoScroll: false,
+        interact: false,
+        cursorWidth: 0,
+        waveColor: cssVar("--wave-on", "#1aa9d6"),
+        progressColor: cssVar("--wave-on", "#1aa9d6"),
+        plugins: [regions, WaveSurfer.Timeline.create({ container: "#wsTime", height: 20 })],
+      });
+      regions.on("region-updated", onRegionUpdated);
+      libs.ws.on("ready", () => {
+        try { libs.ws.zoom(state.pxPerSec || 46); } catch (e) {}
+        syncRegions();
+        if (state.tlOrigin != null) layoutLibs(state.tlOrigin, Math.round(span * (state.pxPerSec || 46)), state.pxPerSec || 46, span);
+        settleEditor();
+      });
+      libs.ws.on("error", () => settleEditor());
+    } catch (e) {
+      libs.ws = null;
+      return;
+    }
+    if (!libs.atl) {
+      try {
+        libs.atl = new timelineModule.Timeline({
+          id: atlEl,
+          snapEnabled: true,
+          snapStep: 100,
+          min: 0,
+          max: Math.max(1000, span * 1000),
+          stepPx: state.pxPerSec || 46,
+          stepVal: 1000,
+          leftMargin: 0,
+          headerHeight: 18,
+          rowsStyle: { height: 32, marginBottom: 0, groupsStyle: { fillColor: "#1aa9d6" } },
+        });
+        libs.atl.onDragFinished(() => { if (!libs.mute) readAtl(); });
+        lockAtlScroll();
+      } catch (e) {
+        libs.atl = null;
+      }
+    }
+    mountMoveable();
+    setTimeout(() => {
+      if (libs.settled) return;
+      syncRegions();
+      settleEditor();
+    }, 700);
+    libs.ready = !!(libs.ws && libs.atl);
+    if (libs.ready) document.documentElement.dataset.editor = "libs";
+    else document.documentElement.removeAttribute("data-editor");
+  }
+  function layoutLibs(origin, cssW, pps, span) {
+    const host = document.getElementById("librows");
+    if (host) {
+      host.style.left = origin + "px";
+      host.style.width = cssW + "px";
+    }
+    paintLibFilm(cssW);
+    if (libs.ws && libs.ws.getDecodedData && libs.ws.getDecodedData()) {
+      try { libs.ws.zoom(pps); } catch (e) {}
+    }
+    syncRegions();
+    pushAtl();
+    lockAtlScroll();
+    libs.span = span;
+  }
   function layoutEditor() {
     const inner = $("#tlinner");
     const scroll = $("#tlscroll");
@@ -2790,19 +3264,24 @@
     const origin = view / 2;
     state.tlOrigin = origin;
     inner.style.width = (view + cssW) + "px";
-    paintRuler(origin, span, pps);
-    paintVideoTrack(origin, cssW, pps);
-    paintLyricTrack(origin, pps);
-    paintZoomTrack(origin, pps);
-    const cv = $("#tl");
-    if (cv) {
-      cv.style.position = "absolute";
-      cv.style.left = origin + "px";
-      cv.style.bottom = "0";
-      cv.style.top = "auto";
+    mountLibs(span);
+    if (libs.ready) layoutLibs(origin, cssW, pps, span);
+    else {
+      paintRuler(origin, span, pps);
+      paintVideoTrack(origin, cssW, pps);
+      paintLyricTrack(origin, pps);
+      paintZoomTrack(origin, pps);
+      const cv = $("#tl");
+      if (cv) {
+        cv.style.position = "absolute";
+        cv.style.left = origin + "px";
+        cv.style.bottom = "0";
+        cv.style.top = "auto";
+      }
+      paintTimeline();
     }
-    paintTimeline();
     syncLyricInput();
+    layoutVidHandle();
   }
   function paintEditor() {
     layoutEditor();
@@ -3224,6 +3703,7 @@
     async function publish(screen) {
       if (screen === "look" || screen === "videocheck") paintLooks();
       await settle();
+      if (screen === "time") await whenEditor();
       fitAll();
       const msg = measure(screen);
       document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
@@ -3615,6 +4095,7 @@
     paintFrame();
     saveEditor();
     sizePreview();
+    layoutVidHandle();
     draw(state.t || 1);
     updatePreviewChrome();
   };
@@ -3624,24 +4105,28 @@
     commitVideo({ op: "fit", fit: b.dataset.fit });
     paintFrame();
     saveEditor();
+    layoutVidHandle();
     draw(state.t || 1);
   };
   $("#vscale").oninput = () => {
     commitVideo({ op: "zoom", vscale: +$("#vscale").value });
     paintFrame();
     saveEditor();
+    layoutVidHandle();
     draw(state.t || 1);
   };
   $("#vx").oninput = () => {
     commitVideo({ op: "pan", vx: +$("#vx").value });
     paintFrame();
     saveEditor();
+    layoutVidHandle();
     draw(state.t || 1);
   };
   $("#vy").oninput = () => {
     commitVideo({ op: "pan", vy: +$("#vy").value });
     paintFrame();
     saveEditor();
+    layoutVidHandle();
     draw(state.t || 1);
   };
   $("#tapHear").onclick = () => {
@@ -3731,6 +4216,40 @@
     const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) state.pinch = 0; };
     tlscroll.addEventListener("pointerup", endPointer);
     tlscroll.addEventListener("pointercancel", endPointer);
+  }
+  const stageWrap = document.querySelector("#previewPin .stagewrap");
+  if (stageWrap) {
+    const vidPointers = new Map();
+    let vidBase = 0;
+    let vidScale0 = 1;
+    stageWrap.addEventListener("pointerdown", (e) => {
+      if (e.target.closest && (e.target.closest("#vidHandle") || e.target.closest(".moveable-control"))) return;
+      vidPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (vidPointers.size === 2) vidScale0 = state.vscale || 1;
+    });
+    stageWrap.addEventListener("pointermove", (e) => {
+      if (!vidPointers.has(e.pointerId)) return;
+      vidPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (vidPointers.size < 2) return;
+      const pts = [...vidPointers.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (!vidBase) { vidBase = dist; return; }
+      const ratio = dist / vidBase;
+      if (Math.abs(ratio - 1) < 0.03) return;
+      commitVideo({ op: "zoom", vscale: vidScale0 * ratio });
+      layoutVidHandle();
+      paintFrame();
+      draw(state.t || 0);
+    });
+    const endVid = (e) => {
+      vidPointers.delete(e.pointerId);
+      if (vidPointers.size < 2) {
+        if (vidBase) saveEditor();
+        vidBase = 0;
+      }
+    };
+    stageWrap.addEventListener("pointerup", endVid);
+    stageWrap.addEventListener("pointercancel", endVid);
   }
   $("#renderBtn").onclick = () => render();
   $("#shareBtn").onclick = () => { if (window.Luciel) Luciel.share(); };

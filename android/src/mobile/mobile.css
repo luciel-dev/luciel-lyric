@@ -256,6 +256,27 @@ html[data-screen="time"] #screen-time canvas#tl { height: 16px; }
 html[data-screen="time"] #screen-time .editorcard { padding: 0 6px; }
 html[data-screen="time"] #screen-time .editorcard > * + * { margin-top: 0; }
 html[data-screen="time"] .previewpin { padding: 2px 4px; }
+html[data-screen="time"] .app { padding-bottom: calc(64px + var(--dock-clear)); }
+html[data-screen="time"] #screen-time .tlactions {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(84px + var(--sys-bottom));
+  z-index: 35;
+  margin: 0;
+  padding: 0;
+  background: var(--card-solid);
+  border-radius: var(--radius-sm);
+}
+html[data-editor="libs"] #ruler,
+html[data-editor="libs"] #videoTrack,
+html[data-editor="libs"] #lyricTrack,
+html[data-editor="libs"] #zoomTrack,
+html[data-editor="libs"] #tl { display: none; }
+html[data-screen="video"] .pinhost,
+html[data-screen="time"] .pinhost,
+html[data-screen="video"] .previewpin,
+html[data-screen="time"] .previewpin { overflow: visible; }
 .screenhead { display: block; max-width: 100%; min-width: 0; }
 .screenhead h1 {
   --fs: 26;
@@ -426,10 +447,11 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   max-height: 32vh;
 }
 .previewpin .stagewrap {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
   height: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -644,12 +666,60 @@ html[data-compact="1"] .previewpin { padding: 2px; }
   background: #f6e27a;
   transform: rotate(45deg);
 }
+.librows { position: absolute; top: 0; height: 144px; min-width: 0; }
+#wsTime { height: 20px; overflow: hidden; position: relative; }
+#wsBox { height: 42px; position: relative; overflow: visible; }
+.atline { position: relative; height: 82px; max-height: 82px; overflow: hidden; }
+#atl {
+  position: absolute !important;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 82px !important;
+  max-height: 82px !important;
+  overflow: hidden !important;
+  touch-action: pan-x;
+}
+#atl canvas { display: block; width: 100% !important; height: 82px !important; max-height: 82px !important; }
+#film {
+  position: absolute;
+  left: 0;
+  top: 18px;
+  height: 32px;
+  pointer-events: none;
+  z-index: 2;
+}
+#vidHandle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  background: transparent;
+  touch-action: none;
+  z-index: 1;
+}
+#vidHandle[hidden] { display: none !important; }
+.moveable-control {
+  width: 48px !important;
+  height: 48px !important;
+  margin-left: -24px !important;
+  margin-top: -24px !important;
+  border-radius: 10px !important;
+  background: var(--accent) !important;
+  border: 2px solid #fff !important;
+  box-sizing: border-box !important;
+  z-index: 1 !important;
+  touch-action: none;
+}
+.moveable-line { z-index: 1 !important; }
+html[data-handles="0"] .moveable-control,
+html[data-handles="0"] .moveable-line { display: none !important; }
 .tlactions { display: flex; flex-wrap: nowrap; max-width: 100%; min-width: 0; margin-top: 4px; }
 .tlactions .pill {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 44px;
-  height: 44px;
+  min-height: 48px;
+  height: 48px;
   --fs: 11;
   padding: 4px 1px;
   margin-right: 4px;

@@ -216,7 +216,7 @@ try {
       </header>
       <div class="pinhost" id="pin-look">
         <div class="previewpin" id="previewPin">
-          <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas></div>
+          <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas><div id="vidHandle" hidden></div></div>
           <div class="previewbar">
             <button class="playicon" id="previewToggle" type="button" aria-label="Play"><span class="glyph" aria-hidden="true"></span></button>
             <div class="previewread">
@@ -278,6 +278,14 @@ try {
           <div class="playhead" aria-hidden="true"></div>
           <div class="tlscroll" id="tlscroll">
             <div class="tlinner" id="tlinner">
+              <div class="librows" id="librows">
+                <div id="wsTime"></div>
+                <div id="wsBox"></div>
+                <div class="atline">
+                  <div id="atl"></div>
+                  <canvas id="film" width="320" height="32"></canvas>
+                </div>
+              </div>
               <div class="ruler" id="ruler"></div>
               <div class="track vtrack" id="videoTrack"></div>
               <div class="track ltrack" id="lyricTrack"></div>
@@ -410,6 +418,11 @@ if (!Array.prototype.at) {
 <script src="engine/textanim.js"></script>
 <script src="engine/fx.js"></script>
 <script src="engine/stage.js"></script>
+<script src="vendor/wavesurfer/wavesurfer.min.js"></script>
+<script src="vendor/wavesurfer/regions.min.js"></script>
+<script src="vendor/wavesurfer/timeline.min.js"></script>
+<script src="vendor/moveable/moveable.min.js"></script>
+<script src="vendor/animation-timeline/animation-timeline.min.js"></script>
 <script src="lyricsync.js"></script>
 <script src="layers.js"></script>
 <script src="mobile.js"></script>

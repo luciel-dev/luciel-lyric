@@ -38,6 +38,7 @@ val copyWeb = tasks.register<Copy>("copyWeb") {
     from(rootProject.projectDir.parentFile.resolve("static/engine")) { into("engine") }
     from(rootProject.projectDir.parentFile.resolve("static/fonts")) { into("fonts") }
     from(rootProject.projectDir.parentFile.resolve("static/mascot")) { into("mascot") }
+    from(rootProject.projectDir.parentFile.resolve("static/vendor")) { into("vendor") }
     from(rootProject.projectDir.resolve("src/mobile"))
 }
 
