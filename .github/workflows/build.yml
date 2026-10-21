@@ -248,12 +248,14 @@ jobs:
             out/*.dmg
             out/*.tar.gz
             docs/screenshots/sync-v140.png
+            docs/screenshots/sync-panel-y2k.png
+            docs/screenshots/sync-panel-winamp.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.4.0 — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+            Luciel Lyric 1.4.1 — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
 
-            Desktop sync force-aligns pasted lyrics to the vocal stem (offline wav2vec2). Fast, Accurate, and Best speech models download on first use, then stay on the computer. A confidence warning replaces a silent bad sync, and tap-to-sync can write line or word times. The Sync panel screenshot is sync-v140.png.
+            This release replaces v1.4.0. Desktop sync force-aligns pasted lyrics to the vocal stem (offline wav2vec2). Fast, Accurate, and Best speech models download on first use, then stay on the computer. A confidence warning replaces a silent bad sync, and tap-to-sync can write line or word times. Sync panel screenshots: sync-v140.png, sync-panel-y2k.png, sync-panel-winamp.png. The Android app in this release is 1.3.5.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
