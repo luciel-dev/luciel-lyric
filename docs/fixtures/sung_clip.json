@@ -1,0 +1,153 @@
+{
+  "sample_rate": 16000,
+  "duration": 22.004,
+  "lyrics": "Twinkle, twinkle, little star\nHow I wonder what you are\nDon't stop, there's a light\nWe are golden, we are young and singing loud",
+  "words": [
+    {
+      "text": "Twinkle,",
+      "line": 0,
+      "start": 0.45,
+      "end": 1.122
+    },
+    {
+      "text": "twinkle,",
+      "line": 0,
+      "start": 1.422,
+      "end": 2.105
+    },
+    {
+      "text": "little",
+      "line": 0,
+      "start": 2.405,
+      "end": 2.92
+    },
+    {
+      "text": "star",
+      "line": 0,
+      "start": 3.22,
+      "end": 3.821
+    },
+    {
+      "text": "How",
+      "line": 1,
+      "start": 4.401,
+      "end": 4.919
+    },
+    {
+      "text": "I",
+      "line": 1,
+      "start": 5.219,
+      "end": 5.661
+    },
+    {
+      "text": "wonder",
+      "line": 1,
+      "start": 5.961,
+      "end": 6.585
+    },
+    {
+      "text": "what",
+      "line": 1,
+      "start": 6.885,
+      "end": 7.345
+    },
+    {
+      "text": "you",
+      "line": 1,
+      "start": 7.645,
+      "end": 8.124
+    },
+    {
+      "text": "are",
+      "line": 1,
+      "start": 8.424,
+      "end": 8.895
+    },
+    {
+      "text": "Don't",
+      "line": 2,
+      "start": 9.475,
+      "end": 10.012
+    },
+    {
+      "text": "stop,",
+      "line": 2,
+      "start": 10.312,
+      "end": 10.844
+    },
+    {
+      "text": "there's",
+      "line": 2,
+      "start": 11.144,
+      "end": 11.821
+    },
+    {
+      "text": "a",
+      "line": 2,
+      "start": 12.121,
+      "end": 12.545
+    },
+    {
+      "text": "light",
+      "line": 2,
+      "start": 12.845,
+      "end": 13.37
+    },
+    {
+      "text": "We",
+      "line": 3,
+      "start": 13.95,
+      "end": 14.435
+    },
+    {
+      "text": "are",
+      "line": 3,
+      "start": 14.735,
+      "end": 15.21
+    },
+    {
+      "text": "golden,",
+      "line": 3,
+      "start": 15.51,
+      "end": 16.189
+    },
+    {
+      "text": "we",
+      "line": 3,
+      "start": 16.489,
+      "end": 16.974
+    },
+    {
+      "text": "are",
+      "line": 3,
+      "start": 17.274,
+      "end": 17.749
+    },
+    {
+      "text": "young",
+      "line": 3,
+      "start": 18.049,
+      "end": 18.645
+    },
+    {
+      "text": "and",
+      "line": 3,
+      "start": 18.945,
+      "end": 19.446
+    },
+    {
+      "text": "singing",
+      "line": 3,
+      "start": 19.746,
+      "end": 20.346
+    },
+    {
+      "text": "loud",
+      "line": 3,
+      "start": 20.646,
+      "end": 21.204
+    }
+  ],
+  "whole_song": "City lights are calling\nTwinkle, twinkle, little star\nHow I wonder what you are\nDon't stop, there's a light\nWe are golden, we are young and singing loud\nGoodnight, silver moon",
+  "note": "Each word is espeak-ng at a different pitch with vibrato over a quiet chord bed, so the clip is sung and the onsets are known."
+}

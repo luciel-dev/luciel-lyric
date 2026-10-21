@@ -155,6 +155,11 @@
 [data-theme=y2k] .btn.primary{--bd:var(--cp-amber);background-color:var(--cp-amber);color:#15110a}
 [data-theme=y2k] .btn.primary:hover:not(:disabled){--bd:var(--cp-amber-h);background-color:var(--cp-amber-h);color:#15110a}
 [data-theme=y2k] .btn.primary:disabled{opacity:1;--bd:#3a4146;color:#8a9194;background:repeating-linear-gradient(-45deg,#202427 0 6px,#1a1d20 6px 12px)}
+[data-theme=y2k] .tierbtn{clip-path:none;border-radius:0;font-family:"Rajdhani",sans-serif;letter-spacing:.02em;text-transform:none;background:#14181b;border-color:var(--cp-line-hi)}
+[data-theme=y2k] .tierbtn b{font:700 15px/1.2 "Rajdhani",sans-serif;letter-spacing:.04em}
+[data-theme=y2k] .tierbtn.on{border-color:var(--cp-amber);color:var(--cp-amber-h);background:#1c2218}
+[data-theme=y2k] .syncbox{border-radius:0;border-color:var(--cp-line-hi);background:rgba(12,14,16,.72)}
+[data-theme=y2k] .taphit{border-radius:0;letter-spacing:.08em}
 [data-theme=y2k] .btn.small{font-size:13px;padding:6px 12px}
 [data-theme=y2k] .btn.big{font-size:16px;padding:12px 28px}
 
@@ -309,7 +314,19 @@
 [data-theme=winamp] .preset{border:1px solid #000;box-shadow:inset 0 0 0 1px #6d7290}
 [data-theme=winamp] .preset.sel{border-color:#00e000;box-shadow:inset 0 0 0 1px #00e000}
 [data-theme=winamp] .muted{color:#9aa0b8}
-[data-theme=winamp] #syncStatus,[data-theme=winamp] #renderStatus,[data-theme=winamp] #trackInfo{font:16px "VT323";color:#00e000}
+[data-theme=winamp] #syncStatus,[data-theme=winamp] #renderStatus,[data-theme=winamp] #trackInfo,[data-theme=winamp] #syncProgressText,[data-theme=winamp] .tapnow{font:16px "VT323";color:#00e000}
+[data-theme=winamp] .syncbox{border-radius:0;background:#000;border-color:#000;box-shadow:inset 1px 1px 0 #4a4e63,inset -1px -1px 0 #000}
+[data-theme=winamp] .tierbtn{border-radius:0;background:#16171f;border:1px solid #000;box-shadow:inset 1px 1px 0 #6d7290;padding:6px 8px}
+[data-theme=winamp] .tierbtn b{font:16px/1.1 "VT323",monospace;letter-spacing:0;text-transform:none}
+[data-theme=winamp] .tierbtn small{font:14px/1.15 "VT323",monospace;letter-spacing:0;text-transform:none;color:#00a000}
+[data-theme=winamp] .tierbtn.on{background:#1f4a1f;color:#00e000}
+[data-theme=winamp] .synclabel{font:10px "Silkscreen",monospace;letter-spacing:.4px;text-transform:uppercase}
+[data-theme=winamp] .taphit{border-radius:0;font:20px "VT323",monospace;background:#000;color:#00e000;border:1px solid #000;box-shadow:inset 1px 1px 0 #4a4e63}
+[data-theme=winamp] .syncbanner{border-radius:0;font:16px "VT323",monospace}
+[data-theme=winamp] .line.lowconf{border-color:#f7d000;box-shadow:none}
+[data-theme=aero] .syncbox{background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.28));border-color:#c5d5e0;box-shadow:inset 0 1px 0 #fff,0 12px 24px -16px rgba(30,70,90,.45)}
+[data-theme=aero] .tierbtn{background:linear-gradient(#fff,#e7eef3);border-color:#9fb2be;box-shadow:inset 0 1px 0 #fff,0 2px 5px -2px rgba(30,60,80,.35)}
+[data-theme=aero] .tierbtn.on{border-color:#1b8db3;box-shadow:inset 0 1px 0 #fff,0 0 0 1px #5fd6f3}
 /* EQ-style sliders */
 [data-theme=winamp] input[type=range]{-webkit-appearance:none;appearance:none;height:14px;background:transparent;border:0;box-shadow:none;padding:0}
 [data-theme=winamp] input[type=range]::-webkit-slider-runnable-track{height:6px;background:linear-gradient(90deg,#1f4a1f,#00a000 50%,#f7d000 80%,#d03000);border:1px solid #000;box-shadow:inset 0 1px 0 #000}

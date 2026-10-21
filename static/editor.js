@@ -526,6 +526,16 @@
       return `<div class="tlclip${i === E.selClip ? ' sel' : ''}" data-i="${i}" style="left:${c.start * pps}px;width:${Math.max(8, d * pps)}px;${bg}"><i class="edge in"></i><span class="nm">${esc(c.name || 'clip')}</span><i class="edge out"></i></div>`;
     }).join('');
     $('#tlLane').innerHTML = E.zoom.keys.map((k, i) => `<i class="tlkf${i === E.sel ? ' sel' : ''}" data-i="${i}" style="left:${k.t * pps}px" title="${k.t.toFixed(2)}s ×${k.z.toFixed(2)}"></i>`).join('');
+    const lyricLane = $('#tlLyrics');
+    if (lyricLane) {
+      lyricLane.innerHTML = (S.lines || []).map((ln, i) => {
+        const words = ln.words || [];
+        if (!words.length) return '';
+        const a = +words[0].start, b = +words[words.length - 1].end;
+        const text = words.map(w => w.text).join(' ');
+        return `<button type="button" class="tllyric${ln.low_confidence ? ' low' : ''}" data-i="${i}" style="left:${a * pps}px;width:${Math.max(18, (b - a) * pps)}px" title="${esc(text)}"><span>${esc(text)}</span></button>`;
+      }).join('');
+    }
     tlHead();
   }
   function splitClip() {
@@ -598,6 +608,13 @@
         const kind = e.target.classList.contains('in') ? 'in' : e.target.classList.contains('out') ? 'out' : 'move';
         tlDrag = {kind, i, x0: e.clientX, start: c.start, inn: c.in, out: c.out, dur: c.duration};
         sc.setPointerCapture(e.pointerId); return;
+      }
+      const lyric = e.target.closest('.tllyric');
+      if (lyric) {
+        const ln = (S.lines || [])[+lyric.dataset.i];
+        const t = ln && ln.words && ln.words[0] ? +ln.words[0].start : 0;
+        seek(Math.max(0, Math.min(S.len || 20, t)));
+        return;
       }
       if (e.target.closest('.tllane')) {
         E.t = Math.max(0, Math.min(S.len || 20, tlTime(e)));

@@ -66,8 +66,13 @@
   const on = (n, f) => addEventListener('lc:' + n, e => { wake(); f(e.detail || {}); });
   on('audio', d => emote('surprised', `Ooh, “${(d.name || 'a new track').replace(/\.[^.]+$/, '')}”! Pick a 15–30 s part.`, 3200));
   on('sync-start', () => emote('music', 'Listening closely… 🎧', 0, PRIO.task_finished));
-  on('sync-done', d => { state.prio = 0; dance('task_finished', {prio: PRIO.task_finished, text: d.stats?.matched != null ? `Synced! ${d.stats.matched} words matched ✨` : 'Lyrics synced! ✨',
-                         after: () => emote('happy', '', 2200)}); });
+  on('sync-done', d => {
+    state.prio = 0;
+    if (d.ok === false) { emote('confused', 'These timings need a check.', 4000, PRIO.error); return; }
+    const n = d.stats && (d.stats.ref_words_used || d.stats.hyp_words);
+    dance('task_finished', {prio: PRIO.task_finished, text: n ? `Synced ${n} words.` : 'Lyrics synced.',
+                         after: () => emote('happy', '', 2200)});
+  });
   on('render-start', () => emote('flying', 'Rendering your video…', 0, PRIO.big_win));
   on('render-done', () => { state.prio = 0; dance('big_win', {prio: PRIO.big_win, text: 'It’s ready! ⬇ Download it 🎉', after: () => emote('love', '', 2500)}); });
   on('error', d => { state.prio = 0; d.where === 'render' || d.where === 'sync' ? emote('crying', 'Oh no, something went wrong…', 4500, PRIO.error)
