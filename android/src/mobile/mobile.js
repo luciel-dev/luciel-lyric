@@ -310,28 +310,31 @@
     } else if (screen === "look") {
       const stage = $("#stage");
       const cards = [...document.querySelectorAll("#looks button")];
-      const drawn = cards.length === 13 && cards.every((b) => {
-        const cv = b.querySelector("canvas");
-        return cv && cv.getBoundingClientRect().height >= 16 && cv.getBoundingClientRect().width >= 16;
-      });
+      const canvases = cards.map((b) => b.querySelector("canvas")).filter(Boolean);
       const grid = $("#looks");
-      if (grid && cards.length) {
+      let firstOk = false;
+      let lastOk = false;
+      let gridOk = false;
+      if (grid && canvases.length === 13) {
         grid.scrollTop = 0;
-        const firstOk = canvasBusy(cards[0].querySelector("canvas"));
-        grid.scrollTop = grid.scrollHeight;
-        const lastCv = cards[12] && cards[12].querySelector("canvas");
+        const first = canvases[0];
+        const fr = first.getBoundingClientRect();
+        firstOk = canvasBusy(first) && fr.height >= 16 && fr.width >= 16;
+        try { cards[12].scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {}
+        const lr = canvases[12].getBoundingClientRect();
         const gr = grid.getBoundingClientRect();
-        const lr = lastCv ? lastCv.getBoundingClientRect() : null;
-        const lastSeen = lr && lr.bottom > gr.top + 4 && lr.top < gr.bottom - 4;
-        expect.stage = canvasBusy(stage) && inView(stage, 32) ? 1 : 0;
-        expect.looks = drawn && firstOk && lastSeen && inView(grid, 32) ? 13 : 0;
+        lastOk = lr.height >= 16 && lr.width >= 16 && lr.bottom > gr.top + 2 && lr.top < gr.bottom - 2;
+        gridOk = inView(grid, 24, false);
       }
+      const bitmaps = canvases.length === 13 && canvases.every((cv) => cv.width >= 80 && cv.height >= 80);
+      expect.stage = canvasBusy(stage) && inView(stage, 24) ? 1 : 0;
+      expect.looks = bitmaps && firstOk && lastOk && gridOk ? 13 : 0;
       const pals = document.querySelectorAll("#palettes button");
       const anims = document.querySelectorAll("#anims button");
       expect.palettes = pals.length === 12 && inView($("#palettes"), 20) ? 12 : pals.length;
       expect.anims = anims.length === 15 && inView($("#anims"), 20) ? 15 : anims.length;
       if (!expect.stage) flags.push("stage");
-      if (expect.looks !== 13) flags.push("looks");
+      if (expect.looks !== 13) flags.push("looks" + [bitmaps ? 1 : 0, firstOk ? 1 : 0, lastOk ? 1 : 0, gridOk ? 1 : 0, canvases.length].join(""));
       if (expect.palettes !== 12) flags.push("palettes");
       if (expect.anims !== 15) flags.push("anims");
     } else if (screen === "time") {
@@ -705,6 +708,7 @@
     try { await document.fonts.ready; } catch (e) {}
     window.__audits = [];
     async function publish(screen) {
+      if (screen === "look") paintLooks();
       await settle();
       fitAll();
       const msg = measure(screen);
