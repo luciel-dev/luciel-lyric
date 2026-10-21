@@ -46,6 +46,7 @@
 
   function show(id) {
     state.screen = id;
+    document.documentElement.dataset.screen = id;
     document.querySelectorAll(".screen").forEach((el) => {
       const on = el.dataset.screen === id;
       el.classList.toggle("on", on);
@@ -672,6 +673,7 @@
     if (!host || !actions || !dock || state.screen !== "time") return;
     host.style.height = "";
     host.style.maxHeight = "";
+    document.documentElement.style.removeProperty("--pin-h");
     sizePreview();
     let guard = 0;
     while (guard++ < 24) {
@@ -681,12 +683,14 @@
       const h = host.getBoundingClientRect().height;
       const next = Math.floor(h - (bottom - limit) - 1);
       if (!(next < h - 0.5)) break;
-      const clamped = Math.max(72, next);
+      const clamped = Math.max(88, next);
       host.style.height = clamped + "px";
       host.style.maxHeight = clamped + "px";
       sizePreview();
-      if (clamped <= 72) break;
+      if (clamped <= 88) break;
     }
+    const fitted = Math.round(host.getBoundingClientRect().height);
+    if (fitted > 48) document.documentElement.style.setProperty("--pin-h", fitted + "px");
   }
   function labelNodes() {
     const sel = "button, h1, h2, .sum, .brand, .tag, .docklabel, .lead, .hint, .lcd, #previewTime, #previewMeta, .clipname, .colors label, .lookgrid small, .fx span";
@@ -738,7 +742,8 @@
     const head = document.querySelector(".screen.on .screenhead");
     const h1 = head && head.querySelector("h1");
     const lead = head && head.querySelector(".lead");
-    if (!h1 || !lead) return false;
+    if (!h1) return false;
+    const leadShown = !!(lead && getComputedStyle(lead).display !== "none" && lead.getClientRects().length);
     const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
     const dock = document.querySelector(".dock").getBoundingClientRect();
     const blockers = [document.getElementById("safebar"), document.querySelector(".dock"), document.querySelector(".dockplate"), document.getElementById("previewPin")];
@@ -764,7 +769,7 @@
       if (hit !== el && !el.contains(hit) && !head.contains(hit)) return "cover";
       return "";
     }
-    const why = [problem(h1), problem(lead)].filter(Boolean).join("/");
+    const why = [problem(h1), leadShown ? problem(lead) : ""].filter(Boolean).join("/");
     state.headWhy = why;
     return !why;
   }
@@ -1188,7 +1193,7 @@
     cv.width = cssW;
     cv.height = 64;
     cv.style.width = cssW + "px";
-    cv.style.height = "52px";
+    cv.style.height = "20px";
     const ctx = cv.getContext("2d");
     const w = cv.width, h = cv.height;
     ctx.clearRect(0, 0, w, h);
@@ -1382,6 +1387,14 @@
     if (!pin || !canvas) return;
     const host = pin.parentElement && pin.parentElement.classList.contains("pinhost") ? pin.parentElement : null;
     const stuck = pin.classList.contains("stuck");
+    const fitted = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pin-h")) || 0;
+    if (stuck && fitted > 48) {
+      pin.style.height = fitted + "px";
+      pin.style.maxHeight = fitted + "px";
+    } else if (!stuck) {
+      pin.style.height = "";
+      pin.style.maxHeight = "";
+    }
     // API 30 WebView ignores `inset`, so an absolute pin otherwise shrinks to a
     // zero-height canvas. Stretch it to the host with the longhand edges.
     if (!stuck) {
@@ -1559,6 +1572,16 @@
     if (!meta.textContent) { meta.hidden = true; return; }
     meta.hidden = false;
     if (meta.clientWidth > 8 && meta.scrollWidth > meta.clientWidth + 1) meta.hidden = true;
+    const pin = document.getElementById("previewPin");
+    const bar = pin && pin.querySelector(".previewbar");
+    if (pin && bar && !meta.hidden) {
+      const cs = getComputedStyle(pin);
+      const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const borderY = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      const room = pin.getBoundingClientRect().height - borderY - padY - bar.offsetHeight;
+      if (room < 28) meta.hidden = true;
+    }
+    sizePreview();
   }
   function updatePreviewChrome() {
     const len = state.length || 20;
