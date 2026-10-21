@@ -39,6 +39,7 @@ need = {
     "intro": ["title=1", "intronext=1", "skip=1"],
     "intro2": ["title=1", "intronext=1", "skip=1"],
     "intro3": ["title=1", "intronext=1", "skip=1"],
+    "sheet": ["title=1", "sheet=1", "fonts=3", "swatches=6", "tsize=1", "outline=1", "shadow=1", "alignn=3", "scope=2", "nudge=2", "linemerge=2", "undo=1", "preset=1", "previewpin=1", "next=1", "steps=6"],
     "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
 }[screen]
 need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "themefit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1"]
@@ -194,5 +195,6 @@ for theme in aero y2k winamp; do
   capture intro "${theme}" "android-intro${suffix}.png"
   capture intro2 "${theme}" "android-intro2${suffix}.png"
   capture intro3 "${theme}" "android-intro3${suffix}.png"
+  capture sheet "${theme}" "android-sheet${suffix}.png"
 done
 exit "${fail}"

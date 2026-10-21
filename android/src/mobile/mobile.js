@@ -30,7 +30,8 @@
     palette: null, colorOv: null, title: "", artist: "", bg: "gradient", videoIn: 0,
     videoName: "", videoEl: null, videoReady: false, clips: [], nextClipId: 1,
     aspect: "9:16", vfit: "fill", vscale: 1, vx: 0.5, vy: 0.5, tier: "fast", frameCv: null,
-    selectedClip: 0, selectedLine: -1, pxPerSec: 46, thumbs: [],
+    selectedClip: 0, selectedLine: -1, selectedWord: -1, pxPerSec: 46, thumbs: [],
+    textStyle: null, textScope: "all",
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
     checks: null,
   };
@@ -188,6 +189,8 @@
         animId: state.animId,
         palette: state.palette,
         colorOv: state.colorOv,
+        textStyle: state.textStyle,
+        textScope: state.textScope,
         quality: state.quality,
         tier: state.tier,
         synced: !!state.synced,
@@ -217,6 +220,8 @@
       if (typeof o.animId === "string") state.animId = o.animId;
       if (o.palette) state.palette = o.palette;
       if (o.colorOv) state.colorOv = o.colorOv;
+      if (o.textStyle && typeof o.textStyle === "object") state.textStyle = o.textStyle;
+      if (o.textScope === "line" || o.textScope === "all") state.textScope = o.textScope;
       if (typeof o.quality === "string") state.quality = o.quality;
       if (o.tier === "accurate" || o.tier === "fast") state.tier = o.tier;
       state.synced = !!o.synced;
@@ -690,7 +695,7 @@
   function pageWide() {
     const vw = document.documentElement.clientWidth;
     const bad = [];
-    const roots = [document.querySelector(".top"), document.querySelector(".dock"), document.querySelector(".screen.on")];
+    const roots = [document.querySelector(".top"), document.querySelector(".dock"), document.querySelector(".screen.on"), document.getElementById("textSheet")];
     const seen = new Set();
     roots.forEach((root) => {
       if (!root) return;
@@ -709,7 +714,7 @@
     return bad;
   }
   function textWide() {
-    const sel = ".brand, .tag, .themes button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label, #previewTime, #previewMeta";
+    const sel = ".brand, .tag, .themes button, .screen.on button, .screen.on h1, .screen.on h2, .screen.on .sum, .screen.on .lcd, .screen.on small, .screen.on .hint, .screen.on .lead, .screen.on .fx span, .screen.on .colors label, #previewTime, #previewMeta, #textSheet button, #textSheet h2, #textSheet .hint, #textSheet label";
     const bad = [];
     document.querySelectorAll(sel).forEach((el) => {
       if (el.closest("#dock") || el.clientWidth < 2) return;
@@ -747,9 +752,9 @@
     return ok;
   }
   function contentFlags(screen) {
-    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0, next: 0, steps: 0, intronext: 0, skip: 0, continuebtn: 0, startnew: 0 };
+    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0, next: 0, steps: 0, intronext: 0, skip: 0, continuebtn: 0, startnew: 0, sheet: 0, fonts: 0, swatches: 0, tsize: 0, outline: 0, shadow: 0, alignn: 0, scope: 0, nudge: 0, linemerge: 0, undo: 0, preset: 0 };
     const flags = [];
-    const kind = screen === "intro2" || screen === "intro3" ? "intro" : screen;
+    const kind = screen === "intro2" || screen === "intro3" ? "intro" : screen === "sheet" ? "sync" : screen;
     const titleEl = [...document.querySelectorAll(".screen.on h1")].find((el) => el.getClientRects().length);
     if (!inView(titleEl, 12)) flags.push("title");
     else expect.title = 1;
@@ -838,6 +843,28 @@
       expect.startnew = inView($("#startNew"), 28) ? 1 : 0;
       if (!expect.continuebtn) flags.push("continue");
       if (!expect.startnew) flags.push("startnew");
+    }
+    if (screen === "sheet") {
+      const sc = document.scrollingElement || document.documentElement;
+      sc.scrollTop = 0;
+      reserveSheet();
+      placeSheet();
+      // The sheet scrolls on its own. Each control is brought into that
+      // window so a wrapped row can be taller than the sheet.
+      const countShown = (sel, min) => [...document.querySelectorAll(sel)].filter((el) => sheetInView(el, min)).length;
+      expect.fonts = countShown("#fontPick button", 36);
+      expect.swatches = countShown("#swatches button", 36);
+      expect.tsize = sheetInView($("#textSize"), 12) ? 1 : 0;
+      expect.outline = sheetInView($("#outlineAmt"), 12) ? 1 : 0;
+      expect.shadow = sheetInView($("#shadowAmt"), 12) ? 1 : 0;
+      expect.alignn = countShown("#alignPick button", 36);
+      expect.scope = countShown("#scopePick button", 36);
+      expect.nudge = sheetInView($("#nudgeBack"), 36) && sheetInView($("#nudgeFwd"), 36) ? 2 : 0;
+      expect.linemerge = sheetInView($("#splitLine"), 36) && sheetInView($("#mergeLine"), 36) ? 2 : 0;
+      expect.undo = sheetInView($("#undoText"), 36) && sheetInView($("#redoText"), 36) && sheetInView($("#sheetClose"), 36) && sheetInView($("#sheetWords"), 28) ? 1 : 0;
+      expect.preset = sheetInView($("#savePreset"), 36) ? 1 : 0;
+      expect.sheet = expect.fonts === 3 && expect.swatches === 6 && expect.tsize && expect.outline && expect.shadow && expect.alignn === 3 && expect.scope === 2 && expect.nudge === 2 && expect.linemerge === 2 && expect.undo && expect.preset ? 1 : 0;
+      if (!expect.sheet) flags.push("sheet");
     }
     if (STEP_ORDER.indexOf(kind) >= 0) {
       const nextBtn = document.querySelector("#screen-" + kind + " .stepnext");
@@ -1150,14 +1177,19 @@
     return changes >= 1;
   }
   function measure(screen) {
-    const logical = screen === "syncshot" ? "sync" : screen === "videocheck" ? "look" : screen;
+    const logical = screen === "syncshot" || screen === "sheet" ? "sync" : screen === "videocheck" ? "look" : screen;
     const sc = document.scrollingElement || document.documentElement;
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
     sizePreview();
     fitAll();
+    const sheetEl = document.getElementById("textSheet");
+    if (sheetEl && !sheetEl.hidden) document.documentElement.dataset.sheet = "1";
+    else document.documentElement.removeAttribute("data-sheet");
     if (logical === "time") fitTimeFold();
     else if (logical === "look" || logical === "render" || logical === "video" || logical === "sync") fitPinClear();
+    reserveSheet();
+    placeSheet();
     dropOverflowMeta();
     const dockHidden = getComputedStyle(document.querySelector(".dock")).display === "none";
     const hitOk = dockHidden ? 1 : (dockHitOk() ? 1 : 0);
@@ -1167,7 +1199,7 @@
     const headVisible = headingClear() ? 1 : 0;
     const foldOk = logical === "time" ? (timeFoldOk() ? 1 : 0) : 1;
     const filmOk = logical === "time" ? (filmReady() ? 1 : 0) : 1;
-    const { expect, flags } = contentFlags(logical);
+    const { expect, flags } = contentFlags(screen === "sheet" ? "sheet" : logical);
     if (wrapHits.length) flags.push("wrap:" + wrapHits.slice(0, 2).join("|").replace(/\s+/g, ""));
     if (ellHits.length) flags.push("ellipsis:" + ellHits.slice(0, 2).join("|").replace(/\s+/g, ""));
     if (!headVisible) flags.push("headclear" + (state.headWhy ? ":" + state.headWhy : ""));
@@ -1263,6 +1295,18 @@
       "skip=" + expect.skip,
       "continue=" + expect.continuebtn,
       "startnew=" + expect.startnew,
+      "sheet=" + expect.sheet,
+      "fonts=" + expect.fonts,
+      "swatches=" + expect.swatches,
+      "tsize=" + expect.tsize,
+      "outline=" + expect.outline,
+      "shadow=" + expect.shadow,
+      "alignn=" + expect.alignn,
+      "scope=" + expect.scope,
+      "nudge=" + expect.nudge,
+      "linemerge=" + expect.linemerge,
+      "undo=" + expect.undo,
+      "preset=" + expect.preset,
       "clear=" + clear,
       "fit=" + (box.length ? 0 : 1),
       "overflow=" + wide.length,
@@ -1296,12 +1340,16 @@
       "layers=" + (checks.layers || 0)
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
+    const scEnd = document.scrollingElement || document.documentElement;
+    scEnd.scrollTop = 0;
+    reserveSheet();
+    placeSheet();
     return parts.join(" ");
   }
   function resolved() {
     const lk = P.looks[state.look] || P.looks.noir;
     const anim = P.anims.find((a) => a.id === state.animId) || P.anims[0];
-    const style = Object.assign({}, P.styleDefaults, lk.style, anim.style || {}, (state.palette && state.palette.colors) || {}, state.colorOv || {});
+    const style = Object.assign({}, P.styleDefaults, lk.style, anim.style || {}, (state.palette && state.palette.colors) || {}, state.colorOv || {}, state.textStyle || {});
     if (state.fontId) style.fontId = state.fontId;
     const animOv = Object.assign({}, P.animDefaults, anim.anim || {});
     if (!state.animLive) { animOv.idle = "none"; animOv.cursor = false; }
@@ -1374,16 +1422,31 @@
     ctx.drawImage(v, x, y, rw, rh);
     return cv;
   }
+  function activeLineAt(t) {
+    const lines = state.lines || [];
+    let idx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const ws = lines[i] && lines[i].words;
+      if (!ws || !ws.length) continue;
+      if (idx < 0) idx = i;
+      if (t + 0.001 >= ws[0].start) idx = i;
+      if (t >= ws[0].start && t < ws[ws.length - 1].end) return i;
+    }
+    return idx;
+  }
   function scene(t, size) {
     const r = resolved();
-    const groups = window.LL.prepare(state.lines, r.style, r.anim, state.length);
+    const style = Object.assign({}, r.style);
+    const live = state.lines[activeLineAt(t || 0)];
+    if (live && live.style) Object.assign(style, live.style);
+    const groups = window.LL.prepare(state.lines, style, r.anim, state.length);
     const keys = state.zoomId === "custom" ? state.keys : (window.LL.zoomPreset(state.zoomId, state.length, groups) || []);
     const at = Math.max(0, t || 0);
     const src = state.bg === "video" ? sourceAt(at) : null;
     const W = size ? size.w : (stage && stage.W) || 360;
     const H = size ? size.h : (stage && stage.H) || 640;
     return {
-      style: r.style, anim: r.anim, lines: state.lines, title: state.title, artist: state.artist,
+      style: style, anim: r.anim, lines: state.lines, title: state.title, artist: state.artist,
       clipLen: state.length, visualizer: true, bgMode: state.bg, grad: r.lk.grad, wave: r.lk.wave,
       zoom: { keys, target: "bg" }, fx: state.fx.filter((f) => f.on), fps: 30,
       video: src ? framedVideo(W, H) : null,
@@ -1433,6 +1496,8 @@
         state.fontId = "";
         state.palette = null;
         state.colorOv = null;
+        state.textStyle = null;
+        state.lines.forEach((ln) => { if (ln) delete ln.style; });
         mascot("music");
         paintLooks(); paintAnims(); paintPalettes(); syncColors(); draw(1.35);
       };
@@ -1539,6 +1604,325 @@
     const box = $("#lyrics");
     if (box && box.value !== text) box.value = text;
   }
+  const SWATCHES = [
+    ["#ffffff", "White"], ["#1d2a33", "Ink"], ["#f2d7a2", "Sand"],
+    ["#7eb8c9", "Sky"], ["#d4a24a", "Gold"], ["#c47a6a", "Rose"],
+  ];
+  let undoStack = [];
+  let redoStack = [];
+  let undoArmed = false;
+  function lineText(ln) {
+    return (ln && ln.words ? ln.words : []).map((w) => w.text).join(" ");
+  }
+  function snapshotText() {
+    return JSON.stringify({
+      lines: state.lines,
+      textStyle: state.textStyle,
+      textScope: state.textScope,
+      colorOv: state.colorOv,
+      fontId: state.fontId,
+    });
+  }
+  function paintUndo() {
+    const undoBtn = $("#undoText");
+    const redoBtn = $("#redoText");
+    if (undoBtn) undoBtn.disabled = !undoStack.length;
+    if (redoBtn) redoBtn.disabled = !redoStack.length;
+  }
+  function armUndo() {
+    if (undoArmed) return;
+    undoArmed = true;
+    undoStack.push(snapshotText());
+    if (undoStack.length > 40) undoStack.shift();
+    redoStack = [];
+    paintUndo();
+  }
+  function restoreText(raw) {
+    const o = JSON.parse(raw);
+    state.lines = o.lines || [];
+    state.textStyle = o.textStyle || null;
+    state.textScope = o.textScope === "line" ? "line" : "all";
+    state.colorOv = o.colorOv || null;
+    state.fontId = o.fontId || "";
+    writeLyrics(state.lines.map(lineText).join("\n"));
+    paintLines();
+    syncColors();
+    draw(state.t || 1);
+    paintSheet();
+    saveProject();
+  }
+  function undoText() {
+    if (!undoStack.length) return;
+    redoStack.push(snapshotText());
+    undoArmed = false;
+    restoreText(undoStack.pop());
+  }
+  function redoText() {
+    if (!redoStack.length) return;
+    undoStack.push(snapshotText());
+    undoArmed = false;
+    restoreText(redoStack.pop());
+  }
+  function effectiveStyle() {
+    const base = resolved().style;
+    const ln = state.selectedLine >= 0 ? state.lines[state.selectedLine] : null;
+    return Object.assign({}, base, (ln && ln.style) || {});
+  }
+  function setStyleKey(key, value) {
+    armUndo();
+    if (state.textScope === "line" && state.selectedLine >= 0 && state.lines[state.selectedLine]) {
+      const ln = state.lines[state.selectedLine];
+      ln.style = Object.assign({}, ln.style, { [key]: value });
+    } else {
+      state.textStyle = Object.assign({}, state.textStyle || {}, { [key]: value });
+      state.lines.forEach((ln) => { if (ln && ln.style) delete ln.style[key]; });
+      if (key === "color") {
+        state.colorOv = Object.assign({}, state.colorOv || {}, { color: value, active: value, sung: value });
+      }
+      if (key === "font") state.fontId = "";
+    }
+    draw(state.t || 1);
+    paintSheet();
+    saveProject();
+  }
+  function sizeWord(n) {
+    if (n < 0.07) return "Small";
+    if (n < 0.1) return "Medium";
+    return "Large";
+  }
+  function amountWord(n, soft) {
+    if (n <= 0.001) return "Off";
+    return n < soft ? "Soft" : "Strong";
+  }
+  function paintSheet() {
+    const sheet = $("#textSheet");
+    if (!sheet || sheet.hidden) return;
+    const s = effectiveStyle();
+    const words = $("#sheetWords");
+    const ln = state.selectedLine >= 0 ? state.lines[state.selectedLine] : null;
+    if (words && document.activeElement !== words) words.value = ln ? lineText(ln) : "";
+    $("#sizeVal").textContent = sizeWord(+s.size || 0.085);
+    $("#textSize").value = String(s.size || 0.085);
+    $("#outlineVal").textContent = amountWord(+s.strokeWidth || 0, 0.04);
+    $("#outlineAmt").value = String(s.strokeWidth || 0);
+    $("#shadowVal").textContent = amountWord(+s.shadowAlpha || 0, 0.4);
+    $("#shadowAmt").value = String(s.shadowAlpha || 0);
+    document.querySelectorAll("#fontPick button").forEach((b) => b.classList.toggle("on", b.dataset.font === (s.font || "Poppins") && !state.fontId));
+    document.querySelectorAll("#alignPick button").forEach((b) => b.classList.toggle("on", b.dataset.align === (s.align || "center")));
+    document.querySelectorAll("#scopePick button").forEach((b) => b.classList.toggle("on", b.dataset.scope === state.textScope));
+    const sw = $("#swatches");
+    if (sw && !sw.childElementCount) {
+      SWATCHES.forEach((pair) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.color = pair[0];
+        b.setAttribute("aria-label", pair[1]);
+        b.style.background = pair[0];
+        sw.append(b);
+      });
+    }
+    sw.querySelectorAll("button").forEach((b) => b.classList.toggle("on", (s.color || "").toLowerCase() === b.dataset.color));
+    $("#undoText").disabled = !undoStack.length;
+    $("#redoText").disabled = !redoStack.length;
+    const row = $("#presetRow");
+    row.innerHTML = "";
+    let presets = [];
+    try { presets = JSON.parse(localStorage.getItem("lc-text-presets") || "[]"); } catch (e) { presets = []; }
+    presets.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = p.name || ("Look " + (i + 1));
+      b.onclick = () => {
+        armUndo();
+        undoArmed = false;
+        if (state.textScope === "line" && state.lines[state.selectedLine]) state.lines[state.selectedLine].style = Object.assign({}, p.style);
+        else {
+          state.textStyle = Object.assign({}, p.style);
+          state.lines.forEach((rowLn) => { if (rowLn) delete rowLn.style; });
+          if (p.style && p.style.color) state.colorOv = Object.assign({}, state.colorOv || {}, { color: p.style.color, active: p.style.color, sung: p.style.color });
+          if (p.style && p.style.font) state.fontId = "";
+        }
+        draw(state.t || 1);
+        paintSheet();
+        saveProject();
+      };
+      row.append(b);
+    });
+    const hint = $("#sheetHint");
+    if (hint && !presets.length) hint.textContent = "Drag the words on the preview to move them.";
+  }
+  function reserveSheet() {
+    const sheet = $("#textSheet");
+    const pin = $("#previewPin");
+    const host = pin && pin.parentElement;
+    if (!sheet || sheet.hidden || !host || !host.classList.contains("pinhost")) return;
+    const dock = document.querySelector(".dock");
+    if (!dock) return;
+    fitPinClear();
+    const dockTop = dock.getBoundingClientRect().top;
+    const top = host.getBoundingClientRect().top;
+    const available = Math.floor(dockTop - 8 - top);
+    const pinMin = 56;
+    const roomForSheet = available - pinMin;
+    if (roomForSheet < 64) return;
+    const sheetH = Math.min(240, Math.max(88, Math.min(Math.floor(available * 0.62), roomForSheet)));
+    const pinH = available - sheetH;
+    host.style.height = pinH + "px";
+    host.style.maxHeight = pinH + "px";
+    sizePreview();
+  }
+  function placeSheet() {
+    const sheet = $("#textSheet");
+    if (!sheet) return;
+    if (sheet.hidden) { sheet.style.maxHeight = ""; sheet.style.bottom = ""; return; }
+    const dock = document.querySelector(".dock");
+    const dockTop = !dock || getComputedStyle(dock).display === "none" ? window.innerHeight : dock.getBoundingClientRect().top;
+    const pin = document.getElementById("previewPin");
+    const pinBox = pin && pin.getBoundingClientRect().height > 8 ? pin.getBoundingClientRect() : null;
+    const head = document.querySelector(".screen.on .screenhead");
+    const headBottom = head && head.getBoundingClientRect().height > 8 ? head.getBoundingClientRect().bottom : 96;
+    const limit = pinBox ? Math.max(headBottom, pinBox.bottom) : headBottom;
+    const top = limit + 8;
+    const room = Math.floor(dockTop - 8 - top);
+    sheet.style.bottom = Math.max(0, Math.round(window.innerHeight - dockTop + 8)) + "px";
+    sheet.style.maxHeight = Math.max(0, room) + "px";
+  }
+  function sheetInView(el, minH) {
+    const sheet = document.getElementById("textSheet");
+    if (!el || !sheet) return false;
+    const sr0 = sheet.getBoundingClientRect();
+    const er0 = el.getBoundingClientRect();
+    sheet.scrollTop += (er0.top + er0.height / 2) - (sr0.top + sr0.height / 2);
+    const r = el.getBoundingClientRect();
+    const sr = sheet.getBoundingClientRect();
+    const dockEl = document.querySelector(".dock");
+    const dockTop = !dockEl ? window.innerHeight : dockEl.getBoundingClientRect().top;
+    if (r.left < -1 || r.right > window.innerWidth + 1) return false;
+    return r.width >= 8 && r.height >= minH && r.top >= sr.top - 1 && r.bottom <= sr.bottom + 1 && r.bottom <= dockTop + 1;
+  }
+  function openSheet() {
+    const sheet = $("#textSheet");
+    if (!sheet) return;
+    if (state.selectedLine < 0 && state.lines.length) state.selectedLine = 0;
+    sheet.hidden = false;
+    document.documentElement.dataset.sheet = "1";
+    const ln = state.lines[state.selectedLine];
+    if (ln && ln.words && ln.words.length) {
+      const w = ln.words[Math.max(0, state.selectedWord)] || ln.words[0];
+      state.t = Math.min(state.length - 0.05, Math.max(0.05, w.start + 0.04));
+      draw(state.t);
+    }
+    placeSheet();
+    paintSheet();
+    document.querySelectorAll("#lineList li").forEach((li, i) => {
+      li.querySelectorAll(".wordchip").forEach((chip, wi) => {
+        chip.classList.toggle("on", i === state.selectedLine && wi === state.selectedWord);
+      });
+    });
+  }
+  function closeSheet() {
+    const sheet = $("#textSheet");
+    if (sheet) sheet.hidden = true;
+    document.documentElement.removeAttribute("data-sheet");
+    undoArmed = false;
+    fitPinClear();
+  }
+  function nudgeLineTime(delta) {
+    const ln = state.lines[state.selectedLine];
+    if (!ln || !ln.words || !ln.words.length) return;
+    armUndo();
+    undoArmed = false;
+    const len = state.length || 20;
+    let shift = delta;
+    const a = ln.words[0].start + shift;
+    const b = ln.words[ln.words.length - 1].end + shift;
+    if (a < 0) shift -= a;
+    if (b > len) shift -= b - len;
+    if (Math.abs(shift) < 0.001) return;
+    ln.words.forEach((w) => { w.start = Math.max(0, w.start + shift); w.end = Math.max(w.start + 0.05, w.end + shift); });
+    paintLines();
+    paintTimeline();
+    draw(state.t || ln.words[0].start);
+    saveProject();
+  }
+  function splitSelectedLine() {
+    const i = state.selectedLine;
+    const ln = state.lines[i];
+    if (!ln || !ln.words || ln.words.length < 2) return;
+    armUndo();
+    undoArmed = false;
+    let at = state.selectedWord > 0 ? state.selectedWord : Math.ceil(ln.words.length / 2);
+    if (at <= 0 || at >= ln.words.length) at = Math.ceil(ln.words.length / 2);
+    const next = { words: ln.words.slice(at), low_confidence: !!ln.low_confidence };
+    if (ln.style) next.style = Object.assign({}, ln.style);
+    ln.words = ln.words.slice(0, at);
+    state.lines.splice(i + 1, 0, next);
+    state.selectedWord = 0;
+    writeLyrics(state.lines.map(lineText).join("\n"));
+    paintLines();
+    paintTimeline();
+    draw(state.t || 1);
+    paintSheet();
+    saveProject();
+  }
+  function mergeSelectedLine() {
+    const i = state.selectedLine;
+    if (i < 0 || state.lines.length < 2) return;
+    const j = i < state.lines.length - 1 ? i + 1 : i - 1;
+    armUndo();
+    undoArmed = false;
+    const a = Math.min(i, j);
+    const b = Math.max(i, j);
+    state.lines[a].words = state.lines[a].words.concat(state.lines[b].words);
+    state.lines.splice(b, 1);
+    state.selectedLine = a;
+    state.selectedWord = 0;
+    writeLyrics(state.lines.map(lineText).join("\n"));
+    paintLines();
+    paintTimeline();
+    draw(state.t || 1);
+    paintSheet();
+    saveProject();
+  }
+  function saveTextPreset() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem("lc-text-presets") || "[]"); } catch (e) { list = []; }
+    const s = effectiveStyle();
+    const keep = ["font", "size", "color", "active", "sung", "strokeWidth", "strokeColor", "shadowAlpha", "shadowBlur", "shadowY", "shadowColor", "align", "posY", "posX"];
+    const snap = {};
+    keep.forEach((k) => { if (s[k] != null) snap[k] = s[k]; });
+    list.push({ name: "Look " + (list.length + 1), style: snap });
+    if (list.length > 6) list = list.slice(list.length - 6);
+    try { localStorage.setItem("lc-text-presets", JSON.stringify(list)); } catch (e) {}
+    paintSheet();
+  }
+  function hitPreviewWord(ev) {
+    const cv = $("#stage");
+    if (!cv || !stage || !stage.groups) return null;
+    const r = cv.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return null;
+    const x = (ev.clientX - r.left) / r.width * cv.width;
+    const y = (ev.clientY - r.top) / r.height * cv.height;
+    for (let gi = stage.groups.length - 1; gi >= 0; gi--) {
+      const g = stage.groups[gi];
+      const lay = g._lay;
+      if (!lay) continue;
+      const fs = lay.fs || 16;
+      for (let wi = 0; wi < g.words.length; wi++) {
+        const p = lay.pos[wi];
+        if (!p) continue;
+        if (x >= p.x - 6 && x <= p.x + p.w + 6 && y >= p.y - fs && y <= p.y + fs * 0.35) {
+          const line = g.line || 0;
+          const start = g.words[wi].s;
+          const words = (state.lines[line] && state.lines[line].words) || [];
+          let word = words.findIndex((w) => Math.abs(w.start - start) < 0.03);
+          if (word < 0) word = wi;
+          return { line, word };
+        }
+      }
+    }
+    return null;
+  }
   function paintLines() {
     const ol = $("#lineList");
     ol.innerHTML = "";
@@ -1550,25 +1934,67 @@
       edit.spellcheck = false;
       edit.setAttribute("role", "textbox");
       edit.setAttribute("aria-label", "Line " + (i + 1));
-      edit.textContent = ln.words.map((w) => w.text).join(" ");
+      edit.textContent = lineText(ln);
       edit.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); edit.blur(); }
       });
+      edit.addEventListener("focus", () => {
+        state.selectedLine = i;
+        state.selectedWord = -1;
+        armUndo();
+        openSheet();
+      });
       edit.addEventListener("input", () => {
+        armUndo();
         if (LS().applyLineText(state.lines[i], edit.textContent)) {
           draw(state.t || 1.2);
+          const words = $("#sheetWords");
+          if (words && document.activeElement !== words) words.value = lineText(state.lines[i]);
           $("#syncStatus").textContent = "Line updated.";
         }
       });
       edit.addEventListener("blur", () => {
-        if (!LS().applyLineText(state.lines[i], edit.textContent)) {
-          edit.textContent = state.lines[i].words.map((w) => w.text).join(" ");
-        }
-        writeLyrics(state.lines.map((row) => row.words.map((w) => w.text).join(" ")).join("\n"));
-        paintLines();
-        draw(state.t || 1.2);
+        setTimeout(() => {
+          const active = document.activeElement;
+          if (active && active.classList && (active.classList.contains("wordchip") || active.classList.contains("lineedit") || active.id === "sheetWords")) return;
+          undoArmed = false;
+          if (!state.lines[i]) return;
+          if (!LS().applyLineText(state.lines[i], edit.textContent)) edit.textContent = lineText(state.lines[i]);
+          writeLyrics(state.lines.map(lineText).join("\n"));
+          paintLines();
+          draw(state.t || 1.2);
+        }, 0);
       });
-      li.append(edit);
+      const row = document.createElement("div");
+      row.className = "wordrow";
+      (ln.words || []).forEach((w, wi) => {
+        const chip = document.createElement("span");
+        chip.className = "wordchip" + (state.selectedLine === i && state.selectedWord === wi ? " on" : "");
+        chip.contentEditable = "true";
+        chip.spellcheck = false;
+        chip.setAttribute("role", "textbox");
+        chip.setAttribute("aria-label", w.text);
+        chip.textContent = w.text;
+        chip.addEventListener("focus", () => {
+          state.selectedLine = i;
+          state.selectedWord = wi;
+          armUndo();
+          openSheet();
+        });
+        chip.addEventListener("input", () => {
+          armUndo();
+          const parts = (ln.words || []).map((word, k) => (k === wi ? chip.textContent : word.text));
+          if (LS().applyLineText(ln, parts.join(" "))) {
+            edit.textContent = lineText(ln);
+            const words = $("#sheetWords");
+            if (words && document.activeElement !== words) words.value = lineText(ln);
+            draw(state.t || w.start || 1);
+          }
+        });
+        chip.addEventListener("blur", () => { undoArmed = false; });
+        row.append(chip);
+      });
+      li.append(edit, row);
       ol.append(li);
     });
   }
@@ -1866,7 +2292,7 @@
       return pictureRoom() < 36 || stageRoom() < 28 || host.getBoundingClientRect().bottom > dockTop - 4 || leadBad;
     };
     tighten();
-    if (cramped()) {
+    if (cramped() || root.dataset.sheet === "1") {
       root.dataset.compact = "1";
       if (lead) lead.style.display = "";
       tighten();
@@ -1959,7 +2385,7 @@
     pinPreview();
     return why.length === 0;
   }
-  window.addEventListener("scroll", () => { pinPreview(); }, { passive: true });
+  window.addEventListener("scroll", () => { pinPreview(); placeSheet(); }, { passive: true });
   window.addEventListener("resize", () => {
     sizePreview();
     if (state.screen === "time") fitTimeFold();
@@ -2818,6 +3244,16 @@
       await publish(demo);
       return;
     }
+    if (demo === "sheet") {
+      theme(document.documentElement.dataset.theme || "aero");
+      show("sync");
+      state.selectedLine = 0;
+      state.selectedWord = 0;
+      draw(state.t > 0.05 ? state.t : 1.2);
+      openSheet();
+      await publish("sheet");
+      return;
+    }
     if (demo === "home") {
       try {
         localStorage.setItem("lc-project", JSON.stringify({
@@ -2854,6 +3290,132 @@
     }
   }
 
+  $("#editText").onclick = () => {
+    if (state.selectedLine < 0) state.selectedLine = 0;
+    openSheet();
+    const words = $("#sheetWords");
+    if (words) words.focus();
+  };
+  $("#sheetClose").onclick = () => closeSheet();
+  $("#undoText").onclick = () => undoText();
+  $("#redoText").onclick = () => redoText();
+  $("#fontPick").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    setStyleKey("font", b.dataset.font);
+    undoArmed = false;
+  };
+  $("#alignPick").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    setStyleKey("align", b.dataset.align);
+    undoArmed = false;
+  };
+  $("#scopePick").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    state.textScope = b.dataset.scope === "line" ? "line" : "all";
+    if (state.textScope === "line" && state.selectedLine < 0 && state.lines.length) state.selectedLine = 0;
+    paintSheet();
+  };
+  $("#swatches").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const hex = b.dataset.color;
+    armUndo();
+    if (state.textScope === "line" && state.lines[state.selectedLine]) {
+      state.lines[state.selectedLine].style = Object.assign({}, state.lines[state.selectedLine].style, { color: hex, active: hex, sung: hex });
+    } else {
+      state.textStyle = Object.assign({}, state.textStyle || {}, { color: hex, active: hex, sung: hex });
+      state.colorOv = Object.assign({}, state.colorOv || {}, { color: hex, active: hex, sung: hex });
+      state.lines.forEach((ln) => {
+        if (!ln || !ln.style) return;
+        delete ln.style.color;
+        delete ln.style.active;
+        delete ln.style.sung;
+      });
+    }
+    undoArmed = false;
+    syncColors();
+    draw(state.t || 1);
+    paintSheet();
+    saveProject();
+  };
+  function styleSlider(id, apply) {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("pointerdown", () => armUndo());
+    el.addEventListener("input", () => apply(+el.value));
+    el.addEventListener("pointerup", () => { undoArmed = false; });
+    el.addEventListener("change", () => { undoArmed = false; });
+  }
+  styleSlider("#textSize", (n) => setStyleKey("size", n));
+  styleSlider("#outlineAmt", (n) => {
+    setStyleKey("strokeWidth", n);
+    if (n > 0) setStyleKey("strokeColor", "#102028");
+  });
+  styleSlider("#shadowAmt", (n) => {
+    setStyleKey("shadowAlpha", n);
+    setStyleKey("shadowBlur", n > 0 ? 0.06 : 0);
+    setStyleKey("shadowY", n > 0 ? 0.04 : 0);
+    setStyleKey("shadowColor", "#102028");
+  });
+  $("#nudgeBack").onclick = () => nudgeLineTime(-0.1);
+  $("#nudgeFwd").onclick = () => nudgeLineTime(0.1);
+  $("#splitLine").onclick = () => splitSelectedLine();
+  $("#mergeLine").onclick = () => mergeSelectedLine();
+  $("#savePreset").onclick = () => saveTextPreset();
+  $("#sheetWords").addEventListener("focus", () => armUndo());
+  $("#sheetWords").addEventListener("input", () => {
+    armUndo();
+    const i = state.selectedLine;
+    if (i < 0 || !state.lines[i]) return;
+    if (!LS().applyLineText(state.lines[i], $("#sheetWords").value)) return;
+    const edit = document.querySelectorAll("#lineList .lineedit")[i];
+    if (edit && document.activeElement !== edit) edit.textContent = lineText(state.lines[i]);
+    draw(state.t || 1);
+  });
+  $("#sheetWords").addEventListener("blur", () => {
+    undoArmed = false;
+    writeLyrics(state.lines.map(lineText).join("\n"));
+  });
+  const stageCv = $("#stage");
+  let wordDrag = null;
+  stageCv.addEventListener("pointerdown", (e) => {
+    wordDrag = { x: e.clientX, y: e.clientY, moved: false };
+  });
+  stageCv.addEventListener("pointermove", (e) => {
+    if (!wordDrag) return;
+    const dx = e.clientX - wordDrag.x;
+    const dy = e.clientY - wordDrag.y;
+    if (!wordDrag.moved && Math.hypot(dx, dy) < 8) return;
+    if (!wordDrag.moved) { wordDrag.moved = true; armUndo(); }
+    const r = stageCv.getBoundingClientRect();
+    const s = effectiveStyle();
+    const posX = (s.posX == null ? 0.5 : +s.posX) + dx / Math.max(1, r.width);
+    const posY = (s.posY == null ? 0.47 : +s.posY) + dy / Math.max(1, r.height);
+    wordDrag.x = e.clientX;
+    wordDrag.y = e.clientY;
+    setStyleKey("posX", Math.max(0.12, Math.min(0.88, posX)));
+    setStyleKey("posY", Math.max(0.18, Math.min(0.86, posY)));
+  });
+  const endWordDrag = (e) => {
+    if (!wordDrag) return;
+    const moved = wordDrag.moved;
+    wordDrag = null;
+    undoArmed = false;
+    if (moved) return;
+    const hit = hitPreviewWord(e);
+    if (!hit) return;
+    state.selectedLine = hit.line;
+    state.selectedWord = hit.word;
+    openSheet();
+    const row = document.querySelectorAll("#lineList li")[hit.line];
+    const chip = row && row.querySelectorAll(".wordchip")[hit.word];
+    if (chip) chip.focus();
+  };
+  stageCv.addEventListener("pointerup", endWordDrag);
+  stageCv.addEventListener("pointercancel", () => { wordDrag = null; undoArmed = false; });
   $("#dock").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.screen); };
   $("#stepper").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.screen); };
   $("#changeAudio").onclick = () => { if (window.Luciel) Luciel.pickAudio(); };
