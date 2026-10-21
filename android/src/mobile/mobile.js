@@ -28,7 +28,10 @@
     screen: "track", duration: 0, start: 0, length: 20, peaks: [], lines: [],
     look: "noir", animId: "fadewords", animLive: false, fontId: "", hyp: [],
     palette: null, colorOv: null, title: "", artist: "", bg: "gradient", videoIn: 0,
-    zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, t: 0,
+    videoName: "", videoEl: null, videoReady: false, clips: [], nextClipId: 1,
+    selectedClip: 0, selectedLine: -1, pxPerSec: 46, thumbs: [],
+    zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
+    checks: null,
   };
   let P = null;
   let stage = null;
@@ -54,8 +57,13 @@
     sc.scrollLeft = 0;
     const main = document.querySelector("main");
     if (main) { main.scrollTop = 0; main.scrollLeft = 0; }
-    if (id === "look" || id === "time" || id === "render") draw(state.t || 1.2);
-    if (id === "time") paintTimeline();
+    const host = document.getElementById("pin-" + id);
+    const pin = $("#previewPin");
+    if (host && pin) host.appendChild(pin);
+    pinPreview();
+    if (id === "look" || id === "time" || id === "render") draw(state.t > 0.05 ? state.t : 1.2);
+    if (id === "time") { paintEditor(); paintTimeline(); }
+    updatePreviewChrome();
   }
   function mascot(name) {
     const img = $("#mascot");
@@ -74,6 +82,9 @@
     document.querySelectorAll("#themes button").forEach((b) => b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false"));
     paintWave();
     paintTimeline();
+    if (stage && (state.screen === "look" || state.screen === "time" || state.screen === "render")) {
+      draw(state.t > 0.05 ? state.t : 1.2);
+    }
   }
   function settle() {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -326,6 +337,7 @@
         if (seen.has(el)) return;
         seen.add(el);
         if (el.closest(".hscroll") && !el.classList.contains("hscroll")) return;
+        if (el.closest(".tlscroll") && !el.classList.contains("tlscroll")) return;
         const r = el.getBoundingClientRect();
         if (r.width < 1 && r.height < 1) return;
         if (r.right > vw + 1.5 || r.left < -1.5) bad.push(describe(el));
@@ -419,7 +431,7 @@
       if (expect.palettes !== 12) flags.push("palettes");
       if (expect.anims !== 15) flags.push("anims");
     } else if (screen === "time") {
-      expect.timeline = canvasBusy($("#tl")) && inView($("#tl"), 16) ? 1 : 0;
+      expect.timeline = canvasBusy($("#tl")) && inView($("#tlview"), 16, false) ? 1 : 0;
       const zooms = document.querySelectorAll("#zooms button");
       expect.zooms = zooms.length === 5 && inView($("#zooms"), 16) ? 5 : zooms.length;
       if (!expect.timeline) flags.push("timeline");
@@ -573,7 +585,7 @@
     return problems;
   }
   function measure(screen) {
-    const logical = screen === "syncshot" ? "sync" : screen;
+    const logical = screen === "syncshot" ? "sync" : screen === "videocheck" ? "look" : screen;
     const sc = document.scrollingElement || document.documentElement;
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
@@ -628,8 +640,14 @@
       headOk = linesHeadOk() ? 1 : 0;
       if (!headOk) flags.push("lineshead");
     }
+    let pinOk = 0;
+    if (logical === "look" || logical === "time" || logical === "render") {
+      pinOk = previewPinned() ? 1 : 0;
+      if (!pinOk) flags.push("previewpin" + (state.pinWhy ? ":" + state.pinWhy : ""));
+    }
     const themeName = document.documentElement.dataset.theme || "aero";
     const zoom = parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100;
+    const checks = state.checks || {};
     const parts = [
       screen, themeName, flags.length ? "fail" : "ok",
       "zoom=" + zoom,
@@ -663,7 +681,13 @@
       "words=" + wordsOk,
       "edit=" + editOk,
       "frames=" + framesOk,
-      "edited=" + editedOk
+      "edited=" + editedOk,
+      "previewpin=" + pinOk,
+      "bgvideo=" + (checks.bgvideo || 0),
+      "split=" + (checks.split || 0),
+      "trim=" + (checks.trim || 0),
+      "lyricdrag=" + (checks.lyricdrag || 0),
+      "renderframes=" + (checks.renderframes || 0)
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
     return parts.join(" ");
@@ -694,30 +718,31 @@
     $("#cTitle").value = hexColor(s.titleColor);
     $("#cArtist").value = hexColor(s.artistColor);
   }
-  function scene() {
+  function scene(t) {
     const r = resolved();
     const groups = window.LL.prepare(state.lines, r.style, r.anim, state.length);
     const keys = state.zoomId === "custom" ? state.keys : (window.LL.zoomPreset(state.zoomId, state.length, groups) || []);
+    const at = Math.max(0, t || 0);
+    const src = state.bg === "video" ? sourceAt(at) : null;
     return {
       style: r.style, anim: r.anim, lines: state.lines, title: state.title, artist: state.artist,
       clipLen: state.length, visualizer: true, bgMode: state.bg, grad: r.lk.grad, wave: r.lk.wave,
       zoom: { keys, target: "bg" }, fx: state.fx.filter((f) => f.on), fps: 30,
-      video: state.videoEl || null, clip: state.bg === "video" ? { in: state.videoIn, start: 0 } : null,
-      darken: 0.35, blur: 0,
+      video: src ? state.videoEl : null,
+      clip: src,
+      darken: state.bg === "video" ? 0.35 : 0.35, blur: 0,
     };
   }
   function draw(t) {
     if (!stage) return;
-    const box = $("#stage");
     const w = 360, h = 640;
+    const at = Math.max(0, Math.min(state.length - 0.05, t || 0));
     stage.setSize(w, h, 1080);
     const slice = audioSlice();
     if (slice) stage.setAudio(slice, 8000);
-    stage.setScene(scene());
-    if (state.videoEl && state.bg === "video") {
-      try { state.videoEl.currentTime = state.videoIn + Math.max(0, t); } catch (e) {}
-    }
-    stage.drawFrame(Math.max(0, Math.min(state.length - 0.05, t)));
+    seekVideo(at);
+    stage.setScene(scene(at));
+    stage.drawFrame(at);
   }
   function paintLooks() {
     const row = $("#looks");
@@ -802,12 +827,12 @@
       const lab = document.createElement("label");
       const ck = document.createElement("input");
       ck.type = "checkbox"; ck.checked = !!f.on;
-      ck.onchange = () => { f.on = ck.checked; };
+      ck.onchange = () => { f.on = ck.checked; draw(state.t || 1); };
       const name = document.createElement("span");
       name.textContent = f.label;
       const range = document.createElement("input");
       range.type = "range"; range.min = 0; range.max = 100; range.value = f.amount;
-      range.oninput = () => { f.amount = +range.value; f.on = true; ck.checked = true; };
+      range.oninput = () => { f.amount = +range.value; f.on = true; ck.checked = true; draw(state.t || 1); };
       lab.append(ck, name, range);
       box.append(lab);
     });
@@ -819,7 +844,7 @@
       const b = document.createElement("button");
       b.textContent = q.label;
       b.className = state.quality === id ? "on" : "";
-      b.onclick = () => { state.quality = id; paintQuality(); };
+      b.onclick = () => { state.quality = id; paintQuality(); updatePreviewChrome(); draw(state.t || 1); };
       row.append(b);
     });
     const q = QUALITY[state.quality];
@@ -905,42 +930,82 @@
   function paintTimeline() {
     const cv = $("#tl");
     if (!cv) return;
+    const pps = state.pxPerSec || 46;
+    const span = Math.max(1, state.length || 20);
+    const cssW = Math.max(320, Math.round(span * pps));
+    cv.width = cssW;
+    cv.height = 64;
+    cv.style.width = cssW + "px";
+    cv.style.height = "52px";
     const ctx = cv.getContext("2d");
     const w = cv.width, h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.fillStyle = "rgba(0,0,0,.45)";
     ctx.fillRect(0, 0, w, h);
-    const y = 28, bh = 18;
-    ctx.fillStyle = "rgba(255,255,255,.18)";
-    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 4); ctx.fill();
-    ctx.fillStyle = cssVar("--track", "#1592b8");
-    ctx.beginPath(); ctx.roundRect(12, y, w - 24, bh, 4); ctx.fill();
+    const peaks = state.peaks.length ? state.peaks : new Array(240).fill(0).map((_, i) => 0.2 + 0.6 * Math.abs(Math.sin(i / 9)));
+    const dur = Math.max(state.duration, state.start + state.length, span);
+    const a = state.start / dur;
+    const b = (state.start + state.length) / dur;
+    ctx.fillStyle = cssVar("--wave-off", "#8aa0ad");
+    peaks.forEach((p, i) => {
+      const x = i / peaks.length * w;
+      const bh = Math.max(2, p * (h - 18));
+      ctx.fillRect(x, (h - bh) / 2, Math.max(1, w / peaks.length - 1), bh);
+    });
+    ctx.fillStyle = cssVar("--wave-on", "#1aa9d6");
+    peaks.forEach((p, i) => {
+      const frac = i / peaks.length;
+      if (frac < a || frac > b) return;
+      const x = (frac - a) / Math.max(0.001, b - a) * w;
+      const bh = Math.max(2, p * (h - 18));
+      ctx.fillRect(x, (h - bh) / 2, Math.max(1, w / peaks.length), bh);
+    });
+    ctx.fillStyle = cssVar("--wave-sel", "rgba(32,180,220,.28)");
+    ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = cssVar("--ink", "#f4fffd");
     ctx.font = "12px sans-serif";
-    ctx.fillText("lyric section", 16, 18);
-    state.keys.forEach((k) => {
-      const x = 12 + (w - 24) * (Math.max(0, Math.min(state.length, k.t)) / state.length);
-      ctx.fillStyle = "#f6e27a";
-      ctx.beginPath();
-      ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y + bh / 2); ctx.lineTo(x, y + bh + 6); ctx.lineTo(x - 6, y + bh / 2);
-      ctx.closePath(); ctx.fill();
-    });
+    ctx.fillText("Lyric section", 8, 14);
   }
-  function stopPlay() { state.playing = false; }
-  function play() {
+  function stopPlay() {
+    state.playing = false;
+    try { $("#audio").pause(); } catch (e) {}
+    updatePreviewChrome();
+  }
+  function play(loop) {
     stopPlay();
     state.playing = true;
+    state.loopPreview = !!loop;
     state.animLive = true;
     const audio = $("#audio");
-    const t0 = performance.now();
-    if (audio.src) { try { audio.currentTime = state.start; audio.play(); } catch (e) {} }
+    let origin = state.t || 0;
+    let stamp = performance.now();
+    if (audio && audio.src) { try { audio.currentTime = state.start + origin; audio.play(); } catch (e) {} }
     const step = (now) => {
       if (!state.playing) return;
-      state.t = Math.min(state.length, (now - t0) / 1000);
+      let t = origin + (now - stamp) / 1000;
+      if (t >= state.length) {
+        if (state.loopPreview) {
+          origin = 0;
+          stamp = now;
+          t = 0;
+          if (audio && audio.src) { try { audio.currentTime = state.start; } catch (e) {} }
+        } else {
+          state.t = state.length;
+          state.playing = false;
+          try { audio.pause(); } catch (e) {}
+          draw(Math.max(0, state.length - 0.05));
+          updatePreviewChrome();
+          mascot("happy");
+          return;
+        }
+      }
+      state.t = t;
       draw(state.t);
-      if (state.t < state.length - 0.02) requestAnimationFrame(step);
-      else { state.playing = false; try { audio.pause(); } catch (e) {} mascot("happy"); }
+      followPlayhead();
+      updatePreviewChrome();
+      requestAnimationFrame(step);
     };
+    updatePreviewChrome();
     requestAnimationFrame(step);
   }
   function applyWords(words) {
@@ -1026,7 +1091,753 @@
     paintLines();
   }
 
+  function frameUnderPin(el) {
+    if (!el) return;
+    const sc = document.scrollingElement || document.documentElement;
+    const pin = $("#previewPin");
+    const host = pin && pin.parentElement;
+    if (!pin || !host) return;
+    sc.scrollTop = Math.max(sc.scrollHeight, document.documentElement.scrollHeight, document.body.scrollHeight);
+    pinPreview();
+    if (!pin.classList.contains("stuck")) return;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const pinBottom = pin.getBoundingClientRect().bottom;
+    const delta = el.getBoundingClientRect().top - (pinBottom + 8);
+    const hostTop = host.getBoundingClientRect().top;
+    const maxUp = (sys - 1) - hostTop;
+    let shift = delta;
+    if (shift < 0) shift = Math.max(shift, -Math.max(0, maxUp));
+    sc.scrollTop += shift;
+    pinPreview();
+  }
+  function pinPreview() {
+    const pin = $("#previewPin");
+    const host = pin && pin.parentElement;
+    if (!pin || !host || !host.classList.contains("pinhost")) return;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const top = host.getBoundingClientRect().top;
+    pin.classList.toggle("stuck", top < sys - 1);
+  }
+  function previewPinned() {
+    const pin = $("#previewPin");
+    const stageEl = $("#stage");
+    if (!pin || !stageEl) return false;
+    const sc = document.scrollingElement || document.documentElement;
+    const saved = sc.scrollTop;
+    const max = Math.max(sc.scrollHeight, document.documentElement.scrollHeight, document.body.scrollHeight);
+    sc.scrollTop = max;
+    document.documentElement.scrollTop = max;
+    document.body.scrollTop = max;
+    pinPreview();
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const r = pin.getBoundingClientRect();
+    const sr = stageEl.getBoundingClientRect();
+    const why = [];
+    if (r.height < 48) why.push("h" + Math.round(r.height));
+    if (r.top < sys - 2) why.push("top" + Math.round(r.top));
+    if (r.bottom > dock.top + 2) why.push("bot" + Math.round(r.bottom) + "/" + Math.round(dock.top));
+    if (r.left < -1 || r.right > window.innerWidth + 1) why.push("x" + Math.round(r.left) + "-" + Math.round(r.right));
+    const stageIn = sr.height >= 24 && sr.top >= r.top - 1 && sr.bottom <= r.bottom + 1 && sr.left >= r.left - 1 && sr.right <= r.right + 1;
+    if (!stageIn) why.push("stage" + Math.round(sr.height));
+    state.pinWhy = why.join("/");
+    sc.scrollTop = saved;
+    document.documentElement.scrollTop = saved;
+    document.body.scrollTop = saved;
+    pinPreview();
+    return why.length === 0;
+  }
+  window.addEventListener("scroll", () => { pinPreview(); }, { passive: true });
+
+  function videoDuration() {
+    const v = state.videoEl;
+    const d = v && Number.isFinite(v.duration) ? v.duration : 0;
+    return d > 0.05 ? d : 0;
+  }
+  function freshClip(t0, t1, srcIn, speed) {
+    const a = Math.max(0, +t0 || 0);
+    return {
+      id: state.nextClipId++,
+      t0: a,
+      t1: Math.max(a + 0.25, +t1 || 0),
+      srcIn: Math.max(0, +srcIn || 0),
+      speed: speed > 0 ? +speed : 1,
+    };
+  }
+  function sourceAt(t) {
+    if (!state.videoEl || state.bg !== "video") return null;
+    const clips = state.clips || [];
+    let hit = null;
+    for (let i = 0; i < clips.length; i++) {
+      const c = clips[i];
+      if (c && t >= c.t0 - 1e-3 && t < c.t1 - 1e-4) { hit = c; break; }
+    }
+    if (!hit) return null;
+    const speed = hit.speed > 0 ? hit.speed : 1;
+    const dur = videoDuration();
+    let at = (hit.srcIn || 0) + Math.max(0, t - hit.t0) * speed;
+    if (dur > 0.05) {
+      const origin = Math.max(0, Math.min(dur - 0.02, hit.srcIn || 0));
+      const span = Math.max(0.05, dur - origin);
+      const rel = at - origin;
+      at = origin + ((rel % span) + span) % span;
+    }
+    return { in: at, start: t };
+  }
+  function seekTo(video, t) {
+    return new Promise((resolve) => {
+      if (!video) { resolve(); return; }
+      const target = Math.max(0, t || 0);
+      if (Math.abs((video.currentTime || 0) - target) < 0.04 && video.readyState >= 2) { resolve(); return; }
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        video.removeEventListener("seeked", finish);
+        resolve();
+      };
+      video.addEventListener("seeked", finish);
+      try { video.currentTime = target; } catch (e) { finish(); return; }
+      setTimeout(finish, 800);
+    });
+  }
+  let seekGen = 0;
+  function seekVideo(t) {
+    const src = state.bg === "video" ? sourceAt(t) : null;
+    const v = state.videoEl;
+    if (!v || !src || !stage) return;
+    const want = src.in || 0;
+    if (Math.abs((v.currentTime || 0) - want) <= 0.045 && v.readyState >= 2) return;
+    const gen = ++seekGen;
+    const finish = () => {
+      if (gen !== seekGen) return;
+      v.removeEventListener("seeked", finish);
+      if (!stage) return;
+      const at = Math.max(0, Math.min((state.length || 20) - 0.05, state.t || 0));
+      stage.setScene(scene(at));
+      stage.drawFrame(at);
+    };
+    v.addEventListener("seeked", finish);
+    try { v.currentTime = want; } catch (e) { finish(); }
+  }
+  function saveEditor() {
+    state.videoIn = state.clips[0] ? state.clips[0].srcIn : 0;
+    try {
+      localStorage.setItem("lc-editor", JSON.stringify({
+        bg: state.bg,
+        clips: state.clips,
+        videoIn: state.videoIn,
+        videoName: state.videoName,
+        keys: state.keys,
+        zoomId: state.zoomId,
+      }));
+    } catch (e) {}
+  }
+  function loadEditor() {
+    try {
+      const raw = localStorage.getItem("lc-editor");
+      if (!raw) return;
+      const o = JSON.parse(raw);
+      if (!o || typeof o !== "object") return;
+      if (o.bg === "gradient" || o.bg === "video" || o.bg === "black" || o.bg === "green") state.bg = o.bg;
+      if (Array.isArray(o.clips)) {
+        state.clips = o.clips.filter((c) => c && typeof c === "object").map((c) => freshClip(c.t0, c.t1, c.srcIn, c.speed));
+      }
+      if (typeof o.videoName === "string") state.videoName = o.videoName;
+      if (typeof o.videoIn === "number") state.videoIn = o.videoIn;
+      if (Array.isArray(o.keys)) state.keys = o.keys.filter((k) => k && typeof k.t === "number");
+      if (typeof o.zoomId === "string") state.zoomId = o.zoomId;
+    } catch (e) {}
+  }
+  function syncBgPills() {
+    document.querySelectorAll("#bgModes button").forEach((b) => b.classList.toggle("on", b.dataset.bg === state.bg));
+  }
+  function updatePreviewChrome() {
+    const len = state.length || 20;
+    const t = Math.max(0, Math.min(len, state.t || 0));
+    const time = $("#previewTime");
+    if (time) time.textContent = t.toFixed(1) + " / " + len.toFixed(1) + "s";
+    const label = state.playing ? "Pause" : "Play";
+    const toggle = $("#previewToggle");
+    if (toggle) toggle.textContent = label;
+    const previewBtn = $("#previewBtn");
+    if (previewBtn) previewBtn.textContent = label;
+    const meta = $("#previewMeta");
+    if (meta) {
+      if (state.screen === "render") {
+        const q = QUALITY[state.quality] || QUALITY.standard;
+        meta.textContent = q.w + "×" + q.h;
+      } else if (state.videoName) meta.textContent = state.videoName;
+      else meta.textContent = "9:16";
+    }
+    const labelEl = $("#clipLabel");
+    if (labelEl) labelEl.textContent = state.videoName || "No video yet";
+    const rm = $("#removeVideo");
+    if (rm) rm.hidden = !state.videoName;
+    const tn = $("#timeClipName");
+    if (tn) tn.textContent = state.videoName || "No background video yet";
+    const speedBtn = $("#tlSpeed");
+    if (speedBtn) {
+      const c = state.clips[state.selectedClip];
+      const sp = c && c.speed && c.speed !== 1 ? (c.speed === 2 ? "2×" : "0.5×") : "Speed";
+      speedBtn.textContent = sp;
+    }
+    syncBgPills();
+  }
+  function togglePreview() {
+    if (state.playing) stopPlay();
+    else play(true);
+  }
+  function followPlayhead() {
+    const sc = $("#tlscroll");
+    if (!sc || state.screen !== "time") return;
+    state.lockScroll = true;
+    sc.scrollLeft = (state.t || 0) * (state.pxPerSec || 46);
+    requestAnimationFrame(() => { state.lockScroll = false; });
+  }
+  function requestVideo() {
+    if (window.Luciel && Luciel.pickVideo) Luciel.pickVideo();
+    else {
+      const status = $("#clipStatus");
+      if (status) status.textContent = "Upload runs in the Luciel Lyric app.";
+    }
+  }
+  function clearVideoLocal() {
+    state.videoEl = null;
+    state.videoName = "";
+    state.videoReady = false;
+    state.clips = [];
+    state.thumbs = [];
+    state.bg = "gradient";
+    state.videoIn = 0;
+    saveEditor();
+    syncBgPills();
+    paintEditor();
+    updatePreviewChrome();
+    draw(state.t || 1);
+  }
+  function removeClip() {
+    if (window.Luciel && Luciel.removeVideo) Luciel.removeVideo();
+    else clearVideoLocal();
+  }
+  function attachVideo(name, reset) {
+    state.videoName = name || "video";
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.setAttribute("playsinline", "");
+    v.loop = true;
+    v.preload = "auto";
+    const pending = params.get("videoPending") === "1";
+    v.onloadeddata = async () => {
+      state.videoEl = v;
+      state.bg = "video";
+      if (reset || pending || !state.clips.length) {
+        state.clips = [freshClip(0, state.length || 20, 0, 1)];
+        state.videoIn = 0;
+        state.selectedClip = 0;
+      }
+      try { await grabThumbs(); } catch (e) {}
+      state.videoReady = true;
+      saveEditor();
+      syncBgPills();
+      if (state.screen === "time") paintEditor();
+      updatePreviewChrome();
+      seekVideo(state.t || 0.45);
+      draw(state.t > 0.05 ? state.t : 0.45);
+      const status = $("#clipStatus");
+      if (status) status.textContent = "";
+    };
+    v.onerror = () => {
+      state.videoReady = false;
+      const status = $("#clipStatus");
+      if (status) status.textContent = "Couldn't play that video.";
+    };
+    v.src = "https://appassets.androidplatform.net/files/bg.mp4?t=" + Date.now();
+  }
+  function waitForVideo() {
+    if (params.get("videoPending") !== "1") return Promise.resolve();
+    const deadline = performance.now() + 20000;
+    return new Promise((resolve) => {
+      const step = () => {
+        if (state.videoReady && state.videoEl && state.videoEl.videoWidth) { resolve(); return; }
+        const status = $("#clipStatus");
+        const failed = status && /could not|couldn't|try a shorter|didn't include/i.test(status.textContent || "");
+        if (failed || performance.now() > deadline) { resolve(); return; }
+        setTimeout(step, 100);
+      };
+      step();
+    });
+  }
+  async function grabThumbs() {
+    const v = state.videoEl;
+    if (!v || !v.videoWidth) { state.thumbs = []; return; }
+    const n = 6;
+    const dur = videoDuration() || 2;
+    const thumbs = [];
+    for (let i = 0; i < n; i++) {
+      await seekTo(v, Math.min(dur - 0.05, (i + 0.5) / n * dur));
+      const c = document.createElement("canvas");
+      c.width = 48;
+      c.height = 64;
+      c.getContext("2d").drawImage(v, 0, 0, 48, 64);
+      thumbs.push(c);
+    }
+    state.thumbs = thumbs;
+  }
+  function splitAt(t) {
+    const i = state.clips.findIndex((c) => t > c.t0 + 0.12 && t < c.t1 - 0.12);
+    if (i < 0) return false;
+    const c = state.clips[i];
+    const speed = c.speed > 0 ? c.speed : 1;
+    const left = freshClip(c.t0, t, c.srcIn, speed);
+    const right = freshClip(t, c.t1, (c.srcIn || 0) + (t - c.t0) * speed, speed);
+    state.clips.splice(i, 1, left, right);
+    state.selectedClip = i + 1;
+    saveEditor();
+    return true;
+  }
+  function deleteClip() {
+    if (!state.clips.length) return;
+    const i = state.selectedClip >= 0 && state.selectedClip < state.clips.length ? state.selectedClip : 0;
+    state.clips.splice(i, 1);
+    state.selectedClip = Math.max(0, Math.min(i, state.clips.length - 1));
+    saveEditor();
+    paintEditor();
+    draw(state.t || 0);
+  }
+  function addClip() {
+    if (!state.videoEl && !state.videoName) { requestVideo(); return; }
+    const len = state.length || 20;
+    const t0 = Math.max(0, Math.min(len - 0.25, state.t || 0));
+    const t1 = Math.min(len, Math.max(t0 + 0.25, t0 + 3));
+    state.clips.push(freshClip(t0, t1, 0, 1));
+    state.selectedClip = state.clips.length - 1;
+    saveEditor();
+    paintEditor();
+    draw(state.t || t0);
+  }
+  function cycleSpeed() {
+    const c = state.clips[state.selectedClip];
+    if (!c) return;
+    c.speed = c.speed === 1 ? 2 : c.speed === 2 ? 0.5 : 1;
+    saveEditor();
+    updatePreviewChrome();
+    draw(state.t || 0);
+  }
+  function nudgeLine(index, delta) {
+    const ln = state.lines[index];
+    if (!ln || !ln.words || !ln.words.length) return false;
+    const end = ln.words[ln.words.length - 1];
+    end.end = Math.max(end.start + 0.05, end.end + delta);
+    paintLines();
+    return true;
+  }
+  function commitLyricInput() {
+    const i = state.selectedLine;
+    const input = $("#lyricInput");
+    if (i < 0 || !input || !state.lines[i]) return;
+    if (!LS().applyLineText(state.lines[i], input.value)) return;
+    paintLines();
+    layoutEditor();
+    draw(state.t || 1);
+  }
+  function zoomKeys() {
+    if (state.zoomId === "custom") return state.keys || [];
+    try {
+      const r = resolved();
+      const groups = window.LL.prepare(state.lines, r.style, r.anim, state.length);
+      return window.LL.zoomPreset(state.zoomId, state.length, groups) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function addZoomAt(t) {
+    state.zoomId = "custom";
+    state.keys.push({ t: +(+t || 0).toFixed(2), z: 1.15, x: 0.5, y: 0.5, ease: "inOutSine" });
+    saveEditor();
+    paintKeys();
+    paintZooms();
+    layoutEditor();
+    draw(state.t || t || 0);
+  }
+  function layoutEditor() {
+    const inner = $("#tlinner");
+    const scroll = $("#tlscroll");
+    if (!inner || !scroll) return;
+    const pps = state.pxPerSec || 46;
+    const span = Math.max(1, state.length || 20);
+    const view = scroll.clientWidth || scroll.offsetWidth || 280;
+    const cssW = Math.max(160, Math.round(span * pps));
+    const origin = view / 2;
+    state.tlOrigin = origin;
+    inner.style.width = (view + cssW) + "px";
+    paintRuler(origin, span, pps);
+    paintVideoTrack(origin, cssW, pps);
+    paintLyricTrack(origin, pps);
+    paintZoomTrack(origin, pps);
+    const cv = $("#tl");
+    if (cv) {
+      cv.style.position = "absolute";
+      cv.style.left = origin + "px";
+      cv.style.bottom = "0";
+      cv.style.top = "auto";
+    }
+    paintTimeline();
+    syncLyricInput();
+  }
+  function paintEditor() {
+    layoutEditor();
+    updatePreviewChrome();
+  }
+  function syncLyricInput() {
+    const input = $("#lyricInput");
+    if (!input) return;
+    const ln = state.selectedLine >= 0 ? state.lines[state.selectedLine] : null;
+    if (!ln || !ln.words) { input.hidden = true; return; }
+    input.hidden = false;
+    const text = ln.words.map((w) => w.text).join(" ");
+    if (document.activeElement !== input && input.value !== text) input.value = text;
+  }
+  function paintRuler(origin, span, pps) {
+    const ruler = $("#ruler");
+    if (!ruler) return;
+    ruler.innerHTML = "";
+    const step = pps >= 40 ? 1 : pps >= 24 ? 2 : 5;
+    for (let s = 0; s <= span + 0.01; s += step) {
+      const b = document.createElement("b");
+      b.textContent = Math.round(s) + "s";
+      b.style.left = (origin + s * pps) + "px";
+      ruler.append(b);
+    }
+  }
+  function paintFilm(canvas, clip) {
+    const pps = state.pxPerSec || 46;
+    const w = Math.max(48, Math.round((clip.t1 - clip.t0) * pps));
+    canvas.width = w;
+    canvas.height = 44;
+    const ctx = canvas.getContext("2d");
+    const thumbs = state.thumbs || [];
+    if (!thumbs.length) {
+      ctx.fillStyle = "#143044";
+      ctx.fillRect(0, 0, w, 44);
+      return;
+    }
+    const tw = 36;
+    for (let x = 0; x < w; x += tw) {
+      ctx.drawImage(thumbs[Math.floor(x / tw) % thumbs.length], x, 0, tw, 44);
+    }
+  }
+  function watchDrag(el, onDown, onMove) {
+    let drag = null;
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button != null && e.button !== 0) return;
+      e.stopPropagation();
+      drag = onDown(e);
+      if (!drag) return;
+      state.lockScroll = true;
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      onMove(drag, (e.clientX - drag.x0) / (state.pxPerSec || 46));
+      draw(state.t || 0);
+    });
+    const end = () => {
+      if (!drag) return;
+      drag = null;
+      state.lockScroll = false;
+      saveEditor();
+      paintEditor();
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+  function paintVideoTrack(origin, cssW, pps) {
+    const track = $("#videoTrack");
+    if (!track) return;
+    track.innerHTML = "";
+    if (!state.clips.length) {
+      const empty = document.createElement("div");
+      empty.className = "vclip";
+      empty.style.left = origin + "px";
+      empty.style.width = Math.max(120, Math.min(cssW, 220)) + "px";
+      const name = document.createElement("span");
+      name.className = "vname";
+      name.textContent = "No clip";
+      empty.append(name);
+      track.append(empty);
+      return;
+    }
+    state.clips.forEach((clip, i) => {
+      const el = document.createElement("div");
+      el.className = "vclip" + (i === state.selectedClip ? " on" : "");
+      el.style.left = (origin + clip.t0 * pps) + "px";
+      el.style.width = Math.max(44, (clip.t1 - clip.t0) * pps) + "px";
+      const film = document.createElement("canvas");
+      paintFilm(film, clip);
+      const name = document.createElement("span");
+      name.className = "vname";
+      const speed = clip.speed && clip.speed !== 1 ? " · " + clip.speed + "×" : "";
+      name.textContent = (state.videoName || "Clip") + " · " + (clip.srcIn || 0).toFixed(1) + "s" + speed;
+      const left = document.createElement("button");
+      left.type = "button";
+      left.className = "trim left";
+      left.setAttribute("aria-label", "Trim start");
+      const right = document.createElement("button");
+      right.type = "button";
+      right.className = "trim right";
+      right.setAttribute("aria-label", "Trim end");
+      el.append(film, name, left, right);
+      watchDrag(el, (e) => {
+        state.selectedClip = i;
+        const handle = e.target.closest && e.target.closest(".trim");
+        return {
+          x0: e.clientX,
+          mode: handle ? (handle.classList.contains("left") ? "left" : "right") : "slip",
+          t0: clip.t0,
+          t1: clip.t1,
+          src0: clip.srcIn || 0,
+          speed: clip.speed > 0 ? clip.speed : 1,
+        };
+      }, (drag, dt) => {
+        if (drag.mode === "slip") clip.srcIn = Math.max(0, drag.src0 - dt * drag.speed);
+        else if (drag.mode === "left") {
+          const nt = Math.max(0, Math.min(drag.t1 - 0.25, drag.t0 + dt));
+          clip.t0 = nt;
+          clip.srcIn = Math.max(0, drag.src0 + (nt - drag.t0) * drag.speed);
+          state.t = nt;
+        } else {
+          clip.t1 = Math.max(drag.t0 + 0.25, Math.min(state.length || 20, drag.t1 + dt));
+          state.t = clip.t1;
+        }
+        el.style.left = (origin + clip.t0 * pps) + "px";
+        el.style.width = Math.max(44, (clip.t1 - clip.t0) * pps) + "px";
+        name.textContent = (state.videoName || "Clip") + " · " + (clip.srcIn || 0).toFixed(1) + "s";
+        updatePreviewChrome();
+      });
+      el.addEventListener("click", () => { state.selectedClip = i; });
+      track.append(el);
+    });
+  }
+  function paintLyricTrack(origin, pps) {
+    const track = $("#lyricTrack");
+    if (!track) return;
+    track.innerHTML = "";
+    state.lines.forEach((ln, i) => {
+      const words = ln.words || [];
+      if (!words.length) return;
+      const a = words[0].start;
+      const b = words[words.length - 1].end;
+      const el = document.createElement("div");
+      el.className = "lblock" + (state.selectedLine === i ? " on" : "");
+      el.style.left = (origin + a * pps) + "px";
+      el.style.width = Math.max(44, (b - a) * pps) + "px";
+      const name = document.createElement("span");
+      name.className = "lname";
+      name.textContent = words.map((w) => w.text).join(" ");
+      const left = document.createElement("button");
+      left.type = "button";
+      left.className = "trim left";
+      left.setAttribute("aria-label", "Line start");
+      const right = document.createElement("button");
+      right.type = "button";
+      right.className = "trim right";
+      right.setAttribute("aria-label", "Line end");
+      el.append(name, left, right);
+      let moved = false;
+      watchDrag(el, (e) => {
+        const handle = e.target.closest && e.target.closest(".trim");
+        moved = false;
+        state.selectedLine = i;
+        return {
+          x0: e.clientX,
+          mode: handle ? (handle.classList.contains("left") ? "left" : "right") : "tap",
+          snap: words.map((w) => ({ start: w.start, end: w.end })),
+        };
+      }, (drag, dt) => {
+        if (drag.mode === "tap") return;
+        if (Math.abs(dt) < 0.02) return;
+        moved = true;
+        const snap = drag.snap;
+        const a0 = snap[0].start;
+        const b0 = snap[snap.length - 1].end;
+        let na = a0;
+        let nb = b0;
+        if (drag.mode === "left") na = Math.max(0, Math.min(b0 - 0.2, a0 + dt));
+        else nb = Math.max(a0 + 0.2, Math.min(state.length || 20, b0 + dt));
+        const span0 = Math.max(0.05, b0 - a0);
+        const span = Math.max(0.05, nb - na);
+        words.forEach((w, wi) => {
+          w.start = na + (snap[wi].start - a0) / span0 * span;
+          w.end = na + (snap[wi].end - a0) / span0 * span;
+        });
+        const na2 = words[0].start;
+        const nb2 = words[words.length - 1].end;
+        el.style.left = (origin + na2 * pps) + "px";
+        el.style.width = Math.max(44, (nb2 - na2) * pps) + "px";
+        paintLines();
+      });
+      el.addEventListener("click", () => {
+        if (moved) return;
+        state.selectedLine = i;
+        syncLyricInput();
+        const input = $("#lyricInput");
+        if (input) input.focus();
+      });
+      track.append(el);
+    });
+  }
+  function paintZoomTrack(origin, pps) {
+    const track = $("#zoomTrack");
+    if (!track) return;
+    track.innerHTML = "";
+    zoomKeys().forEach((k) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "diamond";
+      b.style.left = (origin + k.t * pps) + "px";
+      b.setAttribute("aria-label", "Zoom " + (+k.t).toFixed(1) + "s");
+      b.addEventListener("click", (e) => e.stopPropagation());
+      track.append(b);
+    });
+    track.onclick = (e) => {
+      if (e.target.closest && e.target.closest(".diamond")) return;
+      addZoomAt(state.t || 0);
+    };
+  }
+  function sampleEdge(pred) {
+    const cv = $("#stage");
+    if (!cv || cv.width < 2) return false;
+    const ctx = cv.getContext("2d");
+    const w = cv.width;
+    const h = cv.height;
+    const pts = [[6, 6], [w - 7, 6], [6, Math.floor(h * 0.32)], [w - 7, Math.floor(h * 0.32)]];
+    let hit = 0;
+    pts.forEach((p) => {
+      const d = ctx.getImageData(p[0], p[1], 1, 1).data;
+      if (pred(d[0], d[1], d[2])) hit++;
+    });
+    return hit >= 2;
+  }
+  function isRedPx(r, g, b) { return r > 80 && r > g * 1.5 && r > b * 1.5; }
+  function isBluePx(r, g, b) { return b > 80 && b > r * 1.5 && b > g * 1.5; }
+  function pushStrips(rs, w, h) {
+    const data = rs.cv.getContext("2d").getImageData(0, 0, w, h).data;
+    const rowBytes = w * 4;
+    const rows = Math.max(8, Math.min(32, Math.floor(180000 / rowBytes)));
+    for (let y = 0; y < h; y += rows) {
+      const rh = Math.min(rows, h - y);
+      const slice = data.subarray(y * rowBytes, (y + rh) * rowBytes);
+      let bin = "";
+      const step = 3 * 4096;
+      for (let i = 0; i < slice.length; i += step) {
+        const sub = slice.subarray(i, Math.min(slice.length, i + step));
+        let s = "";
+        for (let j = 0; j < sub.length; j++) s += String.fromCharCode(sub[j]);
+        bin += btoa(s);
+      }
+      Luciel.frameStrip(y, rh, bin);
+    }
+    Luciel.commitFrame();
+  }
+  async function renderProbe() {
+    if (!window.Luciel || !Luciel.beginRender) return 0;
+    state.renderResult = null;
+    const w = 160;
+    const h = 284;
+    const fps = 10;
+    const started = Luciel.beginRender(JSON.stringify({
+      width: w, height: h, fps: fps, bitrate: 400000, start: 0, length: 1,
+    }));
+    if (started && started !== "ok") return 0;
+    const canvas = document.createElement("canvas");
+    const rs = new LLStage.Stage(canvas);
+    rs.setSize(w, h, 1080);
+    const slice = audioSlice();
+    if (slice) rs.setAudio(slice, 8000);
+    let colored = 0;
+    for (let f = 0; f < 2; f++) {
+      const t = f / fps;
+      const src = sourceAt(t);
+      if (state.videoEl && state.bg === "video" && src) await seekTo(state.videoEl, src.in);
+      rs.setScene(scene(t));
+      rs.drawFrame(t);
+      const data = rs.cv.getContext("2d").getImageData(0, 0, w, h).data;
+      const probe = (x, y) => {
+        const o = (y * w + x) * 4;
+        return isRedPx(data[o], data[o + 1], data[o + 2]);
+      };
+      if (probe(4, 4) || probe(w - 5, 4) || probe(4, 48) || probe(w - 5, 48)) colored++;
+      pushStrips(rs, w, h);
+    }
+    Luciel.finishRender();
+    const deadline = performance.now() + 8000;
+    while (performance.now() < deadline) {
+      if (state.renderResult) break;
+      await new Promise((ok) => setTimeout(ok, 100));
+    }
+    const bytes = state.renderResult && state.renderResult.bytes;
+    return colored >= 1 && bytes > 1000 ? 1 : 0;
+  }
+  async function runVideoChecks() {
+    const checks = { bgvideo: 0, split: 0, trim: 0, lyricdrag: 0, renderframes: 0 };
+    const v = state.videoEl;
+    try {
+      if (!v || !v.videoWidth) return checks;
+      state.bg = "video";
+      state.clips = [freshClip(0, state.length || 20, 0, 1)];
+      state.videoIn = 0;
+      await seekTo(v, 0);
+      draw(0.05);
+      await seekTo(v, (sourceAt(0.05) || { in: 0 }).in);
+      draw(0.05);
+      if (sampleEdge(isRedPx)) checks.bgvideo = 1;
+      const before = state.clips.length;
+      if (splitAt((state.length || 20) / 2) && state.clips.length === before + 1) checks.split = 1;
+      state.clips = [freshClip(0, state.length || 20, 1, 1)];
+      state.videoIn = 1;
+      await seekTo(v, 1);
+      draw(0.05);
+      if (sampleEdge(isBluePx)) checks.trim = 1;
+      const ln = state.lines[0];
+      const end0 = ln && ln.words.length ? ln.words[ln.words.length - 1].end : 0;
+      if (nudgeLine(0, 0.5)) {
+        const end1 = state.lines[0].words[state.lines[0].words.length - 1].end;
+        if (end1 - end0 > 0.3) checks.lyricdrag = 1;
+        state.lines[0].words[state.lines[0].words.length - 1].end = end0;
+        paintLines();
+      }
+      state.clips = [freshClip(0, state.length || 20, 0, 1)];
+      state.videoIn = 0;
+      state.bg = "video";
+      checks.renderframes = await renderProbe();
+      state.clips = [freshClip(0, state.length || 20, 0, 1)];
+      state.selectedClip = 0;
+      state.t = 0.45;
+      saveEditor();
+      await seekTo(v, 0.45);
+      draw(0.45);
+    } catch (e) {
+      const status = $("#clipStatus");
+      if (status) status.textContent = e && e.message ? e.message : "video check failed";
+    }
+    return checks;
+  }
+
   async function boot() {
+    loadEditor();
+    const pendingVideo = params.get("videoPending") === "1";
+    if (demo && !pendingVideo) {
+      state.bg = "gradient";
+      state.clips = [];
+      state.videoName = "";
+      state.videoEl = null;
+      state.videoReady = false;
+      state.thumbs = [];
+      state.keys = [];
+      state.zoomId = "none";
+    }
     const res = await fetch("engine/presets.json");
     P = await res.json();
     if (window.LLFX) LLFX.setDefs(P.fx);
@@ -1042,18 +1853,31 @@
         new Promise((ok) => setTimeout(ok, 2500)),
       ]);
     } catch (e) {}
+    await waitForVideo();
+    if (pendingVideo && state.videoEl) state.t = 0.45;
     window.__audits = [];
     async function publish(screen) {
-      if (screen === "look") paintLooks();
+      if (screen === "look" || screen === "videocheck") paintLooks();
       await settle();
       fitAll();
       const msg = measure(screen);
       document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
       window.__audits.push(msg);
       document.documentElement.dataset.audit = msg;
+      if (demo !== "audit") {
+        if (screen === "time") frameUnderPin(document.querySelector("#screen-time .editorcard"));
+        if (screen === "render") frameUnderPin($("#quality"));
+      }
       const log = document.getElementById("auditlog");
       if (log) log.textContent += msg + "\n";
       if (window.Luciel && Luciel.ready) Luciel.ready(msg);
+    }
+    if (demo === "videocheck") {
+      state.checks = await runVideoChecks();
+      show("look");
+      draw(state.t > 0.05 ? state.t : 0.45);
+      await publish("videocheck");
+      return;
     }
     if (demo === "audit") {
       for (const th of ["aero", "y2k", "winamp"]) {
@@ -1076,7 +1900,7 @@
     theme(document.documentElement.dataset.theme || "aero");
     const screen = ["track", "sync", "look", "time", "render"].includes(demo) ? demo : "track";
     show(screen);
-    if (screen === "look" || screen === "time" || screen === "render") draw(1.35);
+    if (screen === "look" || screen === "time" || screen === "render") draw(state.t > 0.05 ? state.t : 1.35);
     await publish(screen);
     if (window.Luciel && Luciel.info) {
       try {
@@ -1104,6 +1928,8 @@
     state.length = +$("#len").value; $("#lenVal").textContent = state.length + "s";
     $("#start").max = String(Math.max(0, state.duration - state.length));
     paintWave();
+    updatePreviewChrome();
+    if (state.screen === "time") paintEditor();
   };
   $("#title").oninput = () => { state.title = $("#title").value; draw(state.t || 1.2); };
   $("#artist").oninput = () => { state.artist = $("#artist").value; draw(state.t || 1.2); };
@@ -1134,10 +1960,20 @@
     paintLines();
     draw(state.t || 1.2);
   });
-  $("#playClip").onclick = () => { mascot("music"); play(); };
-  $("#previewBtn").onclick = () => { mascot("music"); play(); };
+  $("#playClip").onclick = () => { mascot("music"); play(false); };
+  $("#previewBtn").onclick = () => { togglePreview(); };
+  $("#previewToggle").onclick = () => { togglePreview(); };
   $("#pickAudio").onclick = () => { if (window.Luciel) Luciel.pickAudio(); else $("#trackHint").textContent = "Song picking runs in the Android app."; };
-  $("#pickVideo").onclick = () => { if (window.Luciel) Luciel.pickVideo(); };
+  $("#pickVideo").onclick = () => { requestVideo(); };
+  $("#uploadVideo").onclick = () => { requestVideo(); };
+  $("#removeVideo").onclick = () => { removeClip(); };
+  $("#tlSplit").onclick = () => { if (splitAt(state.t)) paintEditor(); };
+  $("#tlDelete").onclick = () => { deleteClip(); };
+  $("#tlAdd").onclick = () => { addClip(); };
+  $("#tlReplace").onclick = () => { requestVideo(); };
+  $("#tlSpeed").onclick = () => { cycleSpeed(); };
+  $("#lyricInput").addEventListener("change", () => { commitLyricInput(); });
+  $("#lyricInput").addEventListener("input", () => { commitLyricInput(); });
   $("#fontBtn").onclick = () => { if (window.Luciel) Luciel.pickFont(); };
   $("#getModel").onclick = () => {
     if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(); }
@@ -1167,14 +2003,44 @@
     const b = e.target.closest("button"); if (!b) return;
     state.bg = b.dataset.bg;
     document.querySelectorAll("#bgModes button").forEach((x) => x.classList.toggle("on", x === b));
+    if (state.bg === "video" && !state.videoEl) {
+      const status = $("#clipStatus");
+      if (status && !state.videoName) status.textContent = "Upload a video to use this background.";
+    }
+    saveEditor();
     draw(state.t || 1);
   };
-  $("#addKey").onclick = () => {
-    state.zoomId = "custom";
-    state.keys.push({ t: +(state.t || 0).toFixed(2), z: 1.15, x: 0.5, y: 0.5, ease: "inOutSine" });
-    paintKeys(); paintZooms();
-  };
-  $("#clipIn").oninput = () => { state.videoIn = +$("#clipIn").value; $("#inVal").textContent = state.videoIn.toFixed(1) + "s"; };
+  $("#addKey").onclick = () => { addZoomAt(state.t || 0); };
+  const tlscroll = $("#tlscroll");
+  if (tlscroll) {
+    tlscroll.addEventListener("scroll", () => {
+      if (state.lockScroll || state.playing) return;
+      state.t = Math.max(0, Math.min(state.length, tlscroll.scrollLeft / state.pxPerSec));
+      draw(state.t);
+      updatePreviewChrome();
+    }, { passive: true });
+    const pointers = new Map();
+    tlscroll.addEventListener("pointerdown", (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    tlscroll.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size < 2) return;
+      const pts = [...pointers.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (!state.pinch) { state.pinch = dist; return; }
+      const ratio = dist / state.pinch;
+      if (Math.abs(ratio - 1) < 0.02) return;
+      state.pxPerSec = Math.max(24, Math.min(160, state.pxPerSec * ratio));
+      state.pinch = dist;
+      layoutEditor();
+      followPlayhead();
+    });
+    const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) state.pinch = 0; };
+    tlscroll.addEventListener("pointerup", endPointer);
+    tlscroll.addEventListener("pointercancel", endPointer);
+  }
   $("#renderBtn").onclick = () => render();
   $("#shareBtn").onclick = () => { if (window.Luciel) Luciel.share(); };
 
@@ -1198,13 +2064,13 @@
     const rows = Math.max(8, Math.min(32, Math.floor(180000 / rowBytes)));
     for (let f = 0; f < frames; f++) {
       const t = f / q.fps;
-      if (state.videoEl && state.bg === "video") {
-        const vt = state.videoIn + t;
-        if (Math.abs((state.videoEl.currentTime || 0) - vt) > 0.05) {
-          await new Promise((ok) => { state.videoEl.addEventListener("seeked", ok, { once: true }); state.videoEl.currentTime = vt; });
+      const src = sourceAt(t);
+      if (state.videoEl && state.bg === "video" && src) {
+        if (Math.abs((state.videoEl.currentTime || 0) - src.in) > 0.05) {
+          await seekTo(state.videoEl, src.in);
         }
       }
-      rs.setScene(scene());
+      rs.setScene(scene(t));
       rs.drawFrame(t);
       const data = rs.cv.getContext("2d").getImageData(0, 0, q.w, q.h).data;
       for (let y = 0; y < q.h; y += rows) {
@@ -1272,20 +2138,30 @@
         $("#syncStatus").textContent = msg.error; mascot("crying");
       } else if (msg.type === "sync") {
         $("#syncStatus").textContent = "Listening…";
+      } else if (msg.type === "video" && msg.phase === "convert") {
+        const status = $("#clipStatus");
+        if (status) status.textContent = "Converting this video so it can play…";
+      } else if (msg.type === "video" && msg.phase === "read") {
+        const status = $("#clipStatus");
+        if (status) status.textContent = "Reading the video…";
       } else if (msg.type === "video" && msg.ok) {
-        const v = document.createElement("video");
-        v.src = "https://appassets.androidplatform.net/files/bg.mp4";
-        v.muted = true; v.playsInline = true;
-        v.onloadeddata = () => { state.videoEl = v; state.bg = "video"; $("#clipName").textContent = msg.name; draw(1); };
-        $("#clipName").textContent = "Loading clip…";
+        attachVideo(msg.name, !msg.restored);
+      } else if (msg.type === "video" && msg.removed) {
+        clearVideoLocal();
+      } else if (msg.type === "video" && msg.error) {
+        const status = $("#clipStatus");
+        if (status) status.textContent = msg.error;
+        mascot("crying");
       } else if (msg.type === "font" && msg.ok) {
         const face = new FontFace("lc-custom", "url(https://appassets.androidplatform.net/files/custom.ttf)");
         face.load().then(() => { document.fonts.add(face); state.fontId = "custom"; draw(state.t || 1.2); mascot("happy"); });
       } else if (msg.type === "render" && msg.path) {
+        state.renderResult = msg;
         $("#renderStatus").textContent = "Saved on this phone (" + Math.round(msg.bytes / 1000000) + " MB).";
         $("#shareBtn").hidden = false;
         mascot("happy");
       } else if (msg.type === "render" && msg.error) {
+        state.renderResult = msg;
         $("#renderStatus").textContent = msg.error; mascot("crying");
       }
     },

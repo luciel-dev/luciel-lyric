@@ -91,20 +91,33 @@ try {
     </section>
 
     <section class="screen" id="screen-look" data-screen="look">
+      <div class="pinhost" id="pin-look">
+        <div class="previewpin" id="previewPin">
+          <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas></div>
+          <div class="previewbar">
+            <button class="pill" id="previewToggle" type="button">Play</button>
+            <span id="previewTime">0.0 / 20.0s</span>
+            <span id="previewMeta"></span>
+          </div>
+        </div>
+      </div>
       <header class="screenhead">
         <h1>Look</h1>
         <p class="lead">Pick a look. Animation stays still until you tap one.</p>
       </header>
-      <div class="card preview-row">
-        <div class="stagewrap"><canvas id="stage" width="360" height="640"></canvas></div>
-        <div class="preview-fields">
-          <h2>Text</h2>
-          <input id="title" placeholder="Title" maxlength="48">
-          <input id="artist" placeholder="Artist" maxlength="48">
-          <div class="actions">
-            <button class="pill" id="fontBtn" type="button">My font</button>
-            <button class="pill primary" id="previewBtn" type="button">Play</button>
-          </div>
+      <div class="card preview-fields">
+        <h2>Text</h2>
+        <input id="title" placeholder="Title" maxlength="48">
+        <input id="artist" placeholder="Artist" maxlength="48">
+        <button class="pill" id="uploadVideo" type="button">Upload video</button>
+        <div class="cliprow">
+          <div class="clipname" id="clipLabel">No video yet</div>
+          <button class="pill" id="removeVideo" type="button" hidden>Remove</button>
+        </div>
+        <p class="hint" id="clipStatus"></p>
+        <div class="actions">
+          <button class="pill" id="fontBtn" type="button">My font</button>
+          <button class="pill primary" id="previewBtn" type="button">Play</button>
         </div>
       </div>
       <section class="group">
@@ -138,9 +151,10 @@ try {
     </section>
 
     <section class="screen" id="screen-time" data-screen="time">
+      <div class="pinhost" id="pin-time"></div>
       <header class="screenhead">
         <h1>Timeline</h1>
-        <p class="lead">One picture track, plus a slow zoom if you want it.</p>
+        <p class="lead">Trim the picture, the lines, and the zoom on one timeline.</p>
       </header>
       <div class="card">
         <h2>Background</h2>
@@ -151,18 +165,33 @@ try {
           <button type="button" data-bg="green">Green</button>
         </div>
         <button class="pill" id="pickVideo" type="button">Add background video</button>
+        <p class="hint" id="timeClipName">No background video yet</p>
       </div>
-      <div class="card" id="clipCard">
-        <h2>Clip</h2>
-        <div class="lcd" id="clipName">No clip yet</div>
-        <label class="slider">Clip in <b id="inVal">0.0s</b>
-          <input id="clipIn" type="range" min="0" max="60" step="0.1" value="0">
-        </label>
-        <p class="hint">The clip covers the lyric section. In is where it starts in the video.</p>
+      <div class="card editorcard">
+        <h2>Timeline</h2>
+        <div class="tlview" id="tlview">
+          <div class="playhead" aria-hidden="true"></div>
+          <div class="tlscroll" id="tlscroll">
+            <div class="tlinner" id="tlinner">
+              <div class="ruler" id="ruler"></div>
+              <div class="track vtrack" id="videoTrack"></div>
+              <div class="track ltrack" id="lyricTrack"></div>
+              <div class="track ztrack" id="zoomTrack"></div>
+              <canvas id="tl" width="640" height="64"></canvas>
+            </div>
+          </div>
+        </div>
+        <input id="lyricInput" type="text" hidden maxlength="80" aria-label="Line text" placeholder="Line text">
+        <div class="tlactions">
+          <button class="pill" id="tlSplit" type="button">Split</button>
+          <button class="pill" id="tlDelete" type="button">Delete</button>
+          <button class="pill" id="tlAdd" type="button">Add</button>
+          <button class="pill" id="tlReplace" type="button">Replace</button>
+          <button class="pill" id="tlSpeed" type="button">Speed</button>
+        </div>
       </div>
       <div class="card">
         <h2>Zoom</h2>
-        <canvas id="tl" width="640" height="72"></canvas>
         <div class="scroller"><div class="hscroll" id="zooms"></div></div>
         <button class="pill" id="addKey" type="button">Add zoom keyframe</button>
         <ul id="keys" class="keys"></ul>
@@ -170,6 +199,7 @@ try {
     </section>
 
     <section class="screen" id="screen-render" data-screen="render">
+      <div class="pinhost" id="pin-render"></div>
       <header class="screenhead">
         <h1>Render</h1>
         <p class="lead">Same looks as the desktop app. The phone writes an MP4.</p>

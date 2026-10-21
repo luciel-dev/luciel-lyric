@@ -31,9 +31,10 @@ need = {
     "track": ["title=1", "wave=1", "start=1", "play=1"],
     "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1"],
     "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1"],
-    "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15"],
-    "time": ["title=1", "timeline=1", "zooms=5"],
-    "render": ["title=1", "quality=4", "fx=7", "renderbtn=1"],
+    "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1"],
+    "time": ["title=1", "timeline=1", "zooms=5", "previewpin=1"],
+    "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1"],
+    "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
 }[screen]
 need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1"]
 have = set(line.split())
@@ -101,10 +102,14 @@ PY
 }
 
 capture() {
-  local demo="$1" theme="$2" file="$3"
+  local demo="$1" theme="$2" file="$3" video="${4:-}"
   adb logcat -c || true
   adb shell am force-stop app.luciel.lyric || true
-  adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}" --es textZoom 130
+  if [ -n "${video}" ]; then
+    adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}" --es textZoom 130 --es videoUri "${video}"
+  else
+    adb shell am start -n app.luciel.lyric/.MainActivity --es demo "${demo}" --es theme "${theme}" --es textZoom 130
+  fi
   ok=0
   err=0
   ready=""
@@ -246,9 +251,13 @@ capture track aero android-track.png
 capture syncshot aero android-sync.png
 capture syncshot y2k android-sync-y2k.png
 capture syncshot winamp android-sync-winamp.png
-capture look aero android-look.png
-capture time aero android-time.png
-capture render aero android-render.png
-capture look y2k android-look-y2k.png
-capture look winamp android-look-winamp.png
+capture videocheck aero android-look.png asset:test-clip.mp4
+capture videocheck y2k android-look-y2k.png asset:test-clip.mp4
+capture videocheck winamp android-look-winamp.png asset:test-clip.mp4
+capture time aero android-time.png asset:test-clip.mp4
+capture time y2k android-time-y2k.png asset:test-clip.mp4
+capture time winamp android-time-winamp.png asset:test-clip.mp4
+capture render aero android-render.png asset:test-clip.mp4
+capture render y2k android-render-y2k.png asset:test-clip.mp4
+capture render winamp android-render-winamp.png asset:test-clip.mp4
 exit "${fail}"
