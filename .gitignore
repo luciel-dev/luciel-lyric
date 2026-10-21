@@ -18,6 +18,9 @@ packaging/build/
 *.webm
 *.dmg
 *.zip
+# release signing key stays in GitHub secrets, never in the tree
+android/ci.keystore
+*.keystore
 # python / OS junk
 __pycache__/
 *.py[cod]
