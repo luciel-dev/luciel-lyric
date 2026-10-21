@@ -347,5 +347,10 @@
 [data-theme=winamp] .mascot-bubble{border-radius:0;background:#000;color:#00e000;font:16px/1.15 "VT323";border:1px solid #4a4e63;box-shadow:2px 2px 0 #0d0e13;bottom:120px;right:calc(100% + 10px);white-space:normal;overflow-wrap:anywhere;max-width:min(220px,calc(100vw - 16px))}
 [data-theme=winamp] .sepnote{font:16px/1.15 "VT323",monospace;color:#f7d000}
 [data-theme=winamp] .mascot-bubble::after{display:none}
+/* The mascot row is in the document flow. Theme frames must not pull it back over the controls. */
+html[data-theme] body.mascot-slot .mascot{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:100%;max-width:100%}
+html[data-theme] body.mascot-slot .mascot-bubble{position:static;left:auto;right:auto;top:auto;bottom:auto;max-width:min(210px,100%)}
+html[data-theme] body.mascot-slot .mascot-bubble::after{display:none}
+[data-theme=y2k] body.video-edit .mascot-win::after{display:none}
 [data-theme=y2k] .palcard{border-width:1px;font:600 13px "Rajdhani";letter-spacing:.04em}
 [data-theme=y2k] .palcard.sel{border-color:var(--cp-amber);box-shadow:inset 0 -2px 0 var(--cp-amber);color:var(--cp-amber)}

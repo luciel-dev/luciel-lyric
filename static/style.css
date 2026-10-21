@@ -385,13 +385,18 @@ body.video-edit #videoTl .tltrack,
 body.video-edit #videoTl .tltexts,
 body.video-edit #videoTl .tllyrics,
 body.video-edit #videoTl .tlaudiohost{height:100%;min-height:52px}
-body.video-edit #step3{padding-bottom:108px}
-body.video-edit .mascot{left:14px;right:auto;top:auto;bottom:calc(var(--tl-h, 33%) + 12px);width:76px;z-index:25}
-body.video-edit .mascot-body{width:72px;height:72px}
-body.video-edit .mascot-bubble{left:0;right:auto;bottom:calc(100% + 8px);max-width:200px}
+/* Reserved mascot row: in .work, in normal flow, on every step. */
+body.mascot-slot:not(.video-edit) main.appgrid{padding-bottom:22px}
+body.mascot-slot .work{display:flex;flex-direction:column}
+body.mascot-slot .mascot{position:relative;left:auto;right:auto;top:auto;bottom:auto;flex:none;width:100%;max-width:100%;margin:8px 0 0;display:flex;flex-direction:row;align-items:flex-end;justify-content:flex-end;gap:8px;z-index:1;box-sizing:border-box}
+body.mascot-slot .mascot.off,
 body.video-edit.side-shut .mascot{display:none}
-[data-theme=y2k] body.video-edit .mascot-win::after{display:none}
-[data-theme=y2k] body.video-edit .mascot-body,[data-theme=winamp] body.video-edit .mascot-body{width:72px;height:64px}
+body.mascot-slot .mascot-win{flex:none}
+body.mascot-slot .mascot-bubble{position:static;order:-1;left:auto;right:auto;top:auto;bottom:auto;flex:1 1 auto;min-width:0;max-width:min(210px,100%);margin:0}
+body.mascot-slot .mascot-bubble:not(.show){display:none}
+body.mascot-slot .mascot-bubble.show{display:block;opacity:1;transform:none}
+body.mascot-slot .mascot-bubble::after{display:none}
+body.video-edit .mascot{overflow:hidden}
 [data-theme=winamp] body.video-edit #step3 .titlebar{height:auto;min-height:24px;flex-wrap:wrap}
 [data-theme=winamp] body.video-edit #sideToggle{padding:1px 5px;font-size:8px}
 [data-theme=y2k] body.video-edit #step3 .titlebar{flex-wrap:wrap}
