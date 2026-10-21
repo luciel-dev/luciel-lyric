@@ -172,18 +172,40 @@
     }
     return false;
   }
-  function glyphBox(label) {
-    const text = textBounds(label);
-    if (!text) return null;
-    const canvas = glyphBox.canvas || (glyphBox.canvas = document.createElement("canvas"));
+  function zoomScale() {
+    const tz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tz")) || 1;
+    const zoom = (parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100) / 100;
+    return zoom / tz;
+  }
+  function measuredGlyph(label) {
+    const canvas = measuredGlyph.canvas || (measuredGlyph.canvas = document.createElement("canvas"));
     const ctx = canvas.getContext("2d");
     ctx.font = getComputedStyle(label).font;
     const measured = ctx.measureText((label.textContent || "").trim());
-    const pastLeft = Math.max(0, measured.actualBoundingBoxLeft || 0);
-    const pastRight = Math.max(0, (measured.actualBoundingBoxRight || 0) - measured.width);
+    const scale = zoomScale();
+    const advance = Math.max(0, measured.width || 0) * scale;
+    const cap = Math.max(1.5, advance * 0.4);
+    const pastLeft = Math.min(cap, Math.max(0, (measured.actualBoundingBoxLeft || 0) * scale));
+    const pastRight = Math.min(cap, Math.max(0, ((measured.actualBoundingBoxRight || 0) - (measured.width || 0)) * scale));
+    return { advance, pastLeft, pastRight, width: advance + pastLeft + pastRight };
+  }
+  function glyphBox(label) {
+    const text = textBounds(label);
+    if (!text) return null;
+    const glyph = measuredGlyph(label);
+    const rangeWidth = text.right - text.left;
+    const labelRect = label.getBoundingClientRect();
+    // WebView's range for a full-width label is the line box, not the glyphs.
+    // A clipped overflow is also as wide as the label; the advance is wider then,
+    // so the edge comparison below still fails.
+    if (glyph.width > 1 && rangeWidth > glyph.width + 1 && rangeWidth > labelRect.width - 2) {
+      const mid = (labelRect.left + labelRect.right) / 2;
+      const half = glyph.width / 2;
+      return { left: mid - half, right: mid + half, top: text.top, bottom: text.bottom };
+    }
     return {
-      left: text.left - pastLeft,
-      right: text.right + pastRight,
+      left: text.left - glyph.pastLeft,
+      right: text.right + glyph.pastRight,
       top: text.top,
       bottom: text.bottom,
     };
@@ -203,15 +225,33 @@
       || text.top < box.top + slackY - 0.5
       || text.bottom > box.bottom - slackY + 0.5;
     const scrollBad = label.scrollWidth > label.clientWidth + 1;
-    return scrollBad || outside || curveClips(btn, text);
+    const curve = !!(text && curveClips(btn, text));
+    const left = text ? (text.left - box.left).toFixed(1) : "na";
+    const right = text ? (box.right - text.right).toFixed(1) : "na";
+    btn.dataset.dockWhy = [
+      "sw" + label.scrollWidth + "-" + label.clientWidth,
+      "L" + left,
+      "R" + right,
+      scrollBad ? "scroll" : "",
+      outside ? "edge" : "",
+      curve ? "curve" : "",
+      "fit" + (btn.style.getPropertyValue("--fit") || "1"),
+    ].filter(Boolean).join("/");
+    return scrollBad || outside || curve;
   }
   function applyDockFit(buttons, fit) {
     const tz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tz")) || 1;
     buttons.forEach((b) => {
-      const fs = parseFloat(getComputedStyle(b).getPropertyValue("--fs")) || 10;
+      const fs = parseFloat(getComputedStyle(b).getPropertyValue("--fs")) || 9;
+      const px = (fs * tz * fit) + "px";
       b.style.letterSpacing = "0px";
       b.style.setProperty("--fit", String(fit));
-      b.style.fontSize = (fs * tz * fit) + "px";
+      b.style.fontSize = px;
+      const label = b.querySelector(".docklabel");
+      if (label) {
+        label.style.letterSpacing = "0px";
+        label.style.fontSize = px;
+      }
     });
   }
   function fitDock() {
@@ -219,7 +259,7 @@
     applyDockFit(buttons, 1);
     let fit = 1;
     let guard = 0;
-    while (guard++ < 20 && fit > 0.46 && buttons.some(labelOverflow)) {
+    while (guard++ < 24 && fit > 0.4 && buttons.some(labelOverflow)) {
       fit = Math.round((fit - 0.03) * 100) / 100;
       applyDockFit(buttons, fit);
     }
@@ -358,7 +398,7 @@
       if (wide || tall) bad.push(describe(el));
     });
     document.querySelectorAll("#dock button").forEach((el) => {
-      if (labelOverflow(el)) bad.push(describe(el));
+      if (labelOverflow(el)) bad.push(describe(el) + (el.dataset.dockWhy ? "[" + el.dataset.dockWhy + "]" : ""));
     });
     return bad;
   }

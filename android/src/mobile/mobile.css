@@ -289,7 +289,7 @@ textarea { min-height: 120px; resize: vertical; }
   max-width: 100%;
   overflow-wrap: anywhere;
 }
-.dock button { --fs: 10; }
+.dock button { --fs: 9; }
 .themes button { --fs: 14; }
 .hscroll button { --fs: 14; max-width: none; }
 .actions, .pills { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; }
@@ -717,9 +717,9 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
   min-width: 0;
   height: 44px;
   min-height: 44px;
-  margin: 0 2px;
-  padding: 4px 7px;
-  --fs: 10;
+  margin: 0 1px;
+  padding: 4px 3px;
+  --fs: 9;
   line-height: 1;
   border-radius: 14px;
   white-space: nowrap;
@@ -852,7 +852,7 @@ html[data-theme="aero"] .themes button[data-theme="aero"],
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
 }
 [data-theme="y2k"] .themes { border-radius: 0; }
-[data-theme="y2k"] .dock { padding: 6px 4px; }
+[data-theme="y2k"] .dock { padding: 6px 2px; }
 [data-theme="y2k"] .sum { color: #d4a24a; border-bottom: 1px solid #343b40; }
 [data-theme="y2k"] .pill,
 [data-theme="y2k"] .pills button,
@@ -944,7 +944,7 @@ html[data-theme="y2k"] .themes button[data-theme="y2k"],
 [data-theme="winamp"] .hscroll button,
 [data-theme="winamp"] .lookgrid button { --fs: 10; }
 [data-theme="winamp"] .themes button { --fs: 11; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; box-shadow: none; background: transparent; color: #8f94ab; }
-[data-theme="winamp"] .dock button { --fs: 8; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; border-radius: 2px; }
+[data-theme="winamp"] .dock button { --fs: 7; font-family: "Silkscreen", monospace; letter-spacing: 0; text-transform: none; border-radius: 2px; }
 [data-theme="winamp"] .lineedit {
   font-family: "VT323", monospace;
   --fs: 16;
