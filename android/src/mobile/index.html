@@ -14,7 +14,7 @@ try {
   if (q === "aero" || q === "y2k" || q === "winamp") localStorage.setItem("lc-theme", q);
   var demo0 = params0.get("demo");
   var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
-  if (screen0 === "track" || screen0 === "sync" || screen0 === "look" || screen0 === "time" || screen0 === "render") {
+  if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render") {
     document.documentElement.dataset.screen = screen0;
   }
   var tz = params0.get("textZoom");
@@ -84,14 +84,60 @@ try {
       </div>
       <div class="card" id="modelCard">
         <h2>Speech model</h2>
-        <p class="hint" id="modelText">The small English model is about 75 MB and downloads once. After that, sync works offline.</p>
+        <div class="pills" id="modelTier">
+          <button type="button" data-tier="fast" class="on">Fast</button>
+          <button type="button" data-tier="accurate">Accurate</button>
+        </div>
+        <p class="hint" id="modelText">Fast is the tiny model, about 75 MB. Accurate is the larger one, about 190 MB. Each downloads once.</p>
         <button class="pill" id="getModel" type="button">Download model</button>
       </div>
       <button class="pill big primary" id="syncBtn" type="button">Sync lyrics</button>
-      <p class="hint" id="syncStatus">Vocal isolation is desktop-only. The phone syncs the full mix.</p>
+      <div class="actions" id="tapRow">
+        <button class="pill" id="tapHear" type="button">Hear</button>
+        <button class="pill" id="tapMark" type="button">Mark line</button>
+      </div>
+      <p class="hint" id="tapNow">Tap Mark as each line starts.</p>
+      <p class="hint" id="syncStatus">Typed lyrics are aligned to the vocal. An empty box listens instead.</p>
       <div class="card">
         <h2 id="linesHead">Lines</h2>
         <ol id="lineList" class="lines"></ol>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-video" data-screen="video">
+      <header class="screenhead">
+        <h1>Video</h1>
+        <p class="lead">Add the MP4, then set the frame.</p>
+      </header>
+      <div class="pinhost" id="pin-video"></div>
+      <button class="pill big primary" id="uploadVideo" type="button">Upload MP4</button>
+      <div class="cliprow">
+        <div class="clipname" id="clipLabel">No video yet</div>
+        <button class="pill" id="removeVideo" type="button" hidden>Remove</button>
+      </div>
+      <p class="hint" id="clipStatus"></p>
+      <div class="card">
+        <h2>Frame</h2>
+        <div class="pills" id="aspects">
+          <button type="button" data-aspect="9:16" class="on">9:16</button>
+          <button type="button" data-aspect="1:1">1:1</button>
+          <button type="button" data-aspect="16:9">16:9</button>
+          <button type="button" data-aspect="4:5">4:5</button>
+        </div>
+        <div class="pills" id="vfit">
+          <button type="button" data-fit="fit">Fit</button>
+          <button type="button" data-fit="fill" class="on">Fill</button>
+          <button type="button" data-fit="crop">Crop</button>
+        </div>
+        <label class="slider">Zoom <b id="vscaleVal">1.0×</b>
+          <input id="vscale" type="range" min="1" max="2.5" step="0.05" value="1">
+        </label>
+        <label class="slider">Across <b id="vxVal">Center</b>
+          <input id="vx" type="range" min="0" max="1" step="0.01" value="0.5">
+        </label>
+        <label class="slider">Down <b id="vyVal">Center</b>
+          <input id="vy" type="range" min="0" max="1" step="0.01" value="0.5">
+        </label>
       </div>
     </section>
 
@@ -116,12 +162,6 @@ try {
         <h2>Text</h2>
         <input id="title" placeholder="Title" maxlength="48">
         <input id="artist" placeholder="Artist" maxlength="48">
-        <button class="pill" id="uploadVideo" type="button">Upload video</button>
-        <div class="cliprow">
-          <div class="clipname" id="clipLabel">No video yet</div>
-          <button class="pill" id="removeVideo" type="button" hidden>Remove</button>
-        </div>
-        <p class="hint" id="clipStatus"></p>
         <div class="actions">
           <button class="pill" id="fontBtn" type="button">My font</button>
           <button class="pill primary" id="previewBtn" type="button">Play</button>
@@ -193,8 +233,7 @@ try {
           <button type="button" data-bg="black">Black</button>
           <button type="button" data-bg="green">Green</button>
         </div>
-        <button class="pill" id="pickVideo" type="button">Add background video</button>
-        <p class="hint" id="timeClipName">No background video yet</p>
+        <p class="hint" id="timeClipName">Upload the MP4 on Video.</p>
       </div>
       <div class="card">
         <h2>Zoom</h2>
@@ -229,6 +268,7 @@ try {
   <nav class="dock" id="dock">
     <button type="button" data-screen="track"><span class="docklabel">Track</span></button>
     <button type="button" data-screen="sync"><span class="docklabel">Sync</span></button>
+    <button type="button" data-screen="video"><span class="docklabel">Video</span></button>
     <button type="button" data-screen="look"><span class="docklabel">Look</span></button>
     <button type="button" data-screen="time"><span class="docklabel">Time</span></button>
     <button type="button" data-screen="render"><span class="docklabel">Render</span></button>

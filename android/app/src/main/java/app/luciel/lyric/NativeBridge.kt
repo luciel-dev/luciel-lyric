@@ -18,15 +18,34 @@ class NativeBridge(private val activity: MainActivity) {
     private var encoder: Mp4Encoder? = null
     private var lastRender: File? = null
 
+    private fun prefs() = activity.getSharedPreferences("luciel", Context.MODE_PRIVATE)
+
+    private fun tierId(): String {
+        val saved = prefs().getString("tier", "fast") ?: "fast"
+        return if (saved == "accurate") "accurate" else "fast"
+    }
+
     @android.webkit.JavascriptInterface
     fun info(): String {
-        val model = ModelStore.ready(activity)
+        val tier = tierId()
+        val selected = ModelStore.ready(activity, ModelStore.spec(tier))
         return JSONObject()
             .put("version", "1.4.3")
-            .put("model", model)
+            .put("model", selected)
+            .put("tier", tier)
+            .put("fast", ModelStore.ready(activity, ModelStore.FAST))
+            .put("accurate", ModelStore.ready(activity, ModelStore.ACCURATE))
+            .put("vad", ModelStore.ready(activity, ModelStore.VAD))
+            .put("aligner", ModelStore.ready(activity, ModelStore.ALIGNER))
             .put("whisper", whisper.available)
             .put("demucs", false)
             .toString()
+    }
+
+    @android.webkit.JavascriptInterface
+    fun setTier(tier: String) {
+        val id = if (tier == "accurate") "accurate" else "fast"
+        prefs().edit().putString("tier", id).apply()
     }
 
     @android.webkit.JavascriptInterface
@@ -61,41 +80,83 @@ class NativeBridge(private val activity: MainActivity) {
     fun pickFont() = activity.launchFont()
 
     @android.webkit.JavascriptInterface
+    fun downloadModel(tier: String) {
+        io.execute { downloadSpec(ModelStore.spec(tier), alsoVad = true) }
+    }
+
+    @android.webkit.JavascriptInterface
     fun downloadModel() {
-        io.execute {
-            try {
-                if (ModelStore.ready(activity)) {
-                    emit("model", JSONObject().put("ready", true).put("progress", 1))
-                    return@execute
-                }
-                ModelStore.download(activity) { got, total ->
-                    val p = if (total > 0) got.toDouble() / total else 0.0
-                    emit("model", JSONObject().put("ready", false).put("progress", p).put("got", got).put("total", total))
-                }
-                emit("model", JSONObject().put("ready", true).put("progress", 1))
-            } catch (e: Exception) {
-                emit("model", JSONObject().put("ready", false).put("error", e.message ?: "download failed"))
+        downloadModel(tierId())
+    }
+
+    private fun downloadSpec(spec: ModelStore.Spec, alsoVad: Boolean) {
+        try {
+            if (alsoVad && !ModelStore.ready(activity, ModelStore.VAD)) {
+                ModelStore.download(activity, ModelStore.VAD) { _, _ -> }
             }
+            if (ModelStore.ready(activity, spec)) {
+                emit("model", JSONObject().put("ready", true).put("progress", 1).put("id", spec.id))
+                return
+            }
+            ModelStore.download(activity, spec) { got, total ->
+                val p = if (total > 0) got.toDouble() / total else 0.0
+                emit("model", JSONObject().put("ready", false).put("progress", p).put("got", got).put("total", total).put("id", spec.id))
+            }
+            emit("model", JSONObject().put("ready", true).put("progress", 1).put("id", spec.id))
+        } catch (e: Exception) {
+            emit("model", JSONObject().put("ready", false).put("error", e.message ?: "download failed").put("id", spec.id))
         }
     }
 
     @android.webkit.JavascriptInterface
-    fun transcribe(start: Double, length: Double) {
+    fun transcribe(start: Double, length: Double, prompt: String) {
         io.execute {
             try {
                 val tr = track ?: error("pick a track first")
                 if (!whisper.available) error("speech library missing from this build")
-                if (!ModelStore.ready(activity)) error("download the speech model first")
+                val spec = ModelStore.spec(tierId())
+                if (!ModelStore.ready(activity, spec)) error("download the speech model first")
+                if (!ModelStore.ready(activity, ModelStore.VAD)) {
+                    try {
+                        ModelStore.download(activity, ModelStore.VAD) { _, _ -> }
+                    } catch (_: Exception) {
+                    }
+                }
                 emit("sync", JSONObject().put("phase", "listen"))
-                whisper.ensure(ModelStore.file(activity))
+                whisper.ensure(ModelStore.file(activity, spec))
                 val pcm = AudioKit.clip16k(tr, start, length)
-                val words = whisper.transcribe(pcm)
+                val words = whisper.transcribe(pcm, ModelStore.file(activity, ModelStore.VAD), prompt, spec.id == "accurate")
                 if (words.isBlank()) error("sync didn't return word timings")
                 val arr = org.json.JSONArray(words)
                 if (arr.length() == 0) error("nothing was heard in this section")
                 emit("sync", JSONObject().put("phase", "words").put("words", arr))
             } catch (e: Exception) {
                 emit("sync", JSONObject().put("phase", "error").put("error", e.message ?: "sync failed"))
+            }
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun alignLyrics(start: Double, length: Double, lyrics: String) {
+        io.execute {
+            try {
+                val tr = track ?: error("pick a track first")
+                if (lyrics.isBlank()) error("Paste the lyrics first.")
+                if (!ModelStore.ready(activity, ModelStore.ALIGNER)) {
+                    emit("sync", JSONObject().put("phase", "download"))
+                    ModelStore.download(activity, ModelStore.ALIGNER) { got, total ->
+                        val p = if (total > 0) got.toDouble() / total else 0.0
+                        emit("model", JSONObject().put("ready", false).put("progress", p).put("id", "aligner"))
+                    }
+                }
+                emit("sync", JSONObject().put("phase", "align"))
+                val pcm = AudioKit.clip16k(tr, start, length)
+                val body = LyricAligner.logits(pcm, ModelStore.file(activity, ModelStore.ALIGNER))
+                body.put("phase", "logits")
+                emit("sync", body)
+            } catch (e: Exception) {
+                val detail = e.message ?: "unknown"
+                emit("sync", JSONObject().put("phase", "error").put("error", "Align failed: $detail"))
             }
         }
     }

@@ -5,25 +5,52 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** ggml-tiny.en (~75 MB). Kept in app storage so later syncs work with no network. */
+/** Speech and alignment weights. Each file is downloaded once and kept for offline sync. */
 object ModelStore {
-    const val URL_TINY_EN = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
-    private const val NAME = "ggml-tiny.en.bin"
+    data class Spec(val id: String, val name: String, val url: String, val minBytes: Long)
 
-    fun file(context: Context): File = File(context.filesDir, NAME)
+    val FAST = Spec(
+        "fast",
+        "ggml-tiny.en.bin",
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
+        70_000_000L,
+    )
+    val ACCURATE = Spec(
+        "accurate",
+        "ggml-small.en-q5_1.bin",
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin",
+        180_000_000L,
+    )
+    val VAD = Spec(
+        "vad",
+        "ggml-silero-v5.1.2.bin",
+        "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin",
+        800_000L,
+    )
+    val ALIGNER = Spec(
+        "aligner",
+        "wav2vec2-int8.onnx",
+        "https://huggingface.co/Xenova/wav2vec2-base-960h/resolve/main/onnx/model_int8.onnx",
+        95_000_000L,
+    )
 
-    fun ready(context: Context): Boolean {
-        val f = file(context)
-        return f.isFile && f.length() > 20_000_000L
+    fun spec(id: String): Spec = if (id == "accurate") ACCURATE else FAST
+
+    fun file(context: Context, spec: Spec = FAST): File = File(context.filesDir, spec.name)
+
+    fun ready(context: Context, spec: Spec = FAST): Boolean {
+        val f = file(context, spec)
+        return f.isFile && f.length() >= spec.minBytes
     }
 
-    fun download(context: Context, onProgress: (Long, Long) -> Unit): File {
-        val dest = file(context)
-        val tmp = File(context.filesDir, "$NAME.part")
-        val conn = (URL(URL_TINY_EN).openConnection() as HttpURLConnection).apply {
+    fun download(context: Context, spec: Spec, onProgress: (Long, Long) -> Unit): File {
+        val dest = file(context, spec)
+        if (dest.isFile && dest.length() >= spec.minBytes) return dest
+        val tmp = File(context.filesDir, spec.name + ".part")
+        val conn = (URL(spec.url).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 30_000
-            readTimeout = 60_000
+            readTimeout = 120_000
             setRequestProperty("User-Agent", "LucielLyric/1.4.3")
         }
         try {
@@ -46,12 +73,12 @@ object ModelStore {
         } finally {
             conn.disconnect()
         }
-        if (tmp.length() < 20_000_000L) {
+        if (tmp.length() < spec.minBytes) {
             tmp.delete()
-            error("speech model download looks incomplete")
+            error("download looks incomplete")
         }
         if (dest.exists()) dest.delete()
-        if (!tmp.renameTo(dest)) error("could not save the speech model")
+        if (!tmp.renameTo(dest)) error("could not save the download")
         return dest
     }
 }

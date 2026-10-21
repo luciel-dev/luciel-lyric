@@ -2,7 +2,7 @@ package app.luciel.lyric
 
 import java.io.File
 
-/** On-device whisper.cpp. The English tiny model is downloaded once, then sync stays offline. */
+/** On-device whisper.cpp. Models stay in app storage so later syncs work offline. */
 class WhisperEngine {
     private var handle: Long = 0
     private var loadedPath: String? = null
@@ -24,10 +24,19 @@ class WhisperEngine {
         loadedPath = model.absolutePath
     }
 
-    fun transcribe(pcm: FloatArray): String {
+    fun transcribe(pcm: FloatArray, vad: File?, prompt: String, accurate: Boolean): String {
         if (handle == 0L) error("speech model is not loaded")
         val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
-        return nativeTranscribe(handle, pcm, threads)
+        val vadPath = if (vad != null && vad.isFile && vad.length() > 100_000L) vad.absolutePath else ""
+        val hint = prompt.take(200)
+        var words = nativeTranscribe(handle, pcm, threads, vadPath, hint, accurate, 0.15f)
+        if (words.isBlank()) {
+            words = nativeTranscribe(handle, pcm, threads, "", hint, accurate, 0.08f)
+        }
+        if (words.isBlank()) {
+            words = nativeTranscribe(handle, pcm, threads, "", hint, accurate, 0f)
+        }
+        return words
     }
 
     fun close() {
@@ -38,5 +47,13 @@ class WhisperEngine {
 
     private external fun nativeInit(path: String): Long
     private external fun nativeFree(handle: Long)
-    private external fun nativeTranscribe(handle: Long, pcm: FloatArray, threads: Int): String
+    private external fun nativeTranscribe(
+        handle: Long,
+        pcm: FloatArray,
+        threads: Int,
+        vadPath: String,
+        prompt: String,
+        beam: Boolean,
+        reject: Float,
+    ): String
 }

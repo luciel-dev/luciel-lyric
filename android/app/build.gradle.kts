@@ -6,22 +6,25 @@ plugins {
 }
 
 val whisperDir = layout.projectDirectory.dir("third_party/whisper.cpp")
+val whisperVersion = "1.7.6"
 
 tasks.register("downloadWhisper") {
     val marker = whisperDir.file("CMakeLists.txt").asFile
+    inputs.property("whisperVersion", whisperVersion)
     outputs.file(marker)
-    onlyIf { !marker.exists() }
     doLast {
+        val current = if (marker.exists()) marker.readText() else ""
+        if (current.contains("VERSION $whisperVersion")) return@doLast
         val parent = whisperDir.asFile.parentFile
         parent.mkdirs()
         val tar = File.createTempFile("whisper", ".tar.gz")
-        URI("https://github.com/ggerganov/whisper.cpp/archive/refs/tags/v1.7.5.tar.gz").toURL().openStream().use { input ->
+        URI("https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v$whisperVersion.tar.gz").toURL().openStream().use { input ->
             tar.outputStream().use { input.copyTo(it) }
         }
         exec {
             commandLine("tar", "-xzf", tar.absolutePath, "-C", parent.absolutePath)
         }
-        val extracted = File(parent, "whisper.cpp-1.7.5")
+        val extracted = File(parent, "whisper.cpp-$whisperVersion")
         if (whisperDir.asFile.exists()) whisperDir.asFile.deleteRecursively()
         if (!extracted.renameTo(whisperDir.asFile)) {
             throw GradleException("could not move whisper.cpp into ${whisperDir.asFile}")
@@ -106,6 +109,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.webkit:webkit:1.11.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 }
 
 tasks.named("preBuild") {
