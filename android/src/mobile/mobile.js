@@ -157,50 +157,47 @@
       const dy = points[i][1] - centers[i][1];
       const outsideX = (i === 0 || i === 3) ? dx < -0.4 : dx > 0.4;
       const outsideY = i < 2 ? dy < -0.4 : dy > 0.4;
-      if (outsideX && outsideY && Math.sqrt(dx * dx + dy * dy) > radius + 1.5) return true;
+      if (outsideX && outsideY && Math.sqrt(dx * dx + dy * dy) > radius + 0.5) return true;
     }
     return false;
   }
-  function labelProbe(label) {
-    const cs = getComputedStyle(label);
-    const probe = document.createElement("span");
-    probe.textContent = (label.textContent || "").trim();
-    probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;font:" + cs.font + ";letter-spacing:" + cs.letterSpacing + ";text-transform:" + cs.textTransform + ";";
-    document.body.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
-    probe.remove();
-    return { w: rect.width, h: rect.height };
+  function glyphBox(label) {
+    const text = textBounds(label);
+    if (!text) return null;
+    const canvas = glyphBox.canvas || (glyphBox.canvas = document.createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    ctx.font = getComputedStyle(label).font;
+    const measured = ctx.measureText((label.textContent || "").trim());
+    const pastLeft = Math.max(0, measured.actualBoundingBoxLeft || 0);
+    const pastRight = Math.max(0, (measured.actualBoundingBoxRight || 0) - measured.width);
+    return {
+      left: text.left - pastLeft,
+      right: text.right + pastRight,
+      top: text.top,
+      bottom: text.bottom,
+    };
   }
   function labelOverflow(btn) {
     const label = btn.querySelector(".docklabel") || btn;
-    if (btn.clientWidth < 2) return false;
+    if (btn.clientWidth < 2 || label.clientWidth < 2) return false;
     const box = contentBox(btn);
-    const innerW = box.right - box.left;
-    const innerH = box.bottom - box.top;
-    if (innerW < 4 || innerH < 4) return true;
-    const probe = labelProbe(label);
-    const midX = (box.left + box.right) / 2;
-    const midY = (box.top + box.bottom) / 2;
-    const placed = {
-      left: midX - probe.w / 2,
-      right: midX + probe.w / 2,
-      top: midY - probe.h / 2,
-      bottom: midY + probe.h / 2,
-    };
-    const scrollBad = label.scrollWidth > label.clientWidth + 2 || label.scrollHeight > label.clientHeight + 2;
-    const text = textBounds(label);
-    const outside = !text || text.left < box.left - 1 || text.right > box.right + 1
-      || text.top < box.top - 1 || text.bottom > box.bottom + 1;
-    const probeBad = placed.left < box.left - 0.5 || placed.right > box.right + 0.5
-      || placed.top < box.top - 0.5 || placed.bottom > box.bottom + 0.5;
-    // WebView can report scrollWidth past clientWidth, or a clipped range box,
-    // after the glyphs already fit. Require the laid-out text and the probe.
-    return probeBad || curveClips(btn, placed) || (scrollBad && outside);
+    const text = glyphBox(label);
+    // Advance plus any ink past it (side bearings) must sit inside the padded
+    // pill with a visible margin. scrollWidth still fails on its own.
+    const slackX = 3;
+    const slackY = 1;
+    const outside = !text
+      || text.left < box.left + slackX - 0.5
+      || text.right > box.right - slackX + 0.5
+      || text.top < box.top + slackY - 0.5
+      || text.bottom > box.bottom - slackY + 0.5;
+    const scrollBad = label.scrollWidth > label.clientWidth + 1;
+    return scrollBad || outside || curveClips(btn, text);
   }
   function applyDockFit(buttons, fit) {
     const tz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tz")) || 1;
     buttons.forEach((b) => {
-      const fs = parseFloat(getComputedStyle(b).getPropertyValue("--fs")) || 11;
+      const fs = parseFloat(getComputedStyle(b).getPropertyValue("--fs")) || 10;
       b.style.letterSpacing = "0px";
       b.style.setProperty("--fit", String(fit));
       b.style.fontSize = (fs * tz * fit) + "px";
