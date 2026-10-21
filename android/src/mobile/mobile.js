@@ -26,7 +26,7 @@
   ];
   const state = {
     screen: "track", duration: 0, start: 0, length: 20, peaks: [], lines: [],
-    look: "noir", animId: "fadewords", animLive: false, fontId: "",
+    look: "noir", animId: "fadewords", animLive: false, fontId: "", hyp: [],
     palette: null, colorOv: null, title: "", artist: "", bg: "gradient", videoIn: 0,
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, t: 0,
   };
@@ -38,99 +38,7 @@
   const params = new URLSearchParams(location.search);
   const demo = params.get("demo");
 
-  function norm(w) { return (w || "").toLowerCase().replace(/[’]/g, "'").replace(/[^a-z0-9']+/g, ""); }
-  function ratio(a, b) {
-    a = norm(a); b = norm(b);
-    if (!a || !b) return 0;
-    if (a === b) return 1;
-    const m = a.length, n = b.length, dp = new Array(n + 1);
-    for (let j = 0; j <= n; j++) dp[j] = j;
-    for (let i = 1; i <= m; i++) {
-      let prev = dp[0]; dp[0] = i;
-      for (let j = 1; j <= n; j++) {
-        const tmp = dp[j];
-        dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j], dp[j - 1]);
-        prev = tmp;
-      }
-    }
-    return 1 - dp[n] / Math.max(m, n);
-  }
-  function groupLines(words) {
-    const lines = []; let cur = [];
-    for (const w of words) {
-      if (cur.length) {
-        const prev = cur[cur.length - 1];
-        const chars = cur.reduce((s, x) => s + x.text.length + 1, 0);
-        if (w.start - prev.end > 0.5 || cur.length >= 8 || chars > 38) { lines.push({ words: cur }); cur = []; }
-      }
-      cur.push(w);
-    }
-    if (cur.length) lines.push({ words: cur });
-    return lines;
-  }
-  function alignLyrics(pasted, words, clipLen) {
-    const ref = [];
-    pasted.split(/\n/).map((l) => l.trim()).filter(Boolean).forEach((line, li) => {
-      line.split(/\s+/).forEach((t) => ref.push([t, li]));
-    });
-    if (!ref.length || !words.length) return groupLines(words);
-    const n = ref.length, m = words.length, GAP = -0.6;
-    const S = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
-    const B = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1));
-    for (let j = 1; j <= m; j++) { S[0][j] = S[0][j - 1] + GAP; B[0][j] = 2; }
-    const sims = ref.map((r) => words.map((w) => ratio(r[0], w.text)));
-    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
-      const s = sims[i - 1][j - 1];
-      const match = S[i - 1][j - 1] + (s >= 0.5 ? 2 * s : -1 + s);
-      const up = S[i - 1][j] + GAP, left = S[i][j - 1] + GAP;
-      const best = Math.max(match, up, left);
-      S[i][j] = best; B[i][j] = best === match ? 0 : best === up ? 1 : 2;
-    }
-    let endI = 0;
-    for (let i = 1; i <= n; i++) if (S[i][m] > S[endI][m]) endI = i;
-    const pairs = new Map();
-    let i = endI, j = m;
-    while (i > 0 && j > 0) {
-      const b = B[i][j];
-      if (b === 0) { if (sims[i - 1][j - 1] >= 0.5) pairs.set(i - 1, j - 1); i--; j--; }
-      else if (b === 1) i--;
-      else j--;
-    }
-    if (!pairs.size) return groupLines(words);
-    const idxs = [...pairs.keys()];
-    const lo = Math.min(...idxs), hi = Math.max(...idxs);
-    const out = [];
-    for (let r = lo; r <= hi; r++) {
-      if (pairs.has(r)) {
-        const h = words[pairs.get(r)];
-        out.push({ text: ref[r][0], start: h.start, end: h.end, line: ref[r][1], matched: true });
-      } else out.push({ text: ref[r][0], start: null, end: null, line: ref[r][1], matched: false });
-    }
-    let k = 0;
-    while (k < out.length) {
-      if (out[k].matched) { k++; continue; }
-      const s = k;
-      while (k < out.length && !out[k].matched) k++;
-      const t0 = s > 0 ? out[s - 1].end : Math.max(0, (out[k] ? out[k].start : clipLen) - 0.4 * (k - s));
-      const t1 = k < out.length ? out[k].start : Math.min(clipLen, t0 + 0.4 * (k - s));
-      const weights = out.slice(s, k).map((w) => Math.max(1, w.text.length));
-      const tot = weights.reduce((a, b) => a + b, 0);
-      let acc = t0;
-      weights.forEach((wgt, x) => {
-        const d = (t1 - t0) * wgt / tot;
-        out[s + x].start = acc; out[s + x].end = acc + d; acc += d;
-      });
-    }
-    const lines = [];
-    let cur = [], curLine = null;
-    for (const w of out) {
-      if (curLine !== null && w.line !== curLine) { lines.push({ words: cur }); cur = []; }
-      curLine = w.line;
-      cur.push({ text: w.text, start: w.start, end: w.end });
-    }
-    if (cur.length) lines.push({ words: cur });
-    return lines;
-  }
+  const LS = () => window.LyricSync;
 
   function show(id) {
     state.screen = id;
@@ -355,12 +263,141 @@
     }
     return { expect, flags };
   }
+  function leadFits() {
+    const lead = document.querySelector("#screen-sync .lead");
+    const bar = document.getElementById("safebar");
+    if (!lead || !bar) return false;
+    const sc = document.scrollingElement || document.documentElement;
+    const saved = sc.scrollTop;
+    sc.scrollTop = 0;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const r = lead.getBoundingClientRect();
+    const wrapped = lead.scrollWidth <= lead.clientWidth + 2
+      && r.left >= 4 && r.right <= window.innerWidth - 4
+      && r.top >= sys - 1 && r.height > 8
+      && lead.textContent.indexOf("Paste the lyrics") !== -1;
+    const br = bar.getBoundingClientRect();
+    const barOk = br.top <= 1 && br.height + 0.5 >= sys && br.left <= 1 && br.right >= window.innerWidth - 1;
+    sc.scrollTop = 360;
+    const y = Math.max(4, Math.round(Math.min(sys, br.height) / 2));
+    const hit = document.elementFromPoint(Math.round(window.innerWidth / 2), y);
+    sc.scrollTop = saved;
+    return !!(wrapped && barOk && hit === bar);
+  }
+  function activeWordAt(t) {
+    draw(t);
+    let hit = "";
+    for (const g of (stage && stage.groups) || []) {
+      for (const w of g.words || []) {
+        if (t >= w.s && t < w.e) hit = String(w.text || "");
+      }
+    }
+    return hit;
+  }
+  function frameSig() {
+    const cv = $("#stage");
+    if (!cv || cv.width < 2) return 0;
+    const data = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0;
+    for (let i = 0; i < data.length; i += 48) n = (n + data[i] * 3 + data[i + 1] * 5 + data[i + 2]) >>> 0;
+    return n;
+  }
+  function framePair(lines) {
+    const aWord = lines[0] && lines[0].words[0];
+    const bWord = lines[1] && lines[1].words[0];
+    if (!aWord || !bWord) return ["active", "frames"];
+    const tA = aWord.start + Math.min(0.04, Math.max(0.01, (aWord.end - aWord.start) / 2));
+    const tB = bWord.start + Math.min(0.04, Math.max(0.01, (bWord.end - bWord.start) / 2));
+    const wordA = activeWordAt(tA).toLowerCase();
+    const sigA = frameSig();
+    const wordB = activeWordAt(tB).toLowerCase();
+    const sigB = frameSig();
+    const problems = [];
+    if (!wordA || !wordB || wordA === wordB) problems.push("active");
+    if (sigA === sigB) problems.push("frames");
+    return problems;
+  }
+  function syncedFromFixture() {
+    const sync = LS();
+    const words = sync.mergeTokens(sync.fixtureTokens());
+    const res = sync.alignLyrics(sync.PASTED_FIXTURE, words, 12);
+    return { sync, words, res };
+  }
+  function proveSync() {
+    const sync = LS();
+    const saved = {
+      lines: state.lines, hyp: state.hyp, length: state.length, screen: state.screen,
+      lyrics: $("#lyrics").value, status: $("#syncStatus").textContent,
+    };
+    const problems = [];
+    try {
+      const built = syncedFromFixture();
+      if (!sync.timingsLookReal(built.words)) problems.push("times");
+      const got = (built.res.lines || []).map((ln) => ln.words.map((w) => w.text).join(" "));
+      if (built.res.error || got.length !== 4) problems.push("align");
+      if (got[0] !== "Sing me, far away, there's") problems.push("line1");
+      if (got[3] !== "beavers") problems.push("beavers");
+      if (got.some((ln) => ln.indexOf(" '") >= 0 || ln.indexOf(" ,") >= 0)) problems.push("space");
+      const grouped = sync.groupLines(built.words).flatMap((ln) => ln.words.map((w) => w.text));
+      if (grouped.indexOf("avers") >= 0 || grouped.indexOf("'s") >= 0) problems.push("split");
+      if (!sync.alignLyrics("unrelated zucchini orchestra", built.words, 12).error) problems.push("silent");
+      if (got.length >= 2) {
+        state.length = 12;
+        state.hyp = built.words;
+        state.lines = built.res.lines;
+        const kept = state.lines[0].words[0].start;
+        if (!sync.applyLineText(state.lines[0], "Sing me, far away, there's")) problems.push("edit");
+        if (state.lines[0].words[0].start !== kept) problems.push("keeptime");
+        if (!sync.applyLineText(state.lines[1], "voices edited live")) problems.push("rewrite");
+        paintLines();
+        const shown = document.querySelectorAll("#lineList .lineedit")[1];
+        if (!shown || shown.getAttribute("contenteditable") !== "true" || !/edited/.test(shown.textContent)) problems.push("shown");
+        show("look");
+        show("sync");
+        const again = document.querySelectorAll("#lineList .lineedit")[1];
+        if (!again || !/edited/.test(again.textContent)) problems.push("persist");
+        framePair(state.lines).forEach((p) => problems.push(p));
+      }
+    } catch (e) {
+      problems.push("throw");
+    } finally {
+      state.lines = saved.lines;
+      state.hyp = saved.hyp;
+      state.length = saved.length;
+      $("#lyrics").value = saved.lyrics;
+      $("#syncStatus").textContent = saved.status;
+      paintLines();
+      show(saved.screen);
+    }
+    return problems;
+  }
+  function shotProblems() {
+    const problems = [];
+    try {
+      const edits = [...document.querySelectorAll("#lineList .lineedit")];
+      if (!edits.length || edits.some((el) => el.getAttribute("contenteditable") !== "true")) problems.push("shown");
+      if (!edits.some((el) => /edited/i.test(el.textContent))) problems.push("edited");
+      const flat = state.lines.flatMap((ln) => ln.words);
+      if (!LS().timingsLookReal(flat)) problems.push("times");
+      const text = state.lines.map((ln) => ln.words.map((w) => w.text).join(" ")).join("\n");
+      if (text.indexOf("there's") < 0 || text.indexOf("beavers") < 0) problems.push("line1");
+      if (/\s[,']/.test(text)) problems.push("space");
+      show("look");
+      show("sync");
+      if (![...document.querySelectorAll("#lineList .lineedit")].some((el) => /edited/i.test(el.textContent))) problems.push("persist");
+      framePair(state.lines).forEach((p) => problems.push(p));
+    } catch (e) {
+      problems.push("throw");
+    }
+    return problems;
+  }
   function measure(screen) {
+    const logical = screen === "syncshot" ? "sync" : screen;
     const sc = document.scrollingElement || document.documentElement;
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
     fitAll();
-    const { expect, flags } = contentFlags(screen);
+    const { expect, flags } = contentFlags(logical);
     const wide = pageWide();
     const box = textWide();
     const clear = clearsDock() ? 1 : 0;
@@ -378,6 +415,24 @@
     const pad = parseFloat(getComputedStyle(document.querySelector(".app")).paddingTop) || 0;
     const inset = pad >= 40 ? 1 : 0;
     if (!inset) flags.push("inset");
+    let lead = 0, wordsOk = 0, editOk = 0, framesOk = 0, editedOk = 0;
+    if (logical === "sync") {
+      lead = leadFits() ? 1 : 0;
+      if (!lead) flags.push("lead");
+      const problems = screen === "syncshot" ? shotProblems() : proveSync();
+      const wordBad = ["times", "align", "line1", "beavers", "space", "split", "silent", "throw"];
+      const editBad = ["edit", "keeptime", "shown", "persist", "rewrite", "edited"];
+      wordsOk = problems.some((p) => wordBad.indexOf(p) >= 0) ? 0 : 1;
+      editOk = problems.some((p) => editBad.indexOf(p) >= 0) ? 0 : 1;
+      framesOk = problems.some((p) => p === "active" || p === "frames") ? 0 : 1;
+      editedOk = screen === "syncshot" ? (problems.indexOf("edited") >= 0 ? 0 : 1) : 1;
+      if (!wordsOk) flags.push("words");
+      if (!editOk) flags.push("edit");
+      if (!framesOk) flags.push("frames");
+      if (screen === "syncshot" && !editedOk) flags.push("edited");
+      sc.scrollTop = 0;
+      sc.scrollLeft = 0;
+    }
     const themeName = document.documentElement.dataset.theme || "aero";
     const zoom = parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100;
     const parts = [
@@ -404,7 +459,12 @@
       "box=" + box.length,
       "inset=" + inset,
       "themes=" + themesOk,
-      "dock=" + dockOk
+      "dock=" + dockOk,
+      "lead=" + lead,
+      "words=" + wordsOk,
+      "edit=" + editOk,
+      "frames=" + framesOk,
+      "edited=" + editedOk
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
     return parts.join(" ");
@@ -592,12 +652,40 @@
     ctx.fillStyle = cssVar("--wave-sel", "rgba(32,180,220,.34)");
     ctx.fillRect(x0, 0, x1 - x0, h);
   }
+  function writeLyrics(text) {
+    const box = $("#lyrics");
+    if (box && box.value !== text) box.value = text;
+  }
   function paintLines() {
     const ol = $("#lineList");
     ol.innerHTML = "";
-    state.lines.forEach((ln) => {
+    state.lines.forEach((ln, i) => {
       const li = document.createElement("li");
-      li.textContent = ln.words.map((w) => w.text).join(" ");
+      const edit = document.createElement("span");
+      edit.className = "lineedit";
+      edit.contentEditable = "true";
+      edit.spellcheck = false;
+      edit.setAttribute("role", "textbox");
+      edit.setAttribute("aria-label", "Line " + (i + 1));
+      edit.textContent = ln.words.map((w) => w.text).join(" ");
+      edit.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); edit.blur(); }
+      });
+      edit.addEventListener("input", () => {
+        if (LS().applyLineText(state.lines[i], edit.textContent)) {
+          draw(state.t || 1.2);
+          $("#syncStatus").textContent = "Line updated.";
+        }
+      });
+      edit.addEventListener("blur", () => {
+        if (!LS().applyLineText(state.lines[i], edit.textContent)) {
+          edit.textContent = state.lines[i].words.map((w) => w.text).join(" ");
+        }
+        writeLyrics(state.lines.map((row) => row.words.map((w) => w.text).join(" ")).join("\n"));
+        paintLines();
+        draw(state.t || 1.2);
+      });
+      li.append(edit);
       ol.append(li);
     });
   }
@@ -657,12 +745,55 @@
     requestAnimationFrame(step);
   }
   function applyWords(words) {
+    const sync = LS();
+    const cleaned = sync.gluePunct(words);
+    if (!cleaned.length) {
+      $("#syncStatus").textContent = "Nothing was heard in this section.";
+      mascot("crying");
+      return;
+    }
+    if (!sync.timingsLookReal(cleaned)) {
+      $("#syncStatus").textContent = "Heard the words, but they came back without timings. Try the section again.";
+      mascot("crying");
+      return;
+    }
+    state.hyp = cleaned;
     const pasted = $("#lyrics").value;
-    state.lines = pasted.trim() ? alignLyrics(pasted, words, state.length) : groupLines(words);
+    const clip = state.length || cleaned[cleaned.length - 1].end;
+    if (pasted.trim()) {
+      const res = sync.alignLyrics(pasted, cleaned, clip);
+      if (res.error) {
+        state.lines = sync.linesFromText(pasted, clip);
+        paintLines();
+        $("#syncStatus").textContent = res.error;
+        mascot("crying");
+        draw(Math.min(1.2, Math.max(0.2, state.length - 0.05)));
+        return;
+      }
+      state.lines = res.lines;
+    } else {
+      state.lines = sync.groupLines(cleaned);
+    }
+    if (!state.lines.length) {
+      $("#syncStatus").textContent = "No lyric lines came out of that section.";
+      mascot("crying");
+      return;
+    }
     paintLines();
     $("#syncStatus").textContent = state.lines.length + " lines ready.";
     mascot("happy");
     show("look");
+    draw(Math.min(1.2, Math.max(0.2, state.length - 0.05)));
+  }
+  function installSyncShot() {
+    const built = syncedFromFixture();
+    state.length = 12;
+    state.hyp = built.words;
+    state.lines = built.res.lines;
+    LS().applyLineText(state.lines[1], "voices, voicing me my name, edited");
+    $("#lyrics").value = state.lines.map((ln) => ln.words.map((w) => w.text).join(" ")).join("\n");
+    $("#syncStatus").textContent = state.lines.length + " lines ready.";
+    paintLines();
     draw(1.2);
   }
   function fakePeaks(n) {
@@ -678,6 +809,7 @@
     state.title = "Glass Static";
     state.artist = "Luciel";
     state.lines = DEMO.map((ln) => ({ words: ln.words.map((w) => Object.assign({}, w)) }));
+    state.hyp = state.lines.flatMap((ln) => ln.words.map((w) => Object.assign({}, w)));
     $("#lyrics").value = state.lines.map((ln) => ln.words.map((w) => w.text).join(" ")).join("\n");
     $("#title").value = state.title;
     $("#artist").value = state.artist;
@@ -705,15 +837,35 @@
     if (demo) demoFill();
     paintLooks(); paintAnims(); paintPalettes(); paintZooms(); paintFx(); paintQuality(); paintTimeline();
     syncColors();
-    try { await document.fonts.ready; } catch (e) {}
+    try {
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((ok) => setTimeout(ok, 2500)),
+      ]);
+    } catch (e) {}
     window.__audits = [];
     async function publish(screen) {
       if (screen === "look") paintLooks();
       await settle();
       fitAll();
       const msg = measure(screen);
+      if (screen === "syncshot") {
+        const edited = [...document.querySelectorAll("#lineList .lineedit")].find((el) => /edited/i.test(el.textContent));
+        const sc = document.scrollingElement || document.documentElement;
+        if (edited) {
+          const top = edited.getBoundingClientRect().top + sc.scrollTop - window.innerHeight * 0.32;
+          const y = Math.max(0, top);
+          sc.scrollTop = y;
+          document.documentElement.scrollTop = y;
+          document.body.scrollTop = y;
+        }
+        document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
+        await settle();
+      }
       window.__audits.push(msg);
       document.documentElement.dataset.audit = msg;
+      const log = document.getElementById("auditlog");
+      if (log) log.textContent += msg + "\n";
       if (window.Luciel && Luciel.ready) Luciel.ready(msg);
     }
     if (demo === "audit") {
@@ -725,6 +877,13 @@
           await publish(sc);
         }
       }
+      return;
+    }
+    if (demo === "syncshot") {
+      theme(document.documentElement.dataset.theme || "aero");
+      show("sync");
+      installSyncShot();
+      await publish("syncshot");
       return;
     }
     theme(document.documentElement.dataset.theme || "aero");
@@ -761,14 +920,58 @@
   };
   $("#title").oninput = () => { state.title = $("#title").value; draw(state.t || 1.2); };
   $("#artist").oninput = () => { state.artist = $("#artist").value; draw(state.t || 1.2); };
+  $("#lyrics").addEventListener("input", () => {
+    const sync = LS();
+    const text = $("#lyrics").value;
+    const clip = state.length || 20;
+    if (!text.trim()) {
+      state.lines = [];
+      paintLines();
+      draw(state.t || 1.2);
+      $("#syncStatus").textContent = "Lyrics cleared.";
+      return;
+    }
+    if (state.hyp && state.hyp.length) {
+      const res = sync.alignLyrics(text, state.hyp, clip);
+      if (res.error) {
+        state.lines = sync.linesFromText(text, clip);
+        $("#syncStatus").textContent = res.error;
+      } else {
+        state.lines = res.lines;
+        $("#syncStatus").textContent = state.lines.length + " lines ready.";
+      }
+    } else {
+      state.lines = sync.linesFromText(text, clip);
+      $("#syncStatus").textContent = state.lines.length + " lines from your lyrics.";
+    }
+    paintLines();
+    draw(state.t || 1.2);
+  });
   $("#playClip").onclick = () => { mascot("music"); play(); };
   $("#previewBtn").onclick = () => { mascot("music"); play(); };
   $("#pickAudio").onclick = () => { if (window.Luciel) Luciel.pickAudio(); else $("#trackHint").textContent = "Song picking runs in the Android app."; };
   $("#pickVideo").onclick = () => { if (window.Luciel) Luciel.pickVideo(); };
   $("#fontBtn").onclick = () => { if (window.Luciel) Luciel.pickFont(); };
-  $("#getModel").onclick = () => { if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(); } };
+  $("#getModel").onclick = () => {
+    if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(); }
+    else $("#modelText").textContent = "The speech model downloads inside the Android app.";
+  };
   $("#syncBtn").onclick = () => {
     if (!window.Luciel) { applyWords(DEMO.flatMap((l) => l.words)); return; }
+    let info = {};
+    try { info = JSON.parse(Luciel.info()); } catch (e) {}
+    if (!info.whisper) {
+      $("#syncStatus").textContent = "Speech recognition isn't in this build.";
+      mascot("crying");
+      return;
+    }
+    if (!info.model) {
+      $("#syncStatus").textContent = "The speech model isn't on this phone yet. Downloading it now — tap Sync again when it finishes.";
+      $("#modelText").textContent = "Downloading the speech model…";
+      mascot("confused");
+      Luciel.downloadModel();
+      return;
+    }
     mascot("confused");
     $("#syncStatus").textContent = "Listening to the section…";
     Luciel.transcribe(state.start, state.length);
@@ -866,7 +1069,14 @@
         $("#trackHint").textContent = "Reading the song…";
       } else if (msg.type === "model") {
         if (msg.error) { $("#modelText").textContent = msg.error; mascot("crying"); }
-        else if (msg.ready) { $("#modelText").textContent = "Speech model is on this phone. Sync works offline."; mascot("happy"); }
+        else if (msg.ready) {
+          $("#modelText").textContent = "Speech model is on this phone. Sync works offline.";
+          const status = $("#syncStatus").textContent;
+          if (status.indexOf("Downloading") >= 0 || status.indexOf("isn't on this phone") >= 0) {
+            $("#syncStatus").textContent = "Speech model is ready. Tap Sync lyrics.";
+          }
+          mascot("happy");
+        }
         else $("#modelText").textContent = "Downloading… " + Math.round((msg.progress || 0) * 100) + "%";
       } else if (msg.type === "sync" && msg.phase === "words") {
         const words = msg.words.map((w) => ({ text: w.text, start: w.start, end: w.end }));
