@@ -225,9 +225,23 @@ jobs:
       - name: Forced alignment on the sung clip
         run: python scripts/test_sync.py
 
+  mascot-overlap:
+    name: mascot-overlap
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Playwright
+        run: python -m pip install --upgrade pip && python -m pip install "playwright==1.64.0" && python -m playwright install --with-deps chromium
+      - name: Mascot and bubble must not cover controls
+        run: python scripts/test_mascot_overlap.py
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, alignment]
+    needs: [build, alignment, mascot-overlap]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -249,16 +263,20 @@ jobs:
             docs/screenshots/sync-v140.png
             docs/screenshots/sync-panel-y2k.png
             docs/screenshots/sync-panel-winamp.png
+            docs/screenshots/video-aero-1280x800.png
+            docs/screenshots/video-y2k-1280x800.png
+            docs/screenshots/video-winamp-1280x800.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.5.1 — desktop lyric video editor.
+            Luciel Lyric 1.5.2 — desktop lyric video editor.
 
             Five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it.
 
-            Android 1.4.3 is pull request #13 and is not this desktop patch. The phone build on this commit stays versionName 1.4.2. Do not retag 1.5.0.
+            The Video step keeps the mascot in its own row under the controls, so the card and its speech bubble do not cover inputs, the preview, or the timeline.
+
+            Android 1.4.3 is still pull request #13. This desktop tag does not include an Android APK. Do not move the 1.5.0 or 1.5.1 tags.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
               (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
-            * Android (arm64, Android 8+): install LucielLyric-android.apk. Same lyric looks and animations. The speech model (~75 MB, English) downloads the first time you sync; after that, sync and render stay on the phone. Vocal isolation is desktop-only. The 1.3.0 and 1.3.1 signing keys were not saved, and LUCIEL_KEYSTORE_B64 is not set, so this APK will not install over 1.3.0 or 1.3.1, or over the next build, until that secret (plus LUCIEL_KEYSTORE_PASSWORD, LUCIEL_KEY_PASSWORD, and LUCIEL_KEY_ALIAS) is added. Uninstall the previous copy first.

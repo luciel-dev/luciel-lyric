@@ -170,20 +170,33 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Upload the APK only when the tag is the Android version
+        id: gate
+        shell: bash
+        run: |
+          name=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -1)
+          tag="${GITHUB_REF#refs/tags/v}"
+          echo "android=$name tag=$tag"
+          if [ "$name" = "$tag" ]; then echo "upload=true" >> "$GITHUB_OUTPUT"; else echo "upload=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.upload == 'true'
         with:
           name: LucielLyric-android
           path: out
       - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.upload == 'true'
         continue-on-error: true
         with:
           name: android-screenshots
           path: shots
-      - run: |
+      - if: steps.gate.outputs.upload == 'true'
+        run: |
           ls -la out
           if compgen -G "shots/*.png" > /dev/null; then cp shots/*.png out/; fi
           ls -la out
       - uses: softprops/action-gh-release@v2
+        if: steps.gate.outputs.upload == 'true'
         with:
           files: out/*
           draft: false

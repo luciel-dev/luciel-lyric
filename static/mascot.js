@@ -25,6 +25,9 @@
     const pad = 8;
     bubble.style.marginRight = '0px';
     bubble.style.marginBottom = '0px';
+    // In the reserved row the bubble is in normal flow. Shifting it with margins
+    // would pull it over the controls beside it.
+    if (document.body.classList.contains('mascot-slot')) return;
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
     let rect = bubble.getBoundingClientRect();

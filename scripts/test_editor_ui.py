@@ -5,6 +5,8 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from test_mascot_overlap import overlap_hits
+
 ROOT = Path("/workspace")
 SHOTS = Path("/opt/cursor/artifacts/screenshots")
 SHOTS.mkdir(parents=True, exist_ok=True)
@@ -337,27 +339,15 @@ def main():
                         bad = overflow(page)
                         if bad:
                             leaks.append(f"{label} {theme} {tag}: {bad}")
-                        placed = page.evaluate("""() => {
-                          const bubble = document.querySelector('#mascotBubble');
-                          bubble.textContent = 'Nice frame.';
-                          bubble.classList.add('show');
-                          function hit(a, b) {
-                            if (a.width < 2 || a.height < 2) return false;
-                            return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
-                          }
-                          const stage = document.querySelector('.stagecol').getBoundingClientRect();
-                          const tl = document.querySelector('#videoTl').getBoundingClientRect();
-                          const nodes = ['#mascot', '#mascotBubble'].map(sel => document.querySelector(sel).getBoundingClientRect());
+                        hits = overlap_hits(page)
+                        themed = page.evaluate("""() => {
                           const btn = document.querySelector('#overlayList [data-del]');
                           const ref = document.querySelector('#sideToggle');
                           const ba = btn ? getComputedStyle(btn) : null;
                           const br = ref ? getComputedStyle(ref) : null;
-                          return {
-                            clear: nodes.every(r => !hit(r, stage) && !hit(r, tl)),
-                            themed: !!(btn && btn.classList.contains('btn') && ba && br && ba.backgroundColor === br.backgroundColor && ba.color === br.color),
-                          };
+                          return !!(btn && btn.classList.contains('btn') && ba && br && ba.backgroundColor === br.backgroundColor && ba.color === br.color);
                         }""")
-                        assert placed["clear"] and placed["themed"], (theme, tag, placed)
+                        assert not hits and themed, (theme, tag, hits, themed)
                         if tag != "1366768":
                             page.screenshot(path=str(SHOTS / f"video_{theme}_{tag}.png"))
                     bar = page.locator("#tlSplitBar").bounding_box()
