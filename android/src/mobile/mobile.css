@@ -218,6 +218,24 @@ main {
 #screen-time .screenhead .lead { margin-top: 2px; --fs: 12; line-height: 1.2; }
 #screen-time .editorcard { padding: 6px 8px; }
 #screen-time .editorcard > * + * { margin-top: 4px; }
+/* The emulator frame is about 465 CSS pixels tall. Time drops the brand row
+   and the lead so the preview, ruler, four tracks, and action bar sit above
+   the dock. Track rows stay at 36px; the waveform strip is the short one. */
+html[data-screen="time"] .top { display: none; }
+html[data-screen="time"] .app { padding-top: calc(var(--sys-top) + 2px); }
+html[data-screen="time"] #screen-time .screenhead .lead { display: none; }
+html[data-screen="time"] #screen-time .screenhead h1 { --fs: 16; margin: 0; line-height: 1.1; }
+html[data-screen="time"] #screen-time.on > * + * { margin-top: 2px; }
+html[data-screen="time"] #screen-time .ruler { height: 14px; }
+html[data-screen="time"] #screen-time .track,
+html[data-screen="time"] #screen-time .ztrack { height: 36px; margin-top: 0; }
+html[data-screen="time"] #screen-time .vclip,
+html[data-screen="time"] #screen-time .lblock { height: 32px; line-height: 32px; top: 2px; }
+html[data-screen="time"] #screen-time .tlview { height: 142px; }
+html[data-screen="time"] #screen-time canvas#tl { height: 20px; }
+html[data-screen="time"] #screen-time .editorcard { padding: 2px 6px; }
+html[data-screen="time"] #screen-time .editorcard > * + * { margin-top: 2px; }
+html[data-screen="time"] .previewpin { padding: 2px 4px; }
 .screenhead { display: block; max-width: 100%; min-width: 0; }
 .screenhead h1 {
   --fs: 26;
@@ -457,6 +475,7 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   text-overflow: clip;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
+  line-height: 1.15;
 }
 #previewMeta {
   --fs: 11;
@@ -467,6 +486,7 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
+  line-height: 1.15;
 }
 .preview-fields { display: block; min-width: 0; max-width: 100%; }
 .cliprow { display: flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
