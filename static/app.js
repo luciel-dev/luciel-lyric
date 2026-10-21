@@ -16,7 +16,9 @@ const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`
   S.cfg = await api('/api/config');
   S.tier = S.cfg.default_tier || 'best';
   paintTiers();
-  if (S.cfg.demucs) $('#sepIn').checked = true; else { $('#sepIn').disabled = true; $('#sepIn').parentElement.title = 'Vocal isolation is not installed on this computer'; $('#sepIn').parentElement.style.opacity = .5; }
+  const sep = $('#sepIn'), sepNote = $('#sepNote');
+  if (S.cfg.demucs) { sep.checked = true; sep.disabled = false; sepNote.hidden = true; sep.parentElement.title = ''; }
+  else { sep.checked = false; sep.disabled = true; sepNote.hidden = false; sep.parentElement.title = 'Vocal isolation not installed'; }
   const pc = $('#presets');
   for (const [k, p] of Object.entries(S.cfg.presets)) {
     const d = document.createElement('div');

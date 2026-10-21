@@ -21,9 +21,30 @@
   ['idle', 'happy', 'surprised', 'crying', 'confused', 'music', 'flying', 'love', 'sleepy', 'cloud-sleep', 'shy', 'smug']
     .forEach(n => { const i = new Image(); i.src = n === 'idle' ? BASE + 'idle.webp' : BASE + `emote-${n}.webp`; });
 
+  function placeBubble() {
+    const pad = 8;
+    bubble.style.marginRight = '0px';
+    bubble.style.marginBottom = '0px';
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    let rect = bubble.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    let shiftX = 0;
+    if (rect.right > vw - pad) shiftX += rect.right - (vw - pad);
+    if (rect.left - shiftX < pad) shiftX -= pad - (rect.left - shiftX);
+    if (rect.right - shiftX > vw - pad) shiftX += rect.right - shiftX - (vw - pad);
+    if (shiftX) bubble.style.marginRight = shiftX.toFixed(1) + 'px';
+    rect = bubble.getBoundingClientRect();
+    let shiftY = 0;
+    if (rect.top < pad) shiftY = rect.top - pad;
+    if (rect.bottom - shiftY > vh - pad) shiftY += rect.bottom - shiftY - (vh - pad);
+    if (shiftY) bubble.style.marginBottom = shiftY.toFixed(1) + 'px';
+  }
   function say(text, ms = 3200) {
     if (!text) return;
     bubble.textContent = text; bubble.classList.add('show');
+    placeBubble();
+    requestAnimationFrame(placeBubble);
     clearTimeout(bubbleT); bubbleT = setTimeout(() => bubble.classList.remove('show'), ms);
   }
   function still(name) {
@@ -108,5 +129,7 @@
   setHidden(hidden);
   toIdle(); wake();
   setTimeout(() => { el.dataset.ready = '1'; if (!hidden) say('Welcome to Luciel Lyric ✨ Drop a song to start!', 3800); }, 600);
+  addEventListener('resize', () => { if (bubble.classList.contains('show')) placeBubble(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (bubble.classList.contains('show')) placeBubble(); });
   window.Mascot = {emote, dance, say, idle: toIdle};
 })();
