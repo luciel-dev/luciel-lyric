@@ -225,16 +225,16 @@ html[data-screen="time"] .top { display: none; }
 html[data-screen="time"] .app { padding-top: calc(var(--sys-top) + 2px); }
 html[data-screen="time"] #screen-time .screenhead .lead { display: none; }
 html[data-screen="time"] #screen-time .screenhead h1 { --fs: 16; margin: 0; line-height: 1.1; }
-html[data-screen="time"] #screen-time.on > * + * { margin-top: 2px; }
-html[data-screen="time"] #screen-time .ruler { height: 14px; }
+html[data-screen="time"] #screen-time.on > * + * { margin-top: 0; }
+html[data-screen="time"] #screen-time .ruler { height: 20px; }
 html[data-screen="time"] #screen-time .track,
 html[data-screen="time"] #screen-time .ztrack { height: 36px; margin-top: 0; }
 html[data-screen="time"] #screen-time .vclip,
 html[data-screen="time"] #screen-time .lblock { height: 32px; line-height: 32px; top: 2px; }
-html[data-screen="time"] #screen-time .tlview { height: 142px; }
-html[data-screen="time"] #screen-time canvas#tl { height: 20px; }
-html[data-screen="time"] #screen-time .editorcard { padding: 2px 6px; }
-html[data-screen="time"] #screen-time .editorcard > * + * { margin-top: 2px; }
+html[data-screen="time"] #screen-time .tlview { height: 144px; }
+html[data-screen="time"] #screen-time canvas#tl { height: 16px; }
+html[data-screen="time"] #screen-time .editorcard { padding: 0 6px; }
+html[data-screen="time"] #screen-time .editorcard > * + * { margin-top: 0; }
 html[data-screen="time"] .previewpin { padding: 2px 4px; }
 .screenhead { display: block; max-width: 100%; min-width: 0; }
 .screenhead h1 {
@@ -397,7 +397,7 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
 }
 .previewpin.stuck {
   position: fixed;
-  top: var(--sys-top);
+  top: var(--pin-top, var(--sys-top));
   right: 8px;
   bottom: auto;
   left: 8px;
@@ -526,13 +526,17 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   touch-action: pan-x;
 }
 .tlinner { position: relative; height: 100%; min-height: 100%; }
-.ruler { position: relative; height: 16px; }
+.ruler { position: relative; height: 20px; overflow: hidden; }
 .ruler b {
   position: absolute;
-  top: 2px;
+  top: 0;
+  height: 20px;
+  line-height: 20px;
   --fs: 10;
+  font-size: calc(var(--fs) * 1px * var(--tz) * var(--fit, 1));
   font-weight: 500;
   color: var(--muted);
+  white-space: nowrap;
   transform: translateX(-50%);
 }
 .track { position: relative; height: 40px; margin-top: 2px; }
@@ -827,7 +831,7 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
 
 .dockplate {
   position: fixed;
-  z-index: 4;
+  z-index: 39;
   left: 0;
   right: 0;
   bottom: 0;
@@ -837,7 +841,7 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
 }
 .dock {
   position: fixed;
-  z-index: 5;
+  z-index: 40;
   left: 8px;
   right: 8px;
   bottom: calc(8px + var(--sys-bottom));
@@ -870,6 +874,7 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
 .docklabel {
   display: block;
   width: 100%;
+  pointer-events: none;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;

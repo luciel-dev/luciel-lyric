@@ -24,7 +24,7 @@ object ModelStore {
             instanceFollowRedirects = true
             connectTimeout = 30_000
             readTimeout = 60_000
-            setRequestProperty("User-Agent", "LucielLyric/1.3.5")
+            setRequestProperty("User-Agent", "LucielLyric/1.4.2")
         }
         try {
             conn.connect()
