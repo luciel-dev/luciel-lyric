@@ -132,10 +132,26 @@
         ctx.drawImage(im, x0, y0, vw, vh, 0, 0, W, H);
         ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, H);
       } else if (m === 'video' && cfg.video && cfg.video.videoWidth) {
-        const v = cfg.video, [x0, y0, vw, vh] = viewBox(coverBox(v.videoWidth, v.videoHeight, W, H), zb.z, zb.x, zb.y);
-        const bl = (cfg.blur || 0) * W / this.fullW * zb.z;
+        const v = cfg.video;
+        const place = (cfg.place) || (cfg.clip && cfg.clip.place) || null;
+        const fitted = G.LLLayers && place && !G.LLLayers.isCoverDefault(place);
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+        const bl = (cfg.blur || 0) * W / this.fullW;
         ctx.filter = bl > 0.05 ? `blur(${bl}px)` : 'none';
-        ctx.drawImage(v, x0, y0, vw, vh, 0, 0, W, H); ctx.filter = 'none';
+        if (fitted) {
+          const box = G.LLLayers.placeBox(v.videoWidth, v.videoHeight, W, H, place);
+          ctx.drawImage(v, box.x, box.y, box.w, box.h);
+        } else {
+          const [x0, y0, vw, vh] = viewBox(coverBox(v.videoWidth, v.videoHeight, W, H), zb.z, zb.x, zb.y);
+          ctx.drawImage(v, x0, y0, vw, vh, 0, 0, W, H);
+        }
+        ctx.filter = 'none';
+        if (fitted && zb.z > 1.0005) {
+          const [x0, y0, vw, vh] = viewBox([0, 0, W, H], zb.z, zb.x, zb.y);
+          this.tctx.clearRect(0, 0, W, H); this.tctx.drawImage(this.cv, 0, 0);
+          ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+          ctx.drawImage(this.tmp, x0, y0, vw, vh, 0, 0, W, H);
+        }
         if (cfg.darken > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(0.9, cfg.darken)})`; ctx.fillRect(0, 0, W, H); }
       } else if (m === 'video') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
       else if (m !== 'transparent') { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); }
@@ -198,6 +214,21 @@
       // lyrics
       const l = this.lctx; l.setTransform(1, 0, 0, 1, 0, 0); l.clearRect(0, 0, W, H);
       drawItems(l, LL.buildItems(t, sc).items);
+      const ovs = cfg.overlays || [];
+      if (ovs.length) {
+        l.save();
+        for (const ov of ovs) {
+          if (!ov || t < (+ov.start || 0) || t > (+ov.end || 1e9)) continue;
+          const px = Math.max(10, Math.round((+ov.size || 0.06) * Math.min(W, H) * (+ov.scale || 1)));
+          l.font = `700 ${px}px Poppins, sans-serif`;
+          l.fillStyle = ov.color || '#ffffff';
+          l.textAlign = 'center';
+          l.textBaseline = 'middle';
+          l.globalAlpha = 1;
+          l.fillText(String(ov.text || ''), (+ov.x || 0.5) * W, (+ov.y || 0.12) * H);
+        }
+        l.restore();
+      }
       ctx.drawImage(this.layer, 0, 0);
       let textCanvas = this.layer;
       if (target === 'all' && z0.z > 1.0005) {

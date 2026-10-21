@@ -109,9 +109,13 @@ def test_whole_song_finds_the_clip():
     audio, sr = _audio()
     result = align_lyrics_audio(audio, sr, meta["whole_song"])
     print("window confidence", result["confidence"], "used", result["ref_words_used"], "of", result["ref_words"])
+    typed = [" ".join(line.split()) for line in meta["whole_song"].splitlines() if line.strip()]
     lines = [" ".join(w["text"] for w in ln["words"]) for ln in result["lines"]]
-    assert lines == meta["lyrics"].splitlines(), lines
-    _check_words(result, meta["words"])
+    assert lines == typed, lines
+    sung_text = meta["lyrics"].splitlines()
+    sung = [ln for ln in result["lines"] if " ".join(w["text"] for w in ln["words"]) in sung_text]
+    assert [" ".join(w["text"] for w in ln["words"]) for ln in sung] == sung_text
+    _check_words({"ok": True, "lines": sung}, meta["words"])
 
 
 def test_one_wrong_line_is_flagged():
@@ -124,6 +128,8 @@ def test_one_wrong_line_is_flagged():
           [( " ".join(w["text"] for w in ln["words"]), ln["low_confidence"], ln["confidence"]) for ln in result["lines"]])
     assert result["lines"], "lines still come back"
     assert len(result["lines"]) == 4
+    shown = [" ".join(w["text"] for w in ln["words"]) for ln in result["lines"]]
+    assert shown == lines, shown
     flags = [ln["low_confidence"] for ln in result["lines"]]
     assert flags[2] is True, flags
     if result["ok"]:
@@ -139,7 +145,28 @@ def test_mismatch_is_reported():
     assert result["ok"] is False
     assert result.get("error")
     assert result["lines"], "still return the lines so they can be tap-fixed"
+    typed = [" ".join(line.split()) for line in bad.splitlines() if line.strip()]
+    shown = [" ".join(w["text"] for w in ln["words"]) for ln in result["lines"]]
+    assert shown == typed, shown
     assert all(ln["low_confidence"] for ln in result["lines"])
+
+
+def test_typed_words_are_never_replaced():
+    """A clip that sings different words must still show the paste, in order."""
+    audio, sr = _audio()
+    pasted = "\n".join([
+        "PLEASE SEND ME BACK TO HEAVEN",
+        "I DONT WANNA LIVE LIKE THIS",
+        "PLEASE SEND ME BACK TO HEAVEN",
+        "I DON'T WANNA FEEL LIKE THIS",
+    ])
+    result = align_lyrics_audio(audio, sr, pasted)
+    typed = [" ".join(line.split()) for line in pasted.splitlines() if line.strip()]
+    shown = [" ".join(w["text"] for w in ln["words"]) for ln in result["lines"]]
+    print("typed kept", shown)
+    assert shown == typed, shown
+    assert all(ln["low_confidence"] for ln in result["lines"])
+    assert result["ok"] is False
 
 
 def main():
@@ -151,6 +178,7 @@ def main():
     test_whole_song_finds_the_clip()
     test_one_wrong_line_is_flagged()
     test_mismatch_is_reported()
+    test_typed_words_are_never_replaced()
     print("SYNC TESTS: PASS")
 
 

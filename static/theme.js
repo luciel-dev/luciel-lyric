@@ -16,31 +16,54 @@
   window.LCTheme = {set: setTheme, get: () => root.dataset.theme};
 
   // ---- step tracker ----
-  const done = {1: false, 2: false, 3: false, 4: false};
+  const done = {1: false, 2: false, 3: false, 4: false, 5: false};
   function refreshSteps() {
+    const cur = window.LCFlow ? LCFlow.step() : 1;
+    if (window.LCFlow) {
+      done[1] = LCFlow.ready(1);
+      done[2] = LCFlow.ready(2);
+      done[3] = LCFlow.ready(3);
+      done[4] = LCFlow.ready(4);
+    }
     document.querySelectorAll('#stepper a').forEach(a => {
-      const n = +a.dataset.step, sec = document.getElementById('step' + n);
-      a.classList.toggle('done', !!done[n]);
-      a.classList.toggle('locked', !sec || sec.classList.contains('hidden'));
+      const n = +a.dataset.step;
+      a.classList.toggle('done', !!done[n] && n !== cur);
+      a.classList.toggle('active', n === cur);
+      const prevOk = n === 1 || done[n - 1] || n <= cur;
+      a.classList.toggle('locked', !prevOk);
     });
   }
-  const io = new IntersectionObserver(es => {
-    es.forEach(e => { if (e.isIntersecting) document.querySelectorAll('#stepper a').forEach(a => a.classList.toggle('active', 'step' + a.dataset.step === e.target.id)); });
-  }, {rootMargin: '-40% 0px -55% 0px'});
-  ['step1', 'step2', 'step3', 'step4'].forEach(id => { const el = document.getElementById(id); el && io.observe(el); });
   addEventListener('lc:audio', () => { done[1] = true; refreshSteps(); });
-  addEventListener('lc:sync-done', () => { done[2] = true; done[3] = true; setTimeout(refreshSteps, 0); });
-  addEventListener('lc:render-done', () => { done[4] = true; refreshSteps(); });
+  addEventListener('lc:sync-done', () => { done[2] = true; done[4] = true; setTimeout(refreshSteps, 0); });
+  addEventListener('lc:render-done', () => { done[5] = true; refreshSteps(); });
+  window.LCTheme.refresh = refreshSteps;
   refreshSteps();
 
   // ---- LCD readout ----
   const lcd = document.getElementById('lcd'), audioEl = document.getElementById('audio');
   const pad = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
+  function setMarquee(text) {
+    const span = document.getElementById('lcdTitle');
+    span.dataset.full = text;
+    span.replaceChildren();
+    const a = document.createElement('em');
+    a.textContent = text;
+    span.appendChild(a);
+    const box = span.parentElement;
+    const tooWide = () => a.scrollWidth > box.clientWidth + 2;
+    span.classList.remove('scrolling');
+    if (tooWide()) {
+      const b = document.createElement('em');
+      b.textContent = text;
+      b.setAttribute('aria-hidden', 'true');
+      span.appendChild(b);
+      span.classList.add('scrolling');
+    }
+  }
   function lcdText() {
     if (typeof S === 'undefined' || !S.audio) return;
     const name = (S.audio.name || 'track').replace(/\.[^.]+$/, '');
-    document.getElementById('lcdTitle').textContent =
-      `${name.toUpperCase()}  ***  CLIP ${pad(S.start)} - ${pad(Math.min(S.audio.duration, S.start + S.len))} (${S.len}s)  ***  LUCIEL LYRIC`;
+    setMarquee(`${name.toUpperCase()}  ***  CLIP ${pad(S.start)} - ${pad(Math.min(S.audio.duration, S.start + S.len))} (${S.len}s)  ***  LUCIEL LYRIC`);
     document.getElementById('lcdKbps').textContent = pad(S.audio.duration).replace(/\.\d$/, '') + ' total';
     document.getElementById('lcdClip').textContent = `clip ${S.len}s`;
   }

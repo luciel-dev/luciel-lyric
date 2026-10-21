@@ -189,9 +189,11 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.4.1 — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+            Luciel Lyric 1.5.0 — desktop lyric video editor.
 
-            This release replaces v1.4.0. Desktop sync force-aligns pasted lyrics to the vocal stem (offline wav2vec2). Fast, Accurate, and Best speech models download on first use, then stay on the computer. A confidence warning replaces a silent bad sync, and tap-to-sync can write line or word times. Sync panel screenshots: sync-v140.png, sync-panel-y2k.png, sync-panel-winamp.png. The Android app in this release is 1.3.5.
+            Five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it.
+
+            Android 1.4.3 is still in progress and is not this desktop release. If an Android APK is attached, it is the phone build already on this commit (versionName 1.4.2), not the 1.5.0 desktop editor.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time

@@ -85,23 +85,28 @@ def resolve(look="neon", anim_id=None, style=None, anim=None):
 def prepare(lines, style, anim, clip_len):
     clean = []
     for ln in lines or []:
+        extra = ln.get("style") if isinstance(ln, dict) and isinstance(ln.get("style"), dict) else None
+        st = dict(style)
+        if extra:
+            st.update(extra)
         ws = []
         for w in ln.get("words", []) or []:
             tx = str(w.get("text", "") if w.get("text") is not None else "").strip()
             if not tx:
                 continue
             s = float(w["start"]); e = max(float(w["end"]), s + 0.05)
-            ws.append({"text": tx.upper() if style.get("upper") else tx, "s": s, "e": e})
+            ws.append({"text": tx.upper() if st.get("upper") else tx, "s": s, "e": e})
         if ws:
-            clean.append(ws)
-    clean.sort(key=lambda ws: ws[0]["s"])
+            clean.append({"words": ws, "style": extra})
+    clean.sort(key=lambda item: item["words"][0]["s"])
     groups = []
-    for li, ws in enumerate(clean):
+    for li, item in enumerate(clean):
+        ws = item["words"]
         if anim["layout"] == "line":
-            groups.append({"words": ws, "line": li}); continue
+            groups.append({"words": ws, "line": li, "style": item["style"]}); continue
         n = 1 if anim["layout"] == "word" else max(1, int(round(anim.get("chunk") or 3)))
         for i in range(0, len(ws), n):
-            groups.append({"words": ws[i:i + n], "line": li})
+            groups.append({"words": ws[i:i + n], "line": li, "style": item["style"]})
     lead, hold = (0.25, 0.8) if anim["layout"] == "line" else (0.12, 0.35)
     for gi, g in enumerate(groups):
         st = g["words"][0]["s"] - lead
@@ -211,8 +216,11 @@ def build_items(t, sc):
     if gi < 0:
         return items
     g = groups[gi]
-    if g.get("_layKey") != sc.get("layKey") or "_lay" not in g:
-        g["_lay"] = layout_group(g, style, W, H, measure); g["_layKey"] = sc.get("layKey")
+    if g.get("style"):
+        style = dict(sc["style"]); style.update(g["style"])
+    lay_key = str(sc.get("layKey")) + ("" if not g.get("style") else str(sorted(g["style"].items())))
+    if g.get("_layKey") != lay_key or "_lay" not in g:
+        g["_lay"] = layout_group(g, style, W, H, measure); g["_layKey"] = lay_key
     lay = g["_lay"]; fs = lay["fs"]
     enterD = anim.get("dur", 0.22) / spd; exitD = anim.get("exitDur", 0.18) / spd
     exitX = clamp((t - (g["ge"] - exitD)) / exitD) if anim["exit"] != "none" and exitD > 0 else 0

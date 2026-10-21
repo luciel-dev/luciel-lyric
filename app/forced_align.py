@@ -13,10 +13,10 @@ from .model_store import ensure_aligner
 
 _BLANK_TOKEN = "<pad>"
 _WORD_BREAK = "|"
-# Log score per typed word. The sung fixture lands near -13; a lyric sheet that
-# isn't in the clip lands near -30. Low lines are marked from the acoustic
-# posterior, which is spiky even when the time is right, so the cut is relative.
-OK_SCORE_PER_WORD = -20.0
+# Log score per typed word. The sung fixture lands near -13. A sheet that is not
+# what the clip sings lands nearer -18 or worse. -16 keeps the real song and
+# flags a paste the vocals do not match, without rewriting those words.
+OK_SCORE_PER_WORD = -16.0
 # Extra pasted lines are dropped only when they make the alignment clearly worse.
 WINDOW_MARGIN = 0.03
 
@@ -178,6 +178,15 @@ def _align_slice(log_probs, probs, rows, vocab, blank, frame_s):
     return words, score
 
 
+def _blank_word(row):
+    """A typed word the aligner did not time. The text stays exactly as pasted."""
+    return {
+        "text": row["text"], "line": row["line"],
+        "start": None, "end": None,
+        "confidence": 0.0, "low_confidence": True,
+    }
+
+
 def _fill_gaps(words, duration):
     """Words with no letters (emoji, pure punctuation) borrow a slice of the neighbours."""
     for i, w in enumerate(words):
@@ -201,6 +210,54 @@ def _fill_gaps(words, duration):
         w["end"] = round(max(end, start + 0.02), 3)
         prev = w["end"]
     return words
+
+
+def _park_unmatched(words, duration):
+    """Give untimed typed words a slot without moving words that already have a time."""
+    i = 0
+    n = len(words)
+    while i < n:
+        if words[i].get("start") is not None:
+            i += 1
+            continue
+        j = i
+        while j < n and words[j].get("start") is None:
+            j += 1
+        prev_end = 0.0
+        for k in range(i - 1, -1, -1):
+            if words[k].get("end") is not None:
+                prev_end = float(words[k]["end"])
+                break
+        nxt = float(words[j]["start"]) if j < n and words[j].get("start") is not None else float(duration or prev_end)
+        count = j - i
+        gap = nxt - prev_end
+        if gap >= 0.04 * count + 0.01:
+            slot = gap / count
+            for t, k in enumerate(range(i, j)):
+                words[k]["start"] = prev_end + slot * t
+                words[k]["end"] = prev_end + slot * (t + 1)
+        else:
+            for k in range(i, j):
+                words[k]["start"] = prev_end
+                words[k]["end"] = prev_end + 0.02
+        for k in range(i, j):
+            words[k]["confidence"] = 0.0
+            words[k]["low_confidence"] = True
+        i = j
+    for w in words:
+        start = max(0.0, float(w["start"] or 0))
+        end = max(start + 0.02, float(w["end"] or start + 0.02))
+        if duration:
+            end = min(float(duration), end)
+            start = min(start, max(0.0, end - 0.02))
+        w["start"] = round(start, 3)
+        w["end"] = round(max(end, start + 0.02), 3)
+    return words
+
+
+def typed_line_text(text: str):
+    """Non-empty pasted lines, spacing collapsed, order unchanged."""
+    return [" ".join(line.split()) for line in (text or "").splitlines() if line.strip()]
 
 
 def _group_lines(words):
@@ -318,26 +375,62 @@ def align_lyrics_audio(audio, sample_rate: int, text: str) -> dict:
             continue
         words, score = aligned
         n = max(1, b - a)
-        cands.append((score / n, n, words, score))
+        cands.append((score / n, n, words, score, a, b))
     if not cands:
+        parked = _park_unmatched([_blank_word(r) for r in rows], duration)
+        lines = _pack_lines(_group_lines(parked), False)
         return {
             "ok": False,
-            "error": "Couldn't align these lyrics to the vocals.",
-            "confidence": 0.0, "lines": [], "words": [],
+            "error": "Couldn't align these lyrics to the vocals. The words you typed are unchanged.",
+            "confidence": 0.0, "lines": lines,
+            "words": [w for ln in lines for w in ln["words"]],
+            "ref_words": len(rows), "ref_words_used": 0,
         }
     best_key = max(c[0] for c in cands)
     # Among spans that fit about as well, keep the most words (the user's lines).
     close = [c for c in cands if c[0] >= best_key - abs(best_key) * WINDOW_MARGIN]
-    _, _, words, score = max(close, key=lambda c: c[1])
+    _, _, words, score, a, b = max(close, key=lambda c: c[1])
     words = _fill_gaps(words, duration)
     per = score / max(1, len(words))
     ok = per >= OK_SCORE_PER_WORD and all(w["end"] > w["start"] for w in words)
+    full = next((c for c in cands if c[4] == 0 and c[5] == len(rows)), None)
+    if full is None or (full[3] / max(1, full[1])) < OK_SCORE_PER_WORD:
+        # The whole paste does not fit the audio. Keep every typed word and flag the lines.
+        ok = False
+    # A shorter span can time the sung section, but every pasted word still has to appear.
+    used = b - a
+    if a or b != len(rows):
+        words = [_blank_word(r) for r in rows[:a]] + words + [_blank_word(r) for r in rows[b:]]
+        words = _park_unmatched(words, duration)
     lines = _pack_lines(_group_lines(words), ok)
+    typed = typed_line_text(text or "")
+    got = [" ".join(w["text"] for w in ln["words"]) for ln in lines]
+    if got != typed:
+        # Last resort: keep the typed spelling and order, and reuse whatever times we have.
+        flat = [w for ln in lines for w in ln["words"]]
+        rebuilt = []
+        for i, row in enumerate(rows):
+            src = flat[i] if i < len(flat) else None
+            rebuilt.append({
+                "text": row["text"], "line": row["line"],
+                "start": src["start"] if src else None,
+                "end": src["end"] if src else None,
+                "confidence": 0.0, "low_confidence": True,
+            })
+        words = _park_unmatched(rebuilt, duration)
+        lines = _pack_lines(_group_lines(words), False)
+        ok = False
+        error_override = (
+            "These lyrics don't match the singing closely enough. "
+            "The words you typed are unchanged. Low-confidence lines can be tapped in."
+        )
+    else:
+        error_override = None
     error = None
     if not ok:
-        error = (
+        error = error_override or (
             "These lyrics don't match the singing closely enough. "
-            "Low-confidence lines are marked on the timeline — fix the words, or tap them in."
+            "The words you typed stay as you wrote them. Low-confidence lines can be tapped in."
         )
     flat = [w for ln in lines for w in ln["words"]]
     return {
@@ -348,5 +441,5 @@ def align_lyrics_audio(audio, sample_rate: int, text: str) -> dict:
         "lines": lines,
         "words": flat,
         "ref_words": len(rows),
-        "ref_words_used": len(words),
+        "ref_words_used": used,
     }

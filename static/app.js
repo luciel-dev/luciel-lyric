@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 // app events (consumed by theme.js / mascot.js): lc:audio, lc:sync-start, lc:sync-done, lc:render-start, lc:render-done, lc:error, lc:play, lc:stop, lc:font, lc:bgvideo
 const emit = (name, detail = {}) => window.dispatchEvent(new CustomEvent('lc:' + name, {detail}));
-const S = {audio: null, start: 0, len: 20, lines: [], preset: 'neon', bgId: null, cfg: null, raf: null, fonts: [], fontId: '', bgMode: 'gradient', bgVideo: null, bgImageUrl: null};
+const S = {audio: null, start: 0, len: 20, lines: [], preset: 'neon', bgId: null, cfg: null, raf: null, fonts: [], fontId: '', bgMode: 'gradient', bgVideo: null, bgImageUrl: null, timingLock: false};
 const audio = $('#audio');
 
 async function api(path, opts = {}) {
@@ -115,7 +115,11 @@ async function uploadAudio(f) {
   const fd = new FormData(); fd.append('file', f);
   try {
     S.audio = await api('/api/upload', {method: 'POST', body: fd});
-  } catch (e) { $('#trackInfo').textContent = 'Upload failed: ' + e.message; emit('error', {where: 'upload', message: e.message}); return; }
+  } catch (e) {
+    $('#trackInfo').textContent = e.message;
+    if (window.LCFlow) LCFlow.fail('That audio file did not load. Try an mp3 or wav.', 1, 'Back to Audio');
+    emit('error', {where: 'upload', message: e.message}); return;
+  }
   $('#trackInfo').innerHTML = `🎵 <b>${S.audio.name}</b> · ${fmt(S.audio.duration)}`;
   audio.src = `/api/audio/${S.audio.id}`;
   S.start = 0; S.len = Math.min(+$('#lenIn').value, S.audio.duration);
@@ -193,7 +197,9 @@ $('#lenIn').oninput = e => { S.len = +e.target.value; $('#lenVal').textContent =
 function stopPlay() { const was = !audio.paused; audio.pause(); if (was) emit('stop'); cancelAnimationFrame(S.raf); $('#playBtn').textContent = '▶ Play clip'; $('#previewBtn').textContent = '▶ Preview sync'; $('#stagePlay').textContent = '▶ Preview'; window.ED && ED.onStop(); drawWave(); }
 function playClip(withPreview, btn, from = 0) {
   if (!audio.paused) return stopPlay();
-  audio.currentTime = S.start + from; audio.play();
+  audio.currentTime = S.start + from;
+  const played = audio.play();
+  if (played && typeof played.catch === 'function') played.catch(() => {});
   window.ED && ED.onPlay(from);
   (btn || (withPreview ? $('#previewBtn') : $('#playBtn'))).textContent = '■ Stop';
   emit('play', {preview: !!withPreview});
@@ -279,7 +285,35 @@ function showSyncBanner(r) {
   if (r.separation_error) text += ' Vocal isolation did not run, so the mix was used.';
   b.textContent = text;
 }
+function paintLock() {
+  const b = $('#lockToggle');
+  if (!b) return;
+  const locked = !!S.timingLock;
+  b.textContent = locked ? '🔒 Timings locked' : '🔓 Unlocked';
+  b.title = locked ? 'Unlock to re-sync' : 'Lock timings';
+  const note = $('#lockNote');
+  if (note) note.textContent = locked
+    ? 'Word times stay put while you edit text or pause. Unlock to re-sync.'
+    : 'Unlocked. Sync again to replace the times. Nudge, tap, and the waveform still edit times directly.';
+}
+$('#lockToggle').onclick = () => {
+  if (!S.lines.length) {
+    if (window.LCFlow) LCFlow.fail('Sync the lyrics before locking them.', 2, 'Go to Sync');
+    return;
+  }
+  if (S.timingLock) {
+    if (!confirm('Unlock timings so you can re-sync? Current times stay until you sync again.')) return;
+    S.timingLock = false;
+  } else S.timingLock = true;
+  paintLock();
+  renderLines();
+};
 $('#syncBtn').onclick = async () => {
+  if (S.lines.length && S.timingLock) {
+    if (window.LCFlow) LCFlow.fail('Unlock timings to re-sync. The times you have now stay until you sync again.', 2, 'Show the lock');
+    return;
+  }
+  if (S.lines.length && !confirm('Re-sync replaces the current word times. Continue?')) return;
   const sep = $('#sepIn').checked;
   $('#syncBtn').disabled = true; emit('sync-start');
   $('#syncBanner').classList.add('hidden');
@@ -305,9 +339,9 @@ $('#syncBtn').onclick = async () => {
     $('#syncStatus').textContent = bits.join(' · ');
     showSyncBanner(r);
     if (S.cfg && S.cfg.tiers) { const hit = S.cfg.tiers.find(t => t.id === S.tier); if (hit) hit.ready = true; paintTiers(); }
-    snapshotTap(); renderLines(); emit('sync-done', r);
-    $('#step3').classList.remove('hidden'); $('#step4').classList.remove('hidden');
-    $('#tapBox').classList.remove('hidden'); paintTap();
+    S.timingLock = true;
+    snapshotTap(); renderLines(); paintLock(); emit('sync-done', r);
+    paintTap();
     updateStage(); const f0 = S.lines[0]?.words[0]; updatePreview(f0 ? +f0.start + 0.4 : 0);
     window.ED && ED.seek(f0 ? +f0.start + 0.6 : 0);
     window.ED && ED.refresh && ED.refresh();
@@ -391,6 +425,7 @@ function applyTaps() {
     if (tapped && !ln.low_confidence) ln.confidence = 1;
   });
   renderLines();
+  window.ED && ED.syncRegions && ED.syncRegions();
   window.ED && ED.refresh && ED.refresh();
   paintTap();
 }
@@ -408,7 +443,6 @@ function tapMark() {
   if (!S.audio) return;
   if (!S.lines.length && !seedLinesFromPaste()) { $('#tapNow').textContent = 'Paste the lyrics first.'; return; }
   if (!S.tapBase) snapshotTap();
-  $('#step3').classList.remove('hidden');
   if (audio.paused) playClip(false);
   const t = Math.max(0, audio.currentTime - S.start);
   if (tap.marks.length && t < tap.marks[tap.marks.length - 1]) return;
@@ -420,7 +454,6 @@ $('#tapPlay').onclick = () => {
   if (!S.audio) return;
   if (!S.lines.length && !seedLinesFromPaste()) { $('#tapNow').textContent = 'Paste the lyrics first.'; return; }
   if (!S.tapBase) snapshotTap();
-  $('#step3').classList.remove('hidden');
   renderLines();
   playClip(false);
   paintTap();
@@ -436,11 +469,12 @@ $('#tapMode').querySelectorAll('button').forEach(b => b.onclick = () => {
 });
 document.addEventListener('keydown', e => {
   if (e.code !== 'Space' && e.key !== ' ') return;
-  const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
-  if (tag === 'input' || tag === 'textarea' || tag === 'select' || (document.activeElement && document.activeElement.isContentEditable)) return;
-  if ($('#tapBox').classList.contains('hidden')) return;
+  const el = document.activeElement;
+  const tag = (el && el.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable)) return;
+  if (e.repeat) return;
   e.preventDefault();
-  tapMark();
+  if (typeof playClip === 'function') playClip(true, $('#stagePlay'), window.ED ? ED.playFrom() : 0);
 });
 
 // ---------- editor ----------
@@ -457,8 +491,18 @@ function renderLines() {
         <div class="tt"><input type="number" step="0.01" value="${(+w.start).toFixed(2)}" title="start"><input type="number" step="0.01" value="${(+w.end).toFixed(2)}" title="end"></div>
         <div class="wa"><button title="Split line after this word">↵</button><button title="Insert word after">＋</button><button title="Delete word">✕</button></div>`;
       const [ti, si, ei] = wd.querySelectorAll('input');
-      ti.oninput = () => { w.text = ti.value; ti.size = Math.max(3, ti.value.length); };
-      si.onchange = () => w.start = +si.value; ei.onchange = () => w.end = +ei.value;
+      ti.oninput = () => {
+        const s = w.start, en = w.end;
+        w.text = ti.value; w.start = s; w.end = en;
+        ti.size = Math.max(3, ti.value.length);
+        window.ED && ED.paintWords && ED.paintWords();
+        window.LCHist && LCHist.touch();
+      };
+      si.disabled = !!S.timingLock; ei.disabled = !!S.timingLock;
+      si.title = S.timingLock ? 'Unlock to type a time. Or drag the waveform, nudge, or tap.' : 'Start time';
+      ei.title = S.timingLock ? 'Unlock to type a time. Or drag the waveform, nudge, or tap.' : 'End time';
+      si.onchange = () => { if (!S.timingLock) { w.start = +si.value; window.LCHist && LCHist.capture(); } };
+      ei.onchange = () => { if (!S.timingLock) { w.end = +ei.value; window.LCHist && LCHist.capture(); } };
       const [bs, ba, bd] = wd.querySelectorAll('.wa button');
       bs.onclick = () => { if (wi < ln.words.length - 1) { S.lines.splice(li + 1, 0, {words: ln.words.splice(wi + 1)}); renderLines(); } };
       ba.onclick = () => { ln.words.splice(wi + 1, 0, {text: '…', start: w.end, end: w.end + 0.3}); renderLines(); };
@@ -467,8 +511,10 @@ function renderLines() {
     });
     box.appendChild(d);
   });
+  window.ED && ED.paintWords && ED.paintWords();
+  window.LCFlow && LCFlow.hints && LCFlow.hints();
 }
-function shiftAll(dt) { S.lines.forEach(l => l.words.forEach(w => { w.start = Math.max(0, +w.start + dt); w.end = Math.max(0, +w.end + dt); })); renderLines(); }
+function shiftAll(dt) { S.lines.forEach(l => l.words.forEach(w => { w.start = Math.max(0, +(w.start) + dt); w.end = Math.max(0, +(w.end) + dt); })); renderLines(); window.LCHist && LCHist.capture(); window.ED && ED.syncRegions && ED.syncRegions(); }
 $('#shiftMinus').onclick = () => shiftAll(-0.1); $('#shiftPlus').onclick = () => shiftAll(0.1);
 $('#addLine').onclick = () => { const last = S.lines.at(-1)?.words.at(-1); const t = last ? +last.end + 0.3 : 0; S.lines.push({words: [{text: 'new', start: t, end: t + 0.5}]}); renderLines(); };
 
@@ -530,7 +576,7 @@ function setBgMode(m) {
 }
 function validateRender() {
   const clips = window.ED && ED.clipCount ? ED.clipCount() : (S.bgVideo ? 1 : 0);
-  const need = S.bgMode === 'video' && clips < 1 ? 'Add a video clip on the Timeline tab' : S.bgMode === 'image' && !S.bgId ? 'Upload a background image first' : '';
+  const need = S.bgMode === 'video' && clips < 1 ? 'Add a video on the Video step' : S.bgMode === 'image' && !S.bgId ? 'Upload a background image first' : '';
   $('#renderBtn').disabled = !!need; $('#renderBtn').title = need;
 }
 $('#bgMode').onchange = e => setBgMode(e.target.value);
@@ -551,7 +597,7 @@ $('#bgVideoFile').onchange = async e => {
     S.bgVideo = m; emit('bgvideo', m);
     $('#bgVideoName').textContent = `🎞 ${m.name} · ${m.duration.toFixed(1)}s · ${m.width}×${m.height}${m.has_audio ? '' : ' · no audio'}`;
     $('#vMixIn').disabled = !m.has_audio;
-    $('#vLoopNote').innerHTML = (m.duration < S.len ? `Clip is ${m.duration.toFixed(1)}s, shorter than the ${S.len}s lyric clip. Duplicate it on the Timeline to fill the gap. ` : '') + 'Cut, reorder and zoom it on the <b>Timeline</b> tab.';
+    $('#vLoopNote').innerHTML = (m.duration < S.len ? `Clip is ${m.duration.toFixed(1)}s, shorter than the ${S.len}s lyric section. Duplicate it on the Video step to fill the gap. ` : '') + 'Trim, split, and resize it on the Video step. Lyrics stay read-only.';
     const v = $('#stageVideo'); v.src = m.preview_url; v.load();
     window.ED && ED.onVideo(m);
     validateRender(); updateStage();
@@ -567,3 +613,4 @@ function updateStage() {
 }
 window.addEventListener('resize', updateStage);
 setBgMode('gradient');
+paintLock();

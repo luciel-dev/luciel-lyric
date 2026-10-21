@@ -39,20 +39,24 @@
   function prepare(lines, style, anim, clipLen) {
     const clean = [];
     for (const ln of lines || []) {
+      const extra = ln && ln.style && typeof ln.style === 'object' ? ln.style : null;
+      const st = extra ? Object.assign({}, style, extra) : style;
       const ws = [];
       for (const w of ln.words || []) {
         const tx = String(w.text ?? '').trim(); if (!tx) continue;
         const s = +w.start, e = Math.max(+w.end, s + 0.05);
-        ws.push({text: style.upper ? tx.toUpperCase() : tx, s, e});
+        ws.push({text: st.upper ? tx.toUpperCase() : tx, s, e});
       }
-      if (ws.length) clean.push(ws);
+      if (ws.length) clean.push({words: ws, style: extra});
     }
-    clean.sort((a, b) => a[0].s - b[0].s);
+    clean.sort((a, b) => a.words[0].s - b.words[0].s);
     const groups = [];
-    clean.forEach((ws, li) => {
-      if (anim.layout === 'line') { groups.push({words: ws, line: li}); return; }
+    clean.forEach((item, li) => {
+      const ws = item.words;
+      const push = words => groups.push({words, line: li, style: item.style});
+      if (anim.layout === 'line') { push(ws); return; }
       const n = anim.layout === 'word' ? 1 : Math.max(1, Math.round(anim.chunk || 3));
-      for (let i = 0; i < ws.length; i += n) groups.push({words: ws.slice(i, i + n), line: li});
+      for (let i = 0; i < ws.length; i += n) push(ws.slice(i, i + n));
     });
     const lead = anim.layout === 'line' ? 0.25 : 0.12, hold = anim.layout === 'line' ? 0.8 : 0.35;
     groups.forEach((g, gi) => {
@@ -105,7 +109,7 @@
 
   // returns items for time t (seconds from clip start)
   function buildItems(t, sc) {
-    const {W, H, style, anim, measure} = sc;
+    let {W, H, style, anim, measure} = sc;
     const items = [];
     const amp = anim.intensity ?? 1, spd = Math.max(0.05, anim.speed ?? 1);
     const frameNo = Math.floor(t * 30);
@@ -138,7 +142,9 @@
     for (let i = 0; i < groups.length; i++) if (groups[i].gs <= t && t < groups[i].ge) { gi = i; break; }
     if (gi < 0) return {items};
     const g = groups[gi];
-    if (!g._lay || g._layKey !== sc.layKey) { g._lay = layoutGroup(g, style, W, H, measure); g._layKey = sc.layKey; }
+    if (g.style) style = Object.assign({}, sc.style, g.style);
+    const layKey = sc.layKey + (g.style ? JSON.stringify(g.style) : '');
+    if (!g._lay || g._layKey !== layKey) { g._lay = layoutGroup(g, style, W, H, measure); g._layKey = layKey; }
     const lay = g._lay, fs = lay.fs;
     const enterD = (anim.dur ?? 0.22) / spd, exitD = (anim.exitDur ?? 0.18) / spd;
     const exitX = anim.exit !== 'none' && exitD > 0 ? clamp((t - (g.ge - exitD)) / exitD) : 0;

@@ -13,12 +13,12 @@ from PIL import Image
 
 from . import fx as FX
 from .raster import Fonts, Raster, rgb
-from .runtime import FFMPEG
+from .runtime import FFMPEG, FFPROBE
 from .textanim import PRESETS, build_items, prepare, resolve, zoom_at
 from .timeline import clip_at
 
 FPS = 30
-SIZES = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080)}
+SIZES = {"9:16": (1080, 1920), "4:5": (1080, 1350), "1:1": (1080, 1080), "16:9": (1920, 1080)}
 BG_MODES = ("gradient", "image", "video", "black", "green", "transparent")
 OVERLAY_MODES = ("black", "green", "transparent")
 # Output quality. scale is applied to SIZES; text animation still clocks at 30 fps internally.
@@ -96,6 +96,71 @@ def zoom_img(im, z, cx, cy, W, H, src_box=None):
     return im.resize((W, H), Image.Resampling.BICUBIC, box=(x0, y0, x0 + vw, y0 + vh))
 
 
+def _even(n):
+    n = int(round(n))
+    if n % 2:
+        n -= 1
+    return max(2, n)
+
+
+def normalize_place(place):
+    """Video box inside the output frame. Absent values mean fill, scale 1, centered."""
+    p = place if isinstance(place, dict) else {}
+    fit = p.get("fit") if p.get("fit") in ("fill", "fit", "crop") else "fill"
+    try:
+        scale = float(p.get("scale", 1) if p.get("scale") is not None else 1)
+    except (TypeError, ValueError):
+        scale = 1.0
+    scale = min(4.0, max(0.2, scale))
+    try:
+        x = 0.5 if p.get("x") is None else float(p.get("x"))
+        y = 0.5 if p.get("y") is None else float(p.get("y"))
+    except (TypeError, ValueError):
+        x, y = 0.5, 0.5
+    return {"fit": fit, "scale": scale, "x": x, "y": y}
+
+
+def place_is_cover(place):
+    p = normalize_place(place)
+    return p["fit"] == "fill" and abs(p["scale"] - 1) < 1e-3 and abs(p["x"] - 0.5) < 1e-3 and abs(p["y"] - 0.5) < 1e-3
+
+
+def place_box(sw, sh, W, H, place):
+    """Destination rectangle. Mirrors static/engine/layers.js placeBox."""
+    p = normalize_place(place)
+    sw, sh, W, H = float(max(1, sw)), float(max(1, sh)), float(max(1, W)), float(max(1, H))
+    cover = p["fit"] != "fit"
+    sar, ar = sw / sh, W / H
+    if cover:
+        dw, dh = (H * sar, H) if sar > ar else (W, W / sar)
+    elif sar > ar:
+        dw, dh = W, W / sar
+    else:
+        dh, dw = H, H * sar
+    dw *= p["scale"]
+    dh *= p["scale"]
+    return p["x"] * W - dw / 2, p["y"] * H - dh / 2, dw, dh
+
+
+def place_video(im, W, H, place):
+    x, y, dw, dh = place_box(im.width, im.height, W, H, place)
+    canvas = Image.new("RGB", (int(W), int(H)), (0, 0, 0))
+    resized = im.resize((max(1, int(round(dw))), max(1, int(round(dh)))), Image.Resampling.BICUBIC)
+    canvas.paste(resized, (int(round(x)), int(round(y))))
+    return canvas
+
+
+def probe_video_wh(path):
+    r = subprocess.run([FFPROBE, "-v", "error", "-select_streams", "v:0",
+                        "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path)],
+                       capture_output=True, text=True)
+    parts = (r.stdout or "").strip().split("x")
+    try:
+        return max(2, int(float(parts[0]))), max(2, int(float(parts[1])))
+    except (IndexError, ValueError):
+        return 1280, 720
+
+
 def cover_box(sw, sh, W, H):
     """Centred crop of a sw x sh source that has the W:H aspect."""
     ar, sar = W / H, sw / sh
@@ -107,12 +172,20 @@ def cover_box(sw, sh, W, H):
 class VideoSource:
     """Decodes the trimmed segment [vin, vout) of a background video at WxH rgb24, looping it."""
 
-    def __init__(self, path, vin, vout, W, H, blur=0.0, darken=0.0, oversample=1.0, fps=None):
+    def __init__(self, path, vin, vout, W, H, blur=0.0, darken=0.0, oversample=1.0, fps=None, raw=False):
         self.path, self.vin, self.vout = str(path), vin, vout
         self.fps = int(fps or FPS)
-        self.W, self.H = int(round(W * oversample / 2) * 2), int(round(H * oversample / 2) * 2)
-        chain = [f"fps={self.fps}", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase:flags=bicubic",
-                 f"crop={self.W}:{self.H}", "setsar=1"]
+        self.raw = raw
+        if raw:
+            sw, sh = probe_video_wh(path)
+            cap = max(W, H)
+            scale = min(1.0, cap / max(sw, sh))
+            self.W, self.H = _even(sw * scale), _even(sh * scale)
+            chain = [f"fps={self.fps}", f"scale={self.W}:{self.H}:flags=bicubic", "setsar=1"]
+        else:
+            self.W, self.H = int(round(W * oversample / 2) * 2), int(round(H * oversample / 2) * 2)
+            chain = [f"fps={self.fps}", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase:flags=bicubic",
+                     f"crop={self.W}:{self.H}", "setsar=1"]
         if blur > 0.05:
             chain.append(f"gblur=sigma={blur * oversample:.2f}")
         k = 1.0 - max(0.0, min(0.9, darken))
@@ -160,6 +233,7 @@ class ClipDeck:
         self.blur, self.darken, self.oversample = blur, darken, oversample
         self.src = None
         self.key = None
+        self.raw = None
         self.next_local = None
 
     def close(self):
@@ -167,6 +241,7 @@ class ClipDeck:
             self.src.close()
             self.src = None
         self.key = None
+        self.raw = None
         self.next_local = None
 
     def _blank(self):
@@ -179,15 +254,20 @@ class ClipDeck:
             return self._blank()
         i, clip, local = hit
         local_fi = int(math.floor(local * self.fps + 1e-6))
-        if self.src is None or self.key != i or self.next_local != local_fi:
+        place = clip.get("place")
+        raw = not place_is_cover(place)
+        if self.src is None or self.key != i or self.raw != raw or self.next_local != local_fi:
             self.close()
             vin = float(clip.get("in") or 0) + local_fi / self.fps
             self.src = VideoSource(clip["path"], vin, clip.get("out"), self.W, self.H,
-                                   self.blur, self.darken, self.oversample, fps=self.fps)
+                                   self.blur, self.darken, self.oversample, fps=self.fps, raw=raw)
             self.key = i
+            self.raw = raw
             self.next_local = local_fi
         frame = self.src.read()
         self.next_local = local_fi + 1
+        if raw:
+            frame = place_video(frame, self.W, self.H, place)
         return frame
 
 
@@ -293,10 +373,40 @@ def draw_wave(frame, amp, color, H, alpha_mode=False, viz=None):
         _paint_line(frame, amp, col, y0 + int(wh * 0.85), max(1, int(wh * 0.45)), alpha * 0.4, alpha_mode)
 
 
+def _paint_overlays(base, overlays, t, W, H):
+    """Extra titles and credits. They are not lyric lines."""
+    if not overlays:
+        return base
+    from PIL import ImageDraw, ImageFont
+    im = base.convert("RGBA")
+    dr = ImageDraw.Draw(im)
+    font_path = next((p for p in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ) if Path(p).exists()), None)
+    for ov in overlays:
+        if not isinstance(ov, dict):
+            continue
+        try:
+            if t < float(ov.get("start") or 0) or t > float(ov.get("end") or 1e9):
+                continue
+            text = str(ov.get("text") or "")
+            if not text:
+                continue
+            px = max(10, int(float(ov.get("size") or 0.06) * min(W, H) * float(ov.get("scale") or 1)))
+            x = float(ov.get("x") if ov.get("x") is not None else 0.5) * W
+            y = float(ov.get("y") if ov.get("y") is not None else 0.12) * H
+        except (TypeError, ValueError):
+            continue
+        font = ImageFont.truetype(font_path, px) if font_path else ImageFont.load_default()
+        dr.text((x, y), text, fill=ov.get("color") or "#ffffff", font=font, anchor="mm")
+    return im.convert(base.mode)
+
+
 def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="karaoke",
           style=None, anim=None, lines=(), title="", artist="", visualizer=True, bg_mode="gradient", bg_image=None,
           bg_video=None, video_clips=None, zoom=None, fx_list=(), font_files=None, size=None, full_width=None,
-          quality="standard", fps=None):
+          quality="standard", fps=None, overlays=()):
     """Set up a scene. Returns (compose(frame_index, bg_frame) -> bytes, video_source_or_None, info)."""
     prof = quality_profile(quality)
     out_fps = int(fps or prof["fps"])
@@ -391,6 +501,9 @@ def build(audio_path, start, length, *, aspect="9:16", look="neon", anim_id="kar
         out = np.asarray(base)
         if fx_on and not alpha:
             out = FX.apply(out, np.asarray(layer), t, fx_on, line_starts, bg_mode)
+        base = Image.fromarray(out, "RGBA" if alpha else "RGB")
+        base = _paint_overlays(base, overlays, t, W, H)
+        out = np.asarray(base)
         return np.ascontiguousarray(out).tobytes()
 
     info = {"W": W, "H": H, "alpha": alpha, "skipped": skipped, "style": st, "fps": out_fps,

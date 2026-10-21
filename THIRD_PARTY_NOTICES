@@ -1,0 +1,52 @@
+Third-party notices
+====================
+
+Luciel Lyric vendors the libraries below so the desktop and web app stay offline.
+No code is loaded from a CDN at runtime. Each copy includes its LICENSE file.
+
+wavesurfer.js 7.9.5
+  License: BSD-3-Clause
+  Copyright (c) 2012-2023 katspaugh and contributors
+  https://github.com/katspaugh/wavesurfer.js
+  Files: static/vendor/wavesurfer/wavesurfer.min.js
+         static/vendor/wavesurfer/regions.min.js
+         static/vendor/wavesurfer/timeline.min.js
+         static/vendor/wavesurfer/LICENSE
+  Used on the Sync step only, for the waveform and draggable lyric regions.
+  Those regions are an explicit timing edit.
+
+moveable 0.53.0
+  License: MIT
+  Copyright (c) 2019 Daybrush
+  https://github.com/daybrush/moveable
+  Files: static/vendor/moveable/moveable.min.js
+         static/vendor/moveable/LICENSE
+  Used on the Video step for resize, scale, and drag handles on the video
+  layer and on extra text overlays. It does not write lyric words or timings.
+
+animation-timeline-js 2.3.5
+  License: MIT
+  Copyright (c) 2020-2023 Ievgen Naida
+  https://github.com/ievgennaida/animation-timeline-control
+  Files: static/vendor/animation-timeline/animation-timeline.min.js
+         static/vendor/animation-timeline/LICENSE
+  Vendored for the video multitrack model (groups, snapping, a read-only lyric row).
+  The page shows one DOM timeline — video, extra text, read-only lyrics, and audio —
+  so this canvas widget is not mounted on top of a second clip strip.
+
+Not included
+------------
+
+@xzdarcy/react-timeline-editor is MIT but depends on React. This app is
+vanilla JavaScript, so the library was not added.
+
+@ffmpeg/ffmpeg is MIT. Desktop and web export already use the native ffmpeg
+binary, so the wasm build was not added.
+
+OpenCut (https://github.com/OpenCut-app/OpenCut) is MIT. It is a separate
+application and was not vendored. Its track, playhead, trim, and snap layout
+was used as a design reference only.
+
+Shotcut, Kdenlive, and Olive are GPL. No code was copied from them.
+CapCut and Vegas are proprietary. Their timeline layout (playhead, trim,
+ripple, snapping, J/K/L shuttle) was used as a design reference only.

@@ -478,24 +478,15 @@ def _sync_pasted(audio16, lyrics, model_name, language, length, sep_used):
             }
             return lines, result.get("words") or [], "forced_alignment", stats, ok, error, confidence, "en", download_s, align_s, 0.0
         aligner_err = aligner_err or (result or {}).get("error") or "alignment produced no words"
-    # Offline smoke test, or a download that didn't finish: transcribe, and say so.
-    t_asr = time.time()
-    try:
-        ensure_whisper(model_name)
-        words, info = _transcribe(audio16, model_name, _lyric_prompt(lyrics), language, length)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(503, f"Couldn't align the lyrics ({aligner_err}) and couldn't transcribe either: {e}")
-    if sep_used:
-        words = refine_with_energy(words, audio16)
-    asr_s = time.time() - t_asr
-    lines = finish_lines(group_into_lines(words))
-    real = timings_look_real(words, length)
-    error = f"Forced alignment isn't available ({aligner_err}). Showing a transcription instead — check the words, or tap them in."
-    if not real or len(words) < max(4, length * 0.35):
-        error = "Forced alignment isn't available, and the transcription timings don't look reliable. Tap the lines in."
-        _mark_all_low(lines)
-    stats = {"matched": 0, "ref_words": len(lyrics.split()), "ref_words_used": 0, "hyp_words": len(words), "confidence": 0}
-    return lines, words, "transcribed_fallback", stats, False, error, 0.0, getattr(info, "language", None), download_s, 0.0, asr_s
+    # The aligner could not run. Keep the typed words. Do not replace them with a transcription.
+    from .forced_align import parse_lyrics, _blank_word, _park_unmatched, _group_lines, _pack_lines
+    rows = parse_lyrics(lyrics)
+    parked = _park_unmatched([_blank_word(r) for r in rows], length)
+    lines = finish_lines(_pack_lines(_group_lines(parked), False))
+    words = [w for ln in lines for w in ln["words"]]
+    error = f"Forced alignment isn't available ({aligner_err}). The words you typed are unchanged. Tap them in to set the times."
+    stats = {"matched": 0, "ref_words": len(rows), "ref_words_used": 0, "hyp_words": 0, "confidence": 0}
+    return lines, words, "typed_unaligned", stats, False, error, 0.0, language, download_s, 0.0, 0.0
 
 
 def _sync_listen(audio16, model_name, language, length, sep_used):
@@ -582,7 +573,8 @@ class RenderReq(BaseModel):
     video_volume: float = 0.5
     quality: str = "standard"   # draft | standard | high | max
     artist: str = ""            # optional second text line (artist / subtitle)
-    video_clips: list | None = None  # [{video_id, in, out, start}] — one track, no overlap
+    video_clips: list | None = None  # [{video_id, in, out, start, place}] — one track, no overlap
+    overlays: list | None = None  # extra text, not lyrics: [{text, start, end, x, y, scale, size, color}]
 
 
 @app.get("/api/fonts")
@@ -666,8 +658,10 @@ def _clip_list(raw_list):
         outv = vm["duration"] if raw.get("out") is None else min(float(raw.get("out")), vm["duration"])
         if outv < inn + 0.05:
             continue
+        place = raw.get("place") if isinstance(raw.get("place"), dict) else None
         clips.append({"path": vm["path"], "in": inn, "out": outv, "start": max(0.0, float(raw.get("start") or 0)),
-                      "has_audio": vm["has_audio"], "duration": vm["duration"], "video_id": vm["bg_video_id"]})
+                      "has_audio": vm["has_audio"], "duration": vm["duration"], "video_id": vm["bg_video_id"],
+                      "place": place})
     return clips
 
 
@@ -717,7 +711,8 @@ def _scene(req: RenderReq):
               lines=req.lines, title=req.title, artist=req.artist or "", visualizer=req.visualizer,
               bg_mode=mode, bg_image=bg, bg_video=bgv, video_clips=clips, zoom=req.zoom, fx_list=req.fx or [],
               quality=req.quality or "standard",
-              font_files={req.font_id: font_path} if font_path else None)
+              font_files={req.font_id: font_path} if font_path else None,
+              overlays=list(req.overlays or []))
     return src, kw, font_meta
 
 

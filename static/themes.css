@@ -135,8 +135,9 @@
 [data-theme=y2k] .titlebar::after{font:11px "Share Tech Mono",monospace;letter-spacing:.1em;color:#8f9799;white-space:nowrap}
 [data-theme=y2k] #step1 .titlebar::after{content:"SEC.01 // AUDIO.IN ▸ RDY"}
 [data-theme=y2k] #step2 .titlebar::after{content:"SEC.02 // SYS.SYNC 0x3F"}
-[data-theme=y2k] #step3 .titlebar::after{content:"SEC.03 // TIMING.EDIT"}
-[data-theme=y2k] #step4 .titlebar::after{content:"SEC.04 // RENDER.PIPE"}
+[data-theme=y2k] #step3 .titlebar::after{content:"SEC.03 // VIDEO.EDIT"}
+[data-theme=y2k] #step4 .titlebar::after{content:"SEC.04 // TEXT.LOOK"}
+[data-theme=y2k] #step5 .titlebar::after{content:"SEC.05 // RENDER.OUT"}
 [data-theme=y2k] .n{display:inline-flex;white-space:nowrap;width:auto;height:auto;padding:0 5px;border-radius:0;background:none;border:1px solid var(--cp-amber);color:var(--cp-amber);font:15px "Share Tech Mono";letter-spacing:0}
 [data-theme=y2k] .n::before{content:"0"}
 
