@@ -14,7 +14,7 @@ import sys
 import zlib
 
 TAB = {"track": 0, "sync": 1, "video": 2, "look": 3, "time": 4, "render": 5}
-SOFT = {"home", "intro", "intro2", "intro3"}
+SOFT = {"home", "intro", "intro2", "intro3", "sheet"}
 
 
 def decode(path):

@@ -16,6 +16,7 @@ try {
   var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
   if (demo0 === "intro" || demo0 === "intro2" || demo0 === "intro3") screen0 = "intro";
   if (demo0 === "home") screen0 = "home";
+  if (demo0 === "sheet") screen0 = "sync";
   if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render" || screen0 === "home" || screen0 === "intro") {
     document.documentElement.dataset.screen = screen0;
   }
@@ -158,6 +159,7 @@ try {
       <div class="card">
         <h2 id="linesHead">Lines</h2>
         <ol id="lineList" class="lines"></ol>
+        <button class="pill" id="editText" type="button">Edit text</button>
       </div>
       <p class="hint stephint" id="hintSync">Line up the lyrics to continue.</p>
       <button class="pill big primary stepnext" id="nextSync" type="button" data-next="video">Next</button>
@@ -336,6 +338,52 @@ try {
     </section>
   </main>
 
+  <div class="sheet" id="textSheet" hidden>
+    <div class="sheethead">
+      <h2>Text</h2>
+      <button class="pill" id="sheetClose" type="button">Done</button>
+    </div>
+    <label class="sheetwords">Words
+      <input id="sheetWords" type="text" maxlength="80" aria-label="Line words" placeholder="Type the line">
+    </label>
+    <div class="sheetrow">
+      <button class="pill" id="undoText" type="button">Undo</button>
+      <button class="pill" id="redoText" type="button">Redo</button>
+    </div>
+    <div class="pills" id="fontPick">
+      <button type="button" data-font="Poppins">Plain</button>
+      <button type="button" data-font="Bebas Neue">Block</button>
+      <button type="button" data-font="Pacifico">Script</button>
+    </div>
+    <label class="slider">Size <b id="sizeVal">Medium</b>
+      <input id="textSize" type="range" min="0.05" max="0.14" step="0.005" value="0.085">
+    </label>
+    <div class="swatches" id="swatches"></div>
+    <label class="slider">Outline <b id="outlineVal">Off</b>
+      <input id="outlineAmt" type="range" min="0" max="0.08" step="0.005" value="0">
+    </label>
+    <label class="slider">Shadow <b id="shadowVal">Off</b>
+      <input id="shadowAmt" type="range" min="0" max="0.8" step="0.05" value="0">
+    </label>
+    <div class="pills" id="alignPick">
+      <button type="button" data-align="left">Left</button>
+      <button type="button" data-align="center">Center</button>
+      <button type="button" data-align="right">Right</button>
+    </div>
+    <div class="pills" id="scopePick">
+      <button type="button" data-scope="all">All lines</button>
+      <button type="button" data-scope="line">This line</button>
+    </div>
+    <div class="sheetrow">
+      <button class="pill" id="nudgeBack" type="button">-0.1s</button>
+      <button class="pill" id="nudgeFwd" type="button">+0.1s</button>
+    </div>
+    <button class="pill" id="splitLine" type="button">Split line</button>
+    <button class="pill" id="mergeLine" type="button">Merge lines</button>
+    <button class="pill" id="savePreset" type="button">Save look</button>
+    <div class="pills" id="presetRow"></div>
+    <p class="hint" id="sheetHint">Drag the words on the preview to move them.</p>
+  </div>
   <div class="dockplate" aria-hidden="true"></div>
   <nav class="dock" id="dock">
     <button type="button" data-screen="track"><span class="dockn">1</span><span class="docklabel">Audio</span></button>

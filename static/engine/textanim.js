@@ -100,6 +100,7 @@
     L.rows.forEach((r, ri) => {
       const by = top + ri * lh + lh * 0.5 + fs * 0.35;
       let x = style.align === 'left' ? (W - maxW) / 2 : style.align === 'right' ? (W + maxW) / 2 - r.w : (W - r.w) / 2;
+      if (style.posX != null) x += (style.posX - 0.5) * W;
       r.idx.forEach(i => { pos[i] = {x, y: by, w: L.widths[i]}; x += L.widths[i] + L.sp; });
     });
     return {fs, font: L.font, tr: L.tr, pos, top, bottom: top + blockH};

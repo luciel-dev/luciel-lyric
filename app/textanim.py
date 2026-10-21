@@ -160,6 +160,9 @@ def layout_group(g, style, W, H, measure):
         by = top + ri * lh + lh * 0.5 + fs * 0.35
         a = style.get("align", "center")
         x = (W - maxW) / 2 if a == "left" else (W + maxW) / 2 - r["w"] if a == "right" else (W - r["w"]) / 2
+        pos_x = style.get("posX", None)
+        if pos_x is not None:
+            x += (float(pos_x) - 0.5) * W
         for i in r["idx"]:
             pos[i] = {"x": x, "y": by, "w": widths[i]}; x += widths[i] + sp
     return {"fs": fs, "font": font, "tr": tr, "pos": pos, "top": top, "bottom": top + blockH}
