@@ -1,0 +1,221 @@
+"""Browser checks for the five-step editor: lock, pointer trim/resize, and lyric isolation."""
+import json
+import subprocess
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+ROOT = Path("/workspace")
+SHOTS = Path("/opt/cursor/artifacts/screenshots")
+SHOTS.mkdir(parents=True, exist_ok=True)
+WAV = ROOT / "docs/fixtures/sung_clip.wav"
+MP4 = Path("/tmp/luciel-clip-916.mp4")
+LYRICS = "\n".join([
+    "PLEASE SEND ME BACK TO HEAVEN",
+    "I DONT WANNA LIVE LIKE THIS",
+    "PLEASE SEND ME BACK TO HEAVEN",
+    "I DON'T WANNA FEEL LIKE THIS",
+])
+THEMES = ("aero", "y2k", "winamp")
+
+
+def shot(page, name):
+    path = SHOTS / f"{name}.png"
+    page.screenshot(path=str(path), full_page=True)
+    print("shot", path)
+
+
+def times(page):
+    return page.evaluate("() => S.lines.map(ln => ln.words.map(w => [w.start, w.end, w.text]))")
+
+
+def fingerprint(page):
+    return page.evaluate("""() => {
+      const st = ED.state();
+      return LLLayers.textFingerprint(S.lines, st.styleOv);
+    }""")
+
+
+def lines_json(page):
+    return page.evaluate("() => JSON.stringify(S.lines)")
+
+
+def style_json(page):
+    return page.evaluate("() => JSON.stringify(ED.state().styleOv)")
+
+
+def overflow(page):
+    return page.evaluate("""() => {
+      const bad = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (el.closest('.step-off, .hidden, #mascot, .bgfx, #helpOverlay, #tour, .tlscroll, #lines, .rotimes, .presets, .lcd-marquee')) continue;
+        const s = getComputedStyle(el);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.position === 'fixed') continue;
+        if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') continue;
+        if (['CANVAS','VIDEO','INPUT','TEXTAREA','SELECT','IMG'].includes(el.tagName)) continue;
+        if (el.clientWidth < 8 || el.clientHeight < 8) continue;
+        const clipped = (s.overflowX === 'hidden' || s.overflow === 'hidden' || s.textOverflow === 'ellipsis')
+          && el.scrollWidth > el.clientWidth + 6;
+        if (!clipped) continue;
+        const text = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+        if (!text) continue;
+        bad.push((el.id || el.className || el.tagName) + ' ' + text.slice(0, 48));
+      }
+      return bad.slice(0, 8);
+    }""")
+
+
+def main():
+    subprocess.check_call([
+        "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x2244aa:s=1080x1920:d=6",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+        "-shortest", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-c:a", "aac", str(MP4),
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    errors = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="chrome", headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.add_init_script("localStorage.setItem('lc-tour-skip','1'); localStorage.removeItem('lc-draft');")
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.on("dialog", lambda d: d.accept())
+        page.goto("http://127.0.0.1:8765/", wait_until="networkidle")
+        page.wait_for_function("() => window.LCFlow && window.ED && window.LLLayers && S && S.cfg", timeout=60000)
+        if not page.evaluate("() => !!S.cfg.demucs"):
+            page.wait_for_function("() => document.querySelector('#sepNote') && document.querySelector('#sepNote').hidden === false")
+        assert page.locator("#step3 #syncBtn, #step3 #lockToggle, #step3 #tapHit, #step3 #lyricsIn, #step3 #shiftMinus").count() == 0
+        assert page.locator("#videoTl #tapHit, #videoTl #syncBtn").count() == 0
+
+        page.set_input_files("#audioFile", str(WAV))
+        page.wait_for_function("() => !!S.audio", timeout=60000)
+        page.click("#next1")
+        page.wait_for_selector("#step2:not(.step-off)")
+        if not page.evaluate("() => !!S.cfg.demucs"):
+            assert page.locator("#sepNote").is_visible()
+        page.fill("#lyricsIn", LYRICS)
+        page.click("#syncBtn")
+        page.wait_for_function("() => S.timingLock === true && S.lines.length >= 1", timeout=180000)
+        before = times(page)
+        assert before and before[0], before
+        words = page.locator("#lines input.wt")
+        n = words.count()
+        assert n >= 3, n
+        for i, text in enumerate(("HEAVENLY", "LIVING", "FEELING")):
+            words.nth(i).fill(text)
+        edited = times(page)
+        flat_before = [(a, b) for row in before for a, b, _t in row]
+        flat_edited = [(a, b) for row in edited for a, b, _t in row]
+        assert flat_before == flat_edited, (flat_before, flat_edited)
+        words.nth(0).click()
+        for _ in range(5):
+            page.keyboard.press("Space")
+        page.locator("#step2 h2").click()
+        for _ in range(5):
+            page.keyboard.press("Space")
+        page.wait_for_timeout(200)
+        after_space = [(a, b) for row in times(page) for a, b, _t in row]
+        assert after_space == flat_before, (after_space, flat_before)
+        assert page.evaluate("() => S.timingLock === true")
+        locked_text = page.locator("#lockToggle").inner_text()
+        assert "locked" in locked_text.lower(), locked_text
+
+        page.click("#next2")
+        page.wait_for_selector("#step3:not(.step-off)")
+        page.set_input_files("#bgVideoFile", str(MP4))
+        page.wait_for_function("() => ED.clipCount() > 0 && S.bgMode === 'video'", timeout=60000)
+        page.wait_for_function("() => document.querySelector('#vidHandle').classList.contains('on')", timeout=20000)
+        page.locator("#handleSE").scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
+        fp_video = fingerprint(page)
+        lines_video = lines_json(page)
+        style_video = style_json(page)
+        scale0 = page.evaluate("() => ED.state().place.scale")
+        out0 = page.evaluate("() => ED.state().clips[0].out")
+        box = page.locator("#handleSE").bounding_box()
+        assert box and box["width"] > 8, box
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(box["x"] - 36, box["y"] - 48, steps=10)
+        page.mouse.up()
+        page.wait_for_timeout(200)
+        scale1 = page.evaluate("() => ED.state().place.scale")
+        assert scale1 < scale0 - 0.02, (scale0, scale1)
+        edge = page.locator("#tlTrack .tlclip .edge.out").first
+        edge.scroll_into_view_if_needed()
+        eb = edge.bounding_box()
+        assert eb, "missing trim edge"
+        page.mouse.move(eb["x"] + eb["width"] / 2, eb["y"] + eb["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(eb["x"] - 60, eb["y"] + eb["height"] / 2, steps=10)
+        page.mouse.up()
+        page.wait_for_timeout(200)
+        out1 = page.evaluate("() => ED.state().clips[0].out")
+        assert out1 < out0 - 0.2, (out0, out1)
+        assert fingerprint(page) == fp_video
+        assert lines_json(page) == lines_video
+        assert style_json(page) == style_video
+
+        page.click("#next3")
+        page.wait_for_selector("#step4:not(.step-off)")
+        page.locator("#ctlText .ctl[data-k=posY] input").fill("0.41")
+        page.locator("#ctlText .ctl[data-k=size] input").fill("0.09")
+        page.locator("#ctlColor .ctl[data-k=color] input").fill("#ff22aa")
+        page.wait_for_timeout(200)
+        fp = fingerprint(page)
+        lj = lines_json(page)
+        sj = style_json(page)
+        assert "0.41" in sj or "0.410" in sj, sj
+        page.evaluate("() => LCFlow.show(3)")
+        page.wait_for_selector("#step3:not(.step-off)")
+        page.fill("#scaleIn", "1.35")
+        page.dispatch_event("#scaleIn", "change")
+        page.fill("#posX", "0.42")
+        page.dispatch_event("#posX", "change")
+        page.fill("#posY", "0.58")
+        page.dispatch_event("#posY", "change")
+        page.select_option("#fitSel", "fit")
+        page.select_option("#aspectIn", "1:1")
+        page.select_option("#aspectIn", "16:9")
+        page.select_option("#aspectIn", "4:5")
+        page.select_option("#aspectIn", "9:16")
+        page.select_option("#fitSel", "crop")
+        page.fill("#overlayText", "END CREDITS")
+        page.click("#overlayAdd")
+        page.evaluate("() => ED.seek(1.2)")
+        page.click("#tlSplit")
+        page.wait_for_timeout(250)
+        assert page.evaluate("() => ED.state().overlays.some(o => o.text === 'END CREDITS')")
+        assert page.evaluate("() => ED.state().clips.length >= 2")
+        assert fingerprint(page) == fp, (fingerprint(page), fp)
+        assert lines_json(page) == lj
+        assert style_json(page) == sj
+        assert page.evaluate("() => ED.state().place.fit === 'crop'")
+        lyric = page.locator("#tlLyrics .tllyric").first
+        if lyric.count():
+            lyric.click()
+            assert lines_json(page) == lj
+
+        leaks = []
+        for step, label in ((1, "step1"), (2, "step2_lock"), (3, "step3_handles"), (4, "step4"), (5, "step5")):
+            page.evaluate(f"() => LCFlow.show({step})")
+            page.wait_for_timeout(250)
+            for theme in THEMES:
+                page.click(f"#themePick button[data-theme='{theme}']")
+                page.wait_for_timeout(200)
+                bad = overflow(page)
+                if bad:
+                    leaks.append(f"{label} {theme}: {bad}")
+                shot(page, f"{label}_{theme}")
+                if step == 3:
+                    page.locator("#dock").screenshot(path=str(SHOTS / f"resize_handles_{theme}.png"))
+        if leaks:
+            print("OVERFLOW", json.dumps(leaks, indent=2))
+            raise SystemExit("text overflow: " + json.dumps(leaks))
+        if errors:
+            print("PAGEERRORS", errors)
+            raise SystemExit("page errors: " + " | ".join(errors[:6]))
+        print("editor ui ok", "words", n, "scale", scale0, "->", scale1, "out", out0, "->", out1)
+        browser.close()
+
+
+if __name__ == "__main__":
+    main()

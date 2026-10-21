@@ -582,7 +582,8 @@ class RenderReq(BaseModel):
     video_volume: float = 0.5
     quality: str = "standard"   # draft | standard | high | max
     artist: str = ""            # optional second text line (artist / subtitle)
-    video_clips: list | None = None  # [{video_id, in, out, start}] — one track, no overlap
+    video_clips: list | None = None  # [{video_id, in, out, start, place}] — one track, no overlap
+    overlays: list | None = None  # extra text, not lyrics: [{text, start, end, x, y, scale, size, color}]
 
 
 @app.get("/api/fonts")
@@ -666,8 +667,10 @@ def _clip_list(raw_list):
         outv = vm["duration"] if raw.get("out") is None else min(float(raw.get("out")), vm["duration"])
         if outv < inn + 0.05:
             continue
+        place = raw.get("place") if isinstance(raw.get("place"), dict) else None
         clips.append({"path": vm["path"], "in": inn, "out": outv, "start": max(0.0, float(raw.get("start") or 0)),
-                      "has_audio": vm["has_audio"], "duration": vm["duration"], "video_id": vm["bg_video_id"]})
+                      "has_audio": vm["has_audio"], "duration": vm["duration"], "video_id": vm["bg_video_id"],
+                      "place": place})
     return clips
 
 
@@ -717,7 +720,8 @@ def _scene(req: RenderReq):
               lines=req.lines, title=req.title, artist=req.artist or "", visualizer=req.visualizer,
               bg_mode=mode, bg_image=bg, bg_video=bgv, video_clips=clips, zoom=req.zoom, fx_list=req.fx or [],
               quality=req.quality or "standard",
-              font_files={req.font_id: font_path} if font_path else None)
+              font_files={req.font_id: font_path} if font_path else None,
+              overlays=list(req.overlays or []))
     return src, kw, font_meta
 
 

@@ -1020,7 +1020,8 @@
       "split=" + (checks.split || 0),
       "trim=" + (checks.trim || 0),
       "lyricdrag=" + (checks.lyricdrag || 0),
-      "renderframes=" + (checks.renderframes || 0)
+      "renderframes=" + (checks.renderframes || 0),
+      "layers=" + (checks.layers || 0)
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
     return parts.join(" ");
@@ -2084,6 +2085,9 @@
       watchDrag(el, (e) => {
         state.selectedClip = i;
         const handle = e.target.closest && e.target.closest(".trim");
+        const guard = window.LLLayers
+          ? LLLayers.textFingerprint(state.lines, state.colorOv || {})
+          : JSON.stringify(state.lines);
         return {
           x0: e.clientX,
           mode: handle ? (handle.classList.contains("left") ? "left" : "right") : "slip",
@@ -2091,6 +2095,9 @@
           t1: clip.t1,
           src0: clip.srcIn || 0,
           speed: clip.speed > 0 ? clip.speed : 1,
+          guard: guard,
+          lines: JSON.stringify(state.lines),
+          style: JSON.stringify(state.colorOv || {}),
         };
       }, (drag, dt) => {
         if (drag.mode === "slip") clip.srcIn = Math.max(0, drag.src0 - dt * drag.speed);
@@ -2106,6 +2113,8 @@
         el.style.left = (origin + clip.t0 * pps) + "px";
         el.style.width = Math.max(44, (clip.t1 - clip.t0) * pps) + "px";
         name.textContent = (state.videoName || "Clip") + " · " + (clip.srcIn || 0).toFixed(1) + "s";
+        if (JSON.stringify(state.lines) !== drag.lines) state.lines = JSON.parse(drag.lines);
+        if (JSON.stringify(state.colorOv || {}) !== drag.style) state.colorOv = JSON.parse(drag.style || "{}");
         updatePreviewChrome();
       });
       el.addEventListener("click", () => { state.selectedClip = i; });
@@ -2273,7 +2282,7 @@
     return colored >= 1 && bytes > 1000 ? 1 : 0;
   }
   async function runVideoChecks() {
-    const checks = { bgvideo: 0, split: 0, trim: 0, lyricdrag: 0, renderframes: 0 };
+    const checks = { bgvideo: 0, split: 0, trim: 0, lyricdrag: 0, renderframes: 0, layers: 0 };
     const v = state.videoEl;
     try {
       if (!v || !v.videoWidth) return checks;
@@ -2300,6 +2309,26 @@
         draw(0.05);
       }
       if (sampleEdge(isBluePx)) checks.trim = 1;
+      const styleSnap = { posY: 0.62, size: 0.08, color: "#ffffff" };
+      const linesSnap = JSON.stringify(state.lines);
+      const fp = window.LLLayers ? LLLayers.textFingerprint(state.lines, styleSnap) : linesSnap;
+      let video = { clips: state.clips.map((c) => Object.assign({}, c)), place: window.LLLayers ? LLLayers.defaultPlace() : null, aspect: "9:16", overlays: [] };
+      const edits = [
+        { op: "trim", index: 0, edge: "out", delta: -0.4 },
+        { op: "move", index: 0, start: 0.2 },
+        { op: "scale", scale: 1.2 },
+        { op: "position", x: 0.4, y: 0.6 },
+        { op: "fit", fit: "fit" },
+        { op: "fit", fit: "crop" },
+        { op: "aspect", aspect: "1:1" },
+        { op: "aspect", aspect: "16:9" },
+        { op: "aspect", aspect: "4:5" },
+        { op: "scale", scale: 0.8 },
+      ];
+      if (window.LLLayers) {
+        edits.forEach((edit) => { video = LLLayers.applyVideoEdit(video, edit); });
+        checks.layers = LLLayers.textFingerprint(state.lines, styleSnap) === fp && JSON.stringify(state.lines) === linesSnap ? 1 : 0;
+      }
       const ln = state.lines[0];
       const end0 = ln && ln.words.length ? ln.words[ln.words.length - 1].end : 0;
       if (nudgeLine(0, 0.5)) {
