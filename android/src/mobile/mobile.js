@@ -1164,13 +1164,30 @@
   function sizePreview() {
     const pin = $("#previewPin");
     const canvas = $("#stage");
-    if (!pin || !canvas || pin.clientHeight < 48 || pin.clientWidth < 48) return;
+    if (!pin || !canvas) return;
+    const host = pin.parentElement && pin.parentElement.classList.contains("pinhost") ? pin.parentElement : null;
+    const stuck = pin.classList.contains("stuck");
+    // API 30 WebView ignores `inset`, so an absolute pin otherwise shrinks to a
+    // zero-height canvas. Stretch it to the host with the longhand edges.
+    if (!stuck) {
+      pin.style.top = "0";
+      pin.style.right = "0";
+      pin.style.bottom = "0";
+      pin.style.left = "0";
+    } else {
+      pin.style.top = "";
+      pin.style.right = "";
+      pin.style.bottom = "";
+      pin.style.left = "";
+    }
+    const box = stuck ? pin : (host || pin);
+    if (box.clientHeight < 48 || box.clientWidth < 48) return;
     const bar = pin.querySelector(".previewbar");
     const cs = getComputedStyle(pin);
     const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    const availH = Math.max(48, pin.clientHeight - padY - (bar ? bar.offsetHeight : 0));
-    const availW = Math.max(48, pin.clientWidth - padX);
+    const availH = Math.max(48, box.clientHeight - padY - (bar ? bar.offsetHeight : 0));
+    const availW = Math.max(48, box.clientWidth - padX);
     let h = availH;
     let w = Math.round(h * 9 / 16);
     if (w > availW) {
