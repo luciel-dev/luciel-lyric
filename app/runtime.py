@@ -111,7 +111,11 @@ _setup_env()
 
 # ---------------------------------------------------------------- whisper models
 def whisper_model_path(name: str):
-    """Local folder for a bundled faster-whisper model, or None."""
+    """Local folder for a faster-whisper checkpoint (installer bundle or the user cache)."""
+    from . import model_store
+    found = model_store.whisper_dir(name)
+    if found is not None:
+        return found
     p = MODELS_DIR / f"faster-whisper-{name}"
     return p if (p / "model.bin").exists() else None
 

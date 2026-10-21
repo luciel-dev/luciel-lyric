@@ -207,19 +207,45 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+  align:
+    name: alignment
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - name: System tools
+        run: sudo apt-get update && sudo apt-get install -y espeak-ng ffmpeg
+      - name: Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r scripts/requirements.txt
+      - name: Cache wav2vec2 aligner
+        uses: actions/cache@v4
+        with:
+          path: data/models/wav2vec2-base-960h
+          key: wav2vec2-base-960h-a19f851b3d42865797e410752b4c570c871e4825
+      - name: Sung lyric alignment
+        run: python scripts/test_sync_align.py
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, align]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
-      - run: ls -la out
+      - run: ls -la out docs/screenshots/sync_panel_*.png
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -227,10 +253,17 @@ jobs:
             out/*.zip
             out/*.dmg
             out/*.tar.gz
+            docs/screenshots/sync_panel_aero.png
+            docs/screenshots/sync_panel_y2k.png
+            docs/screenshots/sync_panel_winamp.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric  — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+            Luciel Lyric 1.4.0 (desktop) — pasted lyrics are force-aligned to the vocal stem. Pick Fast, Accurate, or Best (default). The model and the aligner download once, then sync stays offline. Low-confidence lines are highlighted. Tap to sync if a line still misses.
+
+            Screenshots of the Sync panel: sync_panel_aero.png, sync_panel_y2k.png, sync_panel_winamp.png.
+
+            Luciel Lyric — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time

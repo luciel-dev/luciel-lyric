@@ -327,5 +327,32 @@
 [data-theme=winamp] .mascot-body{width:132px;height:120px;background:#000;box-shadow:inset 1px 1px 0 #000,inset -1px -1px 0 #4a4e63}
 [data-theme=winamp] .mascot-bubble{border-radius:0;background:#000;color:#00e000;font:16px "VT323";border:1px solid #4a4e63;box-shadow:2px 2px 0 #0d0e13;bottom:120px}
 [data-theme=winamp] .mascot-bubble::after{display:none}
+[data-theme=aero] .syncgrid,[data-theme=aero] .tapbox{background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(206,230,240,.42));border:1px solid rgba(255,255,255,.75);box-shadow:inset 0 1px 0 #fff,0 10px 18px -12px rgba(40,80,110,.5);border-radius:16px}
+[data-theme=aero] .dltrack{background:rgba(255,255,255,.7);border-color:#9fb2be}
+[data-theme=aero] #dlFill{background:linear-gradient(#ffffff,#8adff4 42%,#1aa4d0)}
+[data-theme=aero] .tapcue{background:rgba(255,255,255,.62)}
+[data-theme=aero] .line.lowconf{background:linear-gradient(90deg,rgba(224,160,48,.28),rgba(255,255,255,.35) 18px)}
+[data-theme=y2k] .syncgrid,[data-theme=y2k] .tapbox{border-radius:0;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);background:#14171a;border:1px solid #4b545a;box-shadow:0 0 0 1px #2a3034}
+[data-theme=y2k] .syncfield,[data-theme=y2k] .sepcheck{font:600 14px "Rajdhani",sans-serif;letter-spacing:.06em;text-transform:uppercase}
+[data-theme=y2k] .syncfield small{font:11px "Share Tech Mono",monospace;letter-spacing:.04em;text-transform:none}
+[data-theme=y2k] #dlFill{background:linear-gradient(90deg,#d4a24a,#6fa9a2)}
+[data-theme=y2k] .dltrack{border-radius:0}
+[data-theme=y2k] .tapcue{border-radius:0;font:700 16px "Rajdhani",sans-serif;letter-spacing:.05em}
+[data-theme=y2k] .syncactions .btn{letter-spacing:.08em;padding:9px 14px}
+[data-theme=y2k] .line.lowconf{box-shadow:inset 3px 0 0 #d4a24a}
+[data-theme=winamp] .syncgrid,[data-theme=winamp] .tapbox{border-radius:0;background:#1c1e28;border:1px solid #000;box-shadow:inset 1px 1px 0 #6a6e86,inset -1px -1px 0 #0c0d12}
+[data-theme=winamp] .syncfield span,[data-theme=winamp] .sepcheck,[data-theme=winamp] .tapmodes{font:700 9px "Silkscreen",monospace;letter-spacing:.3px;text-transform:uppercase}
+[data-theme=winamp] .syncfield small{font:14px "VT323",monospace;letter-spacing:0;text-transform:none}
+[data-theme=winamp] .syncactions .btn{font-size:9px;padding:5px 8px;letter-spacing:0}
+[data-theme=winamp] .dltrack{border-radius:0;height:12px;background:#050605;border-color:#000}
+[data-theme=winamp] #dlFill{border-radius:0;background:linear-gradient(#7dff7d,#009000)}
+[data-theme=winamp] #dlLabel{font:15px "VT323",monospace;color:#00e000}
+[data-theme=winamp] .tapcue{border-radius:0;background:#000;color:#f7d000;font:16px "VT323",monospace;border-color:#3a3f2a}
+[data-theme=winamp] #syncStatus.syncstatus{font:18px "VT323",monospace}
+[data-theme=winamp] #syncStatus.syncstatus.ok{color:#00e000}
+[data-theme=winamp] #syncStatus.syncstatus.warn{color:#f7d000}
+[data-theme=winamp] #syncStatus.syncstatus.bad{color:#ff6060}
+[data-theme=winamp] .line.lowconf{border-color:#f7d000;box-shadow:inset 3px 0 0 #f7d000}
+[data-theme=winamp] .tllyric.low{border-color:#f7d000}
 [data-theme=y2k] .palcard{border-width:1px;font:600 13px "Rajdhani";letter-spacing:.04em}
 [data-theme=y2k] .palcard.sel{border-color:var(--cp-amber);box-shadow:inset 0 -2px 0 var(--cp-amber);color:var(--cp-amber)}

@@ -115,8 +115,8 @@ On the phone, whisper.cpp transcribes the section you picked and the page aligns
 ## Using it
 
 1. **Track**: drop an mp3/wav/m4a file. Click or drag on the waveform (or type a start time) to place the clip, and set its length with the slider (15–30 s, default 20 s). **Play clip** plays the selected range.
-2. **Lyrics sync**: you can paste lyrics; the whole song is fine because only the part sung in the clip is kept. Pick a model (`base.en` by default). **Isolate vocals** (Demucs) is on by default when it's installed. It adds about 6 s for a 20 s clip and makes the timing much tighter.
-3. **Edit & preview**: every word has editable text, start and end times (seconds from the clip start). You can split or merge lines, add or delete words, and shift everything by ±0.1 s. **Preview sync** plays the clip with a live karaoke preview. Words that were pasted but not heard in the audio get interpolated timings and an orange outline.
+2. **Lyrics sync**: paste the lyrics, one line per lyric line. The whole song is fine — forced alignment keeps the lines that are actually in the clip and drops the rest. **Sync model** is Fast (small), Accurate (medium), or Best (distil-large-v3, the default). Best and the wav2vec2 aligner download the first time you sync, with a progress bar, into the user data folder. They are not inside the installer. After that, sync is offline. **Isolate vocals** (Demucs) is on by default when it is installed and feeds the vocal stem to the aligner. If a line is unsure it is highlighted in amber on the timeline. **Tap to sync** plays the clip and stamps each line (or each word) with Space or the Tap button. Undo, Restart, and Done write those stamps into the timeline.
+3. **Edit & preview**: every word has editable text, start and end times (seconds from the clip start). You can split or merge lines, add or delete words, and shift everything by ±0.1 s. **Preview sync** plays the clip with a live karaoke preview. A line the aligner is unsure about stays highlighted so you can fix it or tap it.
 4. **Style, animate & render**: pick a **Look** (Neon Pop / Bold Poster / Dreamy Script: base colours, font, gradient), then use the four tabs. The canvas **stage** on the right shows the exact frame the renderer will produce; **▶ Preview** plays it with the song, and the scrubber (with keyframe diamonds) seeks.
    - **Text & animation**: animation library, font, full customisation, saved presets (below).
    - **Video · trim & zoom**: trim the background video and keyframe zoom/pan.
@@ -285,13 +285,16 @@ Screenshots: `samples/output/themes/` (`theme_{aero,y2k,winamp}_{start,full,view
 |---|---|
 | Upload | ffmpeg converts the file to 44.1 kHz WAV; numpy computes 1200 waveform peaks for the canvas |
 | Vocal isolation (optional) | `demucs --two-stems=vocals -n htdemucs` (CPU), run as a **subprocess** |
-| ASR + word timestamps | `faster-whisper` (CTranslate2, int8 on CPU), `word_timestamps=True`, beam 5 |
-| Onset refinement | When the vocal stem is available, word boundaries next to pauses are snapped to the vocal RMS envelope (Whisper word starts tend to be about 0.2–0.4 s early) |
-| Pasted-lyrics alignment | Semi-global Needleman–Wunsch between the pasted words and the Whisper words, scored with RapidFuzz similarity. Free leading/trailing skips mean pasting the whole song still works. Matched words take Whisper's times; unmatched words are interpolated between anchors, weighted by length. Line breaks follow the pasted text |
-| Line grouping (no pasted lyrics) | Breaks on pauses > 0.5 s, sentence punctuation, or a commas after 4+ words; at most 8 words or 38 characters per line |
+| ASR + word timestamps | Used when the lyric box is empty, or when forced alignment cannot lock. `faster-whisper` (CTranslate2, int8 on CPU): Fast / Accurate / Best, `word_timestamps=True`, Silero VAD, beam 5, temperature 0, and the pasted lyrics as `initial_prompt`. Best is `distil-large-v3`. The installer still bundles `base.en` for the offline smoke test |
+| Forced alignment | Pasted lyrics are aligned to the vocal stem with wav2vec2-base CTC (ONNX Runtime, offline after the first download). Every typed word gets a monotonic start and end. Line breaks are the ones the user typed. A whole-song paste is searched as windows so only the sung section is kept |
+| Rough match | If the aligner is missing or cannot lock, RapidFuzz Needleman–Wunsch can still borrow times from speech recognition. The typed words are never replaced by what Whisper heard. A weak match is marked failed and spread across the clip instead of being presented as a real sync |
+| Onset refinement | When speech recognition (not CTC) runs on a vocal stem, word boundaries next to pauses are snapped to the vocal RMS envelope |
+| Line grouping (no pasted lyrics) | Breaks on pauses, sentence punctuation, or a comma after 4+ words. A run-on is capped around 18 words so a real lyric line is not chopped every 8 tokens |
+| Tap to sync | Space or Tap stamps the current line or word while the clip plays. Undo seeks back, Restart clears, Done writes the stamps into the timeline |
+| Confidence | `ok`, `low_confidence`, `failed`, or `approximate`. Low-confidence lines are highlighted in the editor and on the timeline |
 | Render | `app/compose.py`: for every frame (thread pool, in order) background (gradient / image / decoded video) → float-box zoom/pan → waveform from the audio samples → lyric layer (`textanim` draw list rasterised by `raster.py`) → post FX (`fx.py`) → raw RGB(A) piped to ffmpeg, which adds the song (fades, optional video-audio mix) and encodes H.264/AAC, ProRes 4444 or VP9 alpha |
 
-Code: `app/main.py` (API), `app/align.py` (alignment + refinement), `app/compose.py`, `app/textanim.py`,
+Code: `app/main.py` (API), `app/ctc_align.py` (CTC Viterbi), `app/aligner.py` (wav2vec2 ONNX), `app/model_store.py` (first-use downloads), `app/lyric_sync.py`, `app/align.py` (rough match + refinement), `app/compose.py`, `app/textanim.py`,
 `app/raster.py`, `app/fx.py` (renderer), `static/engine/` (preview engine + `presets.json`), `static/editor.js`
 (step-4 panels), `static/app.js` (flow), plain HTML/CSS/JS.
 
@@ -332,11 +335,9 @@ and `samples/testsong/e2e_editor.py` (API renders in every background mode, writ
 ## Known limitations
 
 - The test vocals are TTS speech over a beat. Real sung vocals with melisma, harmonies, ad-libs or heavy
-  effects will transcribe worse. Pasting the lyrics plus Demucs is the recommended path for real songs.
-- Whisper can hallucinate or skip words in instrumental sections or when the vocals are buried in the mix. Use
-  the editor to fix those, and check the preview before rendering.
-- Line timing comes from word timings: whole lines that Whisper missed and you pasted get interpolated (orange
-  outline) and may need manual adjustment.
+  effects can still drift. Pasting the lyrics, isolating vocals, and the Best model is the path for a real song. Tap to sync covers a line the aligner highlights.
+- Whisper can hallucinate or skip words when the lyric box is empty. Those lines are marked low-confidence instead of being silently treated as the lyric.
+- A failed alignment keeps your typed words and says so. It does not copy the transcript over them.
 - Sync and render requests are synchronous with no job queue: a single user at a time, and the UI waits on
   each request (a render takes roughly as long as the clip).
 - Non-English: pick the multilingual `base`/`small` models. Scripts the chosen font lacks (CJK, emoji) render as

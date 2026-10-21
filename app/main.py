@@ -8,12 +8,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .align import align_lyrics, group_into_lines, refine_with_energy
+from .align import refine_with_energy
 from .fonts import FontError, FontStore
 from .render import ENGINE, PRESETS, SIZES, render as render_frames
 from .compose import still as render_still
-from .runtime import FFMPEG, FFPROBE, available_whisper_models, whisper_model_path
-from . import runtime
+from .runtime import FFMPEG, FFPROBE, available_whisper_models
+from . import lyric_sync, model_store, runtime
+from .aligner import align as align_vocals, available as aligner_ready
 
 ROOT = runtime.ROOT
 DATA = runtime.DATA_DIR
@@ -33,8 +34,11 @@ def get_model(name: str):
     from faster_whisper import WhisperModel
     with _model_lock:
         if name not in _models:
-            local = whisper_model_path(name)
-            _models[name] = WhisperModel(str(local) if local else name, device="cpu", compute_type="int8")
+            local = model_store.whisper_dir(name)
+            if local is None:
+                raise HTTPException(400, f"The {name} speech model isn't on this computer yet. "
+                                    "Use the Sync model menu and let it download (once), then try again.")
+            _models[name] = WhisperModel(str(local), device="cpu", compute_type="int8")
         return _models[name]
 
 
@@ -70,9 +74,11 @@ def _is_local(request: Request) -> bool:
 
 @app.get("/api/config")
 def config(request: Request):
+    cat = model_store.catalog()
     return {"presets": PRESETS, "engine": ENGINE,
             "sizes": list(SIZES.keys()), "demucs": demucs_available(),
             "models": available_whisper_models(MODELS),
+            "sync_models": cat["models"], "sync_default": cat["default"], "aligner": cat["aligner"],
             # desktop helpers: folders can only be opened for a browser on this computer
             "can_open_folders": _is_local(request), "desktop_mode": runtime.DESKTOP_MODE or None,
             "can_quit": _is_local(request) and runtime.SHUTDOWN_HOOK is not None}
@@ -284,8 +290,43 @@ class SyncReq(BaseModel):
     length: float = 20.0
     lyrics: str = ""
     separate_vocals: bool = False
-    model: str = "base.en"
+    model: str = ""
     language: str | None = None
+
+
+class ModelDownloadReq(BaseModel):
+    models: list[str] = []
+
+
+def _stem_is_audible(path: Path) -> bool:
+    probe = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(path), "-ac", "1",
+                            "-ar", "8000", "-t", "8", "-f", "s16le", "-"], capture_output=True)
+    if not probe.stdout:
+        return False
+    samples = np.frombuffer(probe.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+    return bool(len(samples) and float(np.sqrt(np.mean(samples ** 2))) > 0.004)
+
+
+@app.get("/api/sync-models")
+def sync_models():
+    return model_store.catalog()
+
+
+@app.post("/api/sync-models/download")
+def download_sync_models(req: ModelDownloadReq):
+    allowed = set(model_store.SYNC_MODELS) | {model_store.ALIGNER_ID}
+    ids = [m for m in req.models if m in allowed]
+    if not ids:
+        raise HTTPException(400, "Choose Fast, Accurate, or Best.")
+    return model_store.start_job(ids)
+
+
+@app.get("/api/sync-models/jobs/{job_id}")
+def sync_model_job(job_id: str):
+    job = model_store.job_snapshot(job_id)
+    if job is None:
+        raise HTTPException(404, "That download isn't running.")
+    return job
 
 
 @app.post("/api/sync")
@@ -300,45 +341,58 @@ def sync(req: SyncReq):
     asr_in, sep_used, sep_err = clip, False, None
     if req.separate_vocals:
         if not demucs_available():
-            sep_err = "demucs not installed"
+            sep_err = "Vocal isolation isn't installed, so sync is using the full mix."
         else:
             r = subprocess.run(runtime.demucs_command(["--two-stems=vocals", "-n", "htdemucs", "-d", "cpu",
                                                        "-o", str(job / "sep"), str(clip)]),
                                capture_output=True, text=True, encoding="utf-8", errors="replace",
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             v = job / "sep" / "htdemucs" / "clip" / "vocals.wav"
-            if r.returncode == 0 and v.exists():
+            if r.returncode == 0 and v.exists() and _stem_is_audible(v):
                 asr_in, sep_used = v, True
+            elif r.returncode == 0 and v.exists():
+                sep_err = "Vocal isolation produced silence, so sync used the full mix."
             else:
-                sep_err = (r.stderr or "demucs failed")[-500:]
+                sep_err = "Vocal isolation failed, so sync used the full mix. " + (r.stderr or "demucs failed")[-240:]
     t_sep = time.time() - t0
-    model = get_model(req.model if req.model in available_whisper_models(MODELS) else "base.en")
-    lang = req.language or (None if not req.model.endswith(".en") else "en")
     pcm16 = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(asr_in), "-ac", "1",
                             "-ar", "16000", "-f", "s16le", "-"], capture_output=True).stdout
     audio16 = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
-    segs, info = model.transcribe(audio16, word_timestamps=True, beam_size=5, vad_filter=False,
-                                  condition_on_previous_text=False, language=lang,
-                                  )
-    words = []
-    for s in segs:
-        for w in (s.words or []):
-            t = w.word.strip()
-            if t and w.start < length:
-                words.append({"text": t, "start": round(max(0, w.start), 3),
-                              "end": round(min(length, w.end), 3), "prob": round(w.probability, 3)})
-    t_asr = time.time() - t0 - t_sep
-    if sep_used:  # precise onsets from the isolated vocal stem
-        words = refine_with_energy(words, audio16)
-    if req.lyrics.strip():
-        lines, stats = align_lyrics(req.lyrics, words, length)
-        mode = "aligned_to_pasted_lyrics"
-    else:
-        lines, stats = group_into_lines(words), {"hyp_words": len(words)}
-        mode = "transcribed"
-    return {"lines": lines, "raw_words": words, "mode": mode, "stats": stats, "length": length,
-            "vocal_separation": sep_used, "separation_error": sep_err,
-            "timing": {"separation_s": round(t_sep, 1), "asr_s": round(t_asr, 1)},
+    lyrics = req.lyrics.strip()
+    model_name = model_store.resolve_whisper_name(req.model)
+    # Typed lyrics are forced-aligned. Hearing the clip is for an empty box, or when alignment can't lock.
+    ctc, align_s = None, 0.0
+    if lyrics and aligner_ready():
+        t_align = time.time()
+        try:
+            ctc = align_vocals(audio16, lyrics)
+        except Exception as e:  # noqa: BLE001
+            ctc = None
+            sep_err = (sep_err + " " if sep_err else "") + f"Alignment failed: {e}"
+        align_s = time.time() - t_align
+    need_asr = (not lyrics) or ctc is None or ctc.get("status") == "failed"
+    words, info = [], None
+    t_asr = 0.0
+    if need_asr:
+        t_hear = time.time()
+        model = get_model(model_name)
+        words, info = lyric_sync.hear_words(model, audio16, lyrics=lyrics, language=req.language, model_name=model_name)
+        words = [w for w in words if w["start"] < length + 0.05]
+        if sep_used and words:
+            words = refine_with_energy(words, audio16)
+        t_asr = time.time() - t_hear
+    built = lyric_sync.assemble(lyrics, ctc, words, length)
+    if sep_err and built["status"] == "ok":
+        built["status"] = "low_confidence"
+    message = built["message"]
+    if sep_used:
+        message += f" Vocals were isolated first ({t_sep:.0f}s)."
+    elif sep_err:
+        message += " " + sep_err
+    return {"lines": built["lines"], "raw_words": words, "mode": built["mode"], "stats": built["stats"],
+            "length": length, "vocal_separation": sep_used, "separation_error": sep_err,
+            "status": built["status"], "message": message, "model": model_name,
+            "timing": {"separation_s": round(t_sep, 1), "asr_s": round(t_asr, 1), "align_s": round(align_s, 1)},
             "language": getattr(info, "language", None)}
 
 
