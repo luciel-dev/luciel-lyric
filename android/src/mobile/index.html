@@ -12,6 +12,11 @@ try {
   var t = (q === "aero" || q === "y2k" || q === "winamp") ? q : (saved || "aero");
   document.documentElement.dataset.theme = t;
   if (q === "aero" || q === "y2k" || q === "winamp") localStorage.setItem("lc-theme", q);
+  var demo0 = params0.get("demo");
+  var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
+  if (screen0 === "track" || screen0 === "sync" || screen0 === "look" || screen0 === "time" || screen0 === "render") {
+    document.documentElement.dataset.screen = screen0;
+  }
   var tz = params0.get("textZoom");
   if (tz) document.documentElement.dataset.textZoom = String(parseInt(tz, 10) || 100);
   if (tz && params0.get("chromeZoom") === "1") {

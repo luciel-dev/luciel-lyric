@@ -22,7 +22,7 @@ class NativeBridge(private val activity: MainActivity) {
     fun info(): String {
         val model = ModelStore.ready(activity)
         return JSONObject()
-            .put("version", "1.4.2")
+            .put("version", "1.4.3")
             .put("model", model)
             .put("whisper", whisper.available)
             .put("demucs", false)
