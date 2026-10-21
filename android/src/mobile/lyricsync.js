@@ -306,26 +306,182 @@
     });
   }
 
-  function applyLineText(ln, text) {
+  function matchIndexes(oldTexts, newTexts) {
+    const n = oldTexts.length;
+    const m = newTexts.length;
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = oldTexts[i] === newTexts[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const map = new Array(m).fill(-1);
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (oldTexts[i] === newTexts[j]) {
+        map[j] = i;
+        i += 1;
+        j += 1;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) i += 1;
+      else j += 1;
+    }
+    return map;
+  }
+
+  function fillLockedGaps(placed, envelopeStart, envelopeEnd) {
+    let i = 0;
+    while (i < placed.length) {
+      if (placed[i].start != null) { i += 1; continue; }
+      let j = i;
+      while (j < placed.length && placed[j].start == null) j += 1;
+      const prev = i > 0 ? placed[i - 1] : null;
+      const next = j < placed.length ? placed[j] : null;
+      const count = j - i;
+      let a = prev ? num(prev.end) : envelopeStart;
+      let b = next ? num(next.start) : envelopeEnd;
+      if (!(b > a + 0.02 * count)) {
+        let t = prev ? num(prev.end) : (next ? num(next.start) : envelopeStart);
+        for (let k = i; k < j; k++) {
+          placed[k].start = round3(t);
+          placed[k].end = round3(t + 0.02);
+          t += 0.02;
+        }
+      } else {
+        const span = b - a;
+        for (let k = 0; k < count; k++) {
+          const s = a + span * k / count;
+          const e = a + span * (k + 1) / count;
+          placed[i + k].start = round3(s);
+          placed[i + k].end = round3(Math.max(s + 0.02, e));
+        }
+      }
+      i = j;
+    }
+  }
+
+  // lock: after sync, existing word start/end stay put. New words only
+  // occupy a gap or a 20 ms boundary slot. They do not slide the others.
+  function applyLineText(ln, text, opts) {
     if (!ln || !ln.words || !ln.words.length) return false;
     const parts = String(text || "").trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return false;
     const old = ln.words;
+    const lock = !!(opts && opts.lock);
     if (parts.length === old.length) {
       parts.forEach((p, i) => { old[i].text = p; });
       return true;
     }
-    const t0 = num(old[0].start);
-    const t1 = num(old[old.length - 1].end);
-    const span = Math.max(t1 - t0, 0.05 * parts.length);
-    const weights = parts.map((p) => Math.max(1, p.length));
-    const tot = weights.reduce((a, b) => a + b, 0);
-    let acc = t0;
-    ln.words = parts.map((p, i) => {
-      const d = span * weights[i] / tot;
-      const w = { text: p, start: round3(acc), end: round3(acc + d) };
-      acc += d;
-      return w;
+    if (!lock) {
+      const t0 = num(old[0].start);
+      const t1 = num(old[old.length - 1].end);
+      const span = Math.max(t1 - t0, 0.05 * parts.length);
+      const weights = parts.map((p) => Math.max(1, p.length));
+      const tot = weights.reduce((a, b) => a + b, 0);
+      let acc = t0;
+      ln.words = parts.map((p, i) => {
+        const d = span * weights[i] / tot;
+        const w = { text: p, start: round3(acc), end: round3(acc + d) };
+        acc += d;
+        return w;
+      });
+      return true;
+    }
+    const map = matchIndexes(old.map((w) => w.text), parts);
+    const envelopeStart = num(old[0].start);
+    const envelopeEnd = num(old[old.length - 1].end);
+    const placed = parts.map((p, i) => {
+      const oi = map[i];
+      if (oi >= 0) {
+        old[oi].text = p;
+        return old[oi];
+      }
+      return { text: p, start: null, end: null };
+    });
+    fillLockedGaps(placed, envelopeStart, envelopeEnd);
+    ln.words = placed;
+    return true;
+  }
+
+  function applyLockedLines(lines, text) {
+    const old = Array.isArray(lines) ? lines : [];
+    const raw = String(text || "").split(/\n/).map((l) => l.trim()).filter(Boolean);
+    if (!raw.length) return [];
+    if (raw.length === old.length) {
+      old.forEach((ln, i) => { applyLineText(ln, raw[i], { lock: true }); });
+      return old;
+    }
+    const n = Math.min(raw.length, old.length);
+    const next = [];
+    for (let i = 0; i < n; i++) {
+      applyLineText(old[i], raw[i], { lock: true });
+      next.push(old[i]);
+    }
+    if (raw.length > old.length) {
+      let t = 0;
+      const prev = next[next.length - 1];
+      const tail = prev && prev.words && prev.words.length ? prev.words[prev.words.length - 1] : null;
+      if (tail) t = num(tail.end);
+      for (let i = n; i < raw.length; i++) {
+        const parts = raw[i].split(/\s+/).filter(Boolean);
+        const words = parts.map((p) => {
+          const w = { text: p, start: round3(t), end: round3(t + 0.3) };
+          t = w.end;
+          return w;
+        });
+        next.push({ words: words });
+      }
+    }
+    return next;
+  }
+
+  function nudgeWords(words, delta, length) {
+    if (!words || !words.length) return false;
+    const len = length > 0 ? length : 20;
+    let shift = num(delta);
+    const a = num(words[0].start) + shift;
+    const b = num(words[words.length - 1].end) + shift;
+    if (a < 0) shift -= a;
+    if (b > len) shift -= b - len;
+    if (Math.abs(shift) < 0.001) return false;
+    words.forEach((w) => {
+      w.start = Math.max(0, num(w.start) + shift);
+      w.end = Math.max(w.start + 0.05, num(w.end) + shift);
+    });
+    return true;
+  }
+
+  function scaleLine(words, snap, mode, dt, length) {
+    if (!words || !snap || !words.length || words.length !== snap.length) return false;
+    if (mode !== "left" && mode !== "right") return false;
+    if (Math.abs(dt) < 0.02) return false;
+    const a0 = num(snap[0].start);
+    const b0 = num(snap[snap.length - 1].end);
+    const len = length > 0 ? length : 20;
+    let na = a0;
+    let nb = b0;
+    if (mode === "left") na = Math.max(0, Math.min(b0 - 0.2, a0 + dt));
+    else nb = Math.max(a0 + 0.2, Math.min(len, b0 + dt));
+    const span0 = Math.max(0.05, b0 - a0);
+    const span = Math.max(0.05, nb - na);
+    words.forEach((w, wi) => {
+      w.start = na + (num(snap[wi].start) - a0) / span0 * span;
+      w.end = na + (num(snap[wi].end) - a0) / span0 * span;
+    });
+    return true;
+  }
+
+  function tapLine(words, start, next, length) {
+    if (!words || !words.length) return false;
+    const len = length > 0 ? length : 20;
+    const span = Math.max(0.02 * words.length, num(next) - num(start));
+    words.forEach((w, k) => {
+      const a = num(start) + span * k / words.length;
+      const b = num(start) + span * (k + 1) / words.length;
+      w.start = Math.round(Math.min(a, len - 0.02) * 1000) / 1000;
+      w.end = Math.round(Math.min(len, Math.max(w.start + 0.02, b)) * 1000) / 1000;
+      w.low_confidence = false;
+      w.confidence = 1;
     });
     return true;
   }
@@ -676,6 +832,7 @@
 
   G.LyricSync = {
     mergeTokens, gluePunct, timingsLookReal, groupLines, alignLyrics, alignFromLogits, linesFromText, applyLineText,
+    applyLockedLines, nudgeWords, scaleLine, tapLine,
     fixtureTokens, PASTED_FIXTURE,
   };
 })(typeof window !== "undefined" ? window : globalThis);

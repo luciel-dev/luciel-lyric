@@ -107,6 +107,7 @@ jobs:
           g++ -std=c++17 -I android/app/src/main/cpp android/scripts/merge_test.cpp -o /tmp/luciel-merge-test
           /tmp/luciel-merge-test fixture
           node android/scripts/lyricsync-test.mjs
+          node android/scripts/layers-test.mjs
 
       - name: Assemble release APK
         working-directory: android

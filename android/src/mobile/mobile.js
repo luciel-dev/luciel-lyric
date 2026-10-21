@@ -112,7 +112,7 @@
   }
   function stepHint(id) {
     if (id === "track") return audioReady() ? "Song ready." : "Choose a song to continue.";
-    if (id === "sync") return syncReady() ? "Lyrics are lined up." : "Line up the lyrics to continue.";
+    if (id === "sync") return syncReady() ? "Timings are locked." : "Line up the lyrics to continue.";
     if (id === "video") return videoStepReady() ? "Video ready." : "Add a video to continue.";
     if (id === "look") return state.look ? "Look chosen." : "Pick a look to continue.";
     if (id === "time") return "Trim the clip, or continue.";
@@ -151,6 +151,8 @@
     const hint = hints[state.screen] ? $(hints[state.screen]) : null;
     if (hint && state.screen !== "track") hint.textContent = stepHint(state.screen);
     else if (state.screen === "track" && $("#trackHint") && !audioReady()) $("#trackHint").textContent = stepHint("track");
+    const syncBtn = $("#syncBtn");
+    if (syncBtn) syncBtn.textContent = syncReady() ? "Re-sync" : "Line up lyrics";
     const homeBtn = $("#continueProject");
     if (homeBtn) {
       const saved = hasProject();
@@ -1604,6 +1606,9 @@
     const box = $("#lyrics");
     if (box && box.value !== text) box.value = text;
   }
+  function editLineText(ln, text) {
+    return LS().applyLineText(ln, text, { lock: syncReady() });
+  }
   const SWATCHES = [
     ["#ffffff", "White"], ["#1d2a33", "Ink"], ["#f2d7a2", "Sand"],
     ["#7eb8c9", "Sky"], ["#d4a24a", "Gold"], ["#c47a6a", "Rose"],
@@ -1832,14 +1837,7 @@
     if (!ln || !ln.words || !ln.words.length) return;
     armUndo();
     undoArmed = false;
-    const len = state.length || 20;
-    let shift = delta;
-    const a = ln.words[0].start + shift;
-    const b = ln.words[ln.words.length - 1].end + shift;
-    if (a < 0) shift -= a;
-    if (b > len) shift -= b - len;
-    if (Math.abs(shift) < 0.001) return;
-    ln.words.forEach((w) => { w.start = Math.max(0, w.start + shift); w.end = Math.max(w.start + 0.05, w.end + shift); });
+    if (!LS().nudgeWords(ln.words, delta, state.length || 20)) return;
     paintLines();
     paintTimeline();
     draw(state.t || ln.words[0].start);
@@ -1946,7 +1944,7 @@
       });
       edit.addEventListener("input", () => {
         armUndo();
-        if (LS().applyLineText(state.lines[i], edit.textContent)) {
+        if (editLineText(state.lines[i], edit.textContent)) {
           draw(state.t || 1.2);
           const words = $("#sheetWords");
           if (words && document.activeElement !== words) words.value = lineText(state.lines[i]);
@@ -1959,7 +1957,7 @@
           if (active && active.classList && (active.classList.contains("wordchip") || active.classList.contains("lineedit") || active.id === "sheetWords")) return;
           undoArmed = false;
           if (!state.lines[i]) return;
-          if (!LS().applyLineText(state.lines[i], edit.textContent)) edit.textContent = lineText(state.lines[i]);
+          if (!editLineText(state.lines[i], edit.textContent)) edit.textContent = lineText(state.lines[i]);
           writeLyrics(state.lines.map(lineText).join("\n"));
           paintLines();
           draw(state.t || 1.2);
@@ -1984,7 +1982,7 @@
         chip.addEventListener("input", () => {
           armUndo();
           const parts = (ln.words || []).map((word, k) => (k === wi ? chip.textContent : word.text));
-          if (LS().applyLineText(ln, parts.join(" "))) {
+          if (editLineText(ln, parts.join(" "))) {
             edit.textContent = lineText(ln);
             const words = $("#sheetWords");
             if (words && document.activeElement !== words) words.value = lineText(ln);
@@ -2052,6 +2050,7 @@
     ctx.fillText("Lyric section", 8, 14);
   }
   function stopPlay() {
+    // Pause only stops the clock. Word timings stay where sync left them.
     state.playing = false;
     try { $("#audio").pause(); } catch (e) {}
     updatePreviewChrome();
@@ -2138,6 +2137,7 @@
     }
     state.synced = true;
     paintLines();
+    paintFlow();
     const low = state.lines.filter((ln) => ln.low_confidence).length;
     $("#syncStatus").textContent = low
       ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
@@ -2151,7 +2151,7 @@
     state.length = 12;
     state.hyp = built.words;
     state.lines = built.res.lines;
-    LS().applyLineText(state.lines[1], "voices, voicing me my name, edited");
+    LS().applyLineText(state.lines[1], "voices, voicing me my name, edited", { lock: true });
     $("#lyrics").value = state.lines.map((ln) => ln.words.map((w) => w.text).join(" ")).join("\n");
     $("#syncStatus").textContent = state.lines.length + " lines ready.";
     paintLines();
@@ -2407,6 +2407,46 @@
       speed: speed > 0 ? +speed : 1,
     };
   }
+  function readVideo() {
+    return {
+      aspect: state.aspect,
+      vfit: state.vfit,
+      vscale: state.vscale,
+      vx: state.vx,
+      vy: state.vy,
+      videoName: state.videoName,
+      length: state.length || 20,
+      clips: (state.clips || []).map((c) => ({
+        t0: c.t0, t1: c.t1, srcIn: c.srcIn || 0, speed: c.speed > 0 ? c.speed : 1,
+      })),
+    };
+  }
+  function commitVideo(edit) {
+    const layers = window.LucielLayers;
+    const before = layers.lyricStamp(state.lines, state.textStyle);
+    const next = layers.applyVideoEdit(readVideo(), edit);
+    state.aspect = next.aspect;
+    state.vfit = next.vfit;
+    state.vscale = next.vscale;
+    state.vx = next.vx;
+    state.vy = next.vy;
+    state.videoName = next.videoName;
+    if (edit && edit.inplace && next.clips.length === state.clips.length) {
+      next.clips.forEach((c, i) => {
+        state.clips[i].t0 = c.t0;
+        state.clips[i].t1 = c.t1;
+        state.clips[i].srcIn = c.srcIn;
+        state.clips[i].speed = c.speed;
+      });
+    } else {
+      state.clips = next.clips.map((c) => freshClip(c.t0, c.t1, c.srcIn, c.speed));
+      if (state.selectedClip >= state.clips.length) state.selectedClip = Math.max(0, state.clips.length - 1);
+    }
+    if (layers.lyricStamp(state.lines, state.textStyle) !== before) {
+      throw new Error("video edit changed lyric text");
+    }
+    return next;
+  }
   function sourceAt(t) {
     if (!state.videoEl || state.bg !== "video") return null;
     const clips = state.clips || [];
@@ -2584,12 +2624,11 @@
   }
   function clearVideoLocal() {
     state.videoEl = null;
-    state.videoName = "";
     state.videoReady = false;
-    state.clips = [];
     state.thumbs = [];
     state.bg = "gradient";
     state.videoIn = 0;
+    commitVideo({ op: "clear" });
     saveEditor();
     syncBgPills();
     paintEditor();
@@ -2613,7 +2652,7 @@
       state.videoEl = v;
       state.bg = "video";
       if (reset || pending || !state.clips.length) {
-        state.clips = [freshClip(0, state.length || 20, 0, 1)];
+        commitVideo({ op: "swap", name: state.videoName || "video" });
         state.videoIn = 0;
         state.selectedClip = 0;
       }
@@ -2667,21 +2706,18 @@
     state.thumbs = thumbs;
   }
   function splitAt(t) {
-    const i = state.clips.findIndex((c) => t > c.t0 + 0.12 && t < c.t1 - 0.12);
-    if (i < 0) return false;
-    const c = state.clips[i];
-    const speed = c.speed > 0 ? c.speed : 1;
-    const left = freshClip(c.t0, t, c.srcIn, speed);
-    const right = freshClip(t, c.t1, (c.srcIn || 0) + (t - c.t0) * speed, speed);
-    state.clips.splice(i, 1, left, right);
-    state.selectedClip = i + 1;
+    const before = state.clips.length;
+    commitVideo({ op: "split", t: t });
+    if (state.clips.length !== before + 1) return false;
+    const i = state.clips.findIndex((c) => Math.abs(c.t0 - t) < 0.001);
+    state.selectedClip = i >= 0 ? i : before;
     saveEditor();
     return true;
   }
   function deleteClip() {
     if (!state.clips.length) return;
     const i = state.selectedClip >= 0 && state.selectedClip < state.clips.length ? state.selectedClip : 0;
-    state.clips.splice(i, 1);
+    commitVideo({ op: "delete", index: i });
     state.selectedClip = Math.max(0, Math.min(i, state.clips.length - 1));
     saveEditor();
     paintEditor();
@@ -2692,7 +2728,7 @@
     const len = state.length || 20;
     const t0 = Math.max(0, Math.min(len - 0.25, state.t || 0));
     const t1 = Math.min(len, Math.max(t0 + 0.25, t0 + 3));
-    state.clips.push(freshClip(t0, t1, 0, 1));
+    commitVideo({ op: "add", t0: t0, t1: t1 });
     state.selectedClip = state.clips.length - 1;
     saveEditor();
     paintEditor();
@@ -2701,7 +2737,8 @@
   function cycleSpeed() {
     const c = state.clips[state.selectedClip];
     if (!c) return;
-    c.speed = c.speed === 1 ? 2 : c.speed === 2 ? 0.5 : 1;
+    const speed = c.speed === 1 ? 2 : c.speed === 2 ? 0.5 : 1;
+    commitVideo({ op: "speed", index: state.selectedClip, speed: speed });
     saveEditor();
     updatePreviewChrome();
     draw(state.t || 0);
@@ -2718,7 +2755,7 @@
     const i = state.selectedLine;
     const input = $("#lyricInput");
     if (i < 0 || !input || !state.lines[i]) return;
-    if (!LS().applyLineText(state.lines[i], input.value)) return;
+    if (!editLineText(state.lines[i], input.value)) return;
     paintLines();
     layoutEditor();
     draw(state.t || 1);
@@ -2911,16 +2948,16 @@
           style: JSON.stringify(state.colorOv || {}),
         };
       }, (drag, dt) => {
-        if (drag.mode === "slip") clip.srcIn = Math.max(0, drag.src0 - dt * drag.speed);
-        else if (drag.mode === "left") {
-          const nt = Math.max(0, Math.min(drag.t1 - 0.25, drag.t0 + dt));
-          clip.t0 = nt;
-          clip.srcIn = Math.max(0, drag.src0 + (nt - drag.t0) * drag.speed);
-          state.t = nt;
-        } else {
-          clip.t1 = Math.max(drag.t0 + 0.25, Math.min(state.length || 20, drag.t1 + dt));
-          state.t = clip.t1;
-        }
+        commitVideo({
+          op: "trim",
+          index: i,
+          edge: drag.mode,
+          dt: dt,
+          inplace: true,
+          base: { t0: drag.t0, t1: drag.t1, srcIn: drag.src0, speed: drag.speed },
+        });
+        if (drag.mode === "left") state.t = clip.t0;
+        else if (drag.mode === "right") state.t = clip.t1;
         el.style.left = (origin + clip.t0 * pps) + "px";
         el.style.width = Math.max(44, (clip.t1 - clip.t0) * pps) + "px";
         name.textContent = (state.videoName || "Clip") + " · " + (clip.srcIn || 0).toFixed(1) + "s";
@@ -2969,21 +3006,8 @@
         };
       }, (drag, dt) => {
         if (drag.mode === "tap") return;
-        if (Math.abs(dt) < 0.02) return;
+        if (!LS().scaleLine(words, drag.snap, drag.mode, dt, state.length || 20)) return;
         moved = true;
-        const snap = drag.snap;
-        const a0 = snap[0].start;
-        const b0 = snap[snap.length - 1].end;
-        let na = a0;
-        let nb = b0;
-        if (drag.mode === "left") na = Math.max(0, Math.min(b0 - 0.2, a0 + dt));
-        else nb = Math.max(a0 + 0.2, Math.min(state.length || 20, b0 + dt));
-        const span0 = Math.max(0.05, b0 - a0);
-        const span = Math.max(0.05, nb - na);
-        words.forEach((w, wi) => {
-          w.start = na + (snap[wi].start - a0) / span0 * span;
-          w.end = na + (snap[wi].end - a0) / span0 * span;
-        });
         const na2 = words[0].start;
         const nb2 = words[words.length - 1].end;
         el.style.left = (origin + na2 * pps) + "px";
@@ -3370,7 +3394,7 @@
     armUndo();
     const i = state.selectedLine;
     if (i < 0 || !state.lines[i]) return;
-    if (!LS().applyLineText(state.lines[i], $("#sheetWords").value)) return;
+    if (!editLineText(state.lines[i], $("#sheetWords").value)) return;
     const edit = document.querySelectorAll("#lineList .lineedit")[i];
     if (edit && document.activeElement !== edit) edit.textContent = lineText(state.lines[i]);
     draw(state.t || 1);
@@ -3481,7 +3505,10 @@
       saveProject();
       return;
     }
-    if (state.hyp && state.hyp.length) {
+    if (syncReady()) {
+      state.lines = sync.applyLockedLines(state.lines, text);
+      $("#syncStatus").textContent = "Timings stayed locked.";
+    } else if (state.hyp && state.hyp.length) {
       const res = sync.alignLyrics(text, state.hyp, clip);
       if (res.lines && res.lines.length) {
         state.lines = res.lines;
@@ -3561,15 +3588,7 @@
       if (!words.length || i >= tapMarks.length) return;
       const start = tapMarks[i];
       const next = i + 1 < tapMarks.length ? tapMarks[i + 1] : Math.min(len, start + Math.max(0.35, 0.28 * words.length));
-      const span = Math.max(0.02 * words.length, next - start);
-      words.forEach((w, k) => {
-        const a = start + span * k / words.length;
-        const b = start + span * (k + 1) / words.length;
-        w.start = Math.round(Math.min(a, len - 0.02) * 1000) / 1000;
-        w.end = Math.round(Math.min(len, Math.max(w.start + 0.02, b)) * 1000) / 1000;
-        w.low_confidence = false;
-        w.confidence = 1;
-      });
+      LS().tapLine(words, start, next, len);
       ln.low_confidence = false;
       ln.confidence = 1;
     });
@@ -3592,7 +3611,7 @@
   $("#aspects").onclick = (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    state.aspect = b.dataset.aspect;
+    commitVideo({ op: "aspect", aspect: b.dataset.aspect });
     paintFrame();
     saveEditor();
     sizePreview();
@@ -3602,25 +3621,25 @@
   $("#vfit").onclick = (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    state.vfit = b.dataset.fit;
+    commitVideo({ op: "fit", fit: b.dataset.fit });
     paintFrame();
     saveEditor();
     draw(state.t || 1);
   };
   $("#vscale").oninput = () => {
-    state.vscale = +$("#vscale").value;
+    commitVideo({ op: "zoom", vscale: +$("#vscale").value });
     paintFrame();
     saveEditor();
     draw(state.t || 1);
   };
   $("#vx").oninput = () => {
-    state.vx = +$("#vx").value;
+    commitVideo({ op: "pan", vx: +$("#vx").value });
     paintFrame();
     saveEditor();
     draw(state.t || 1);
   };
   $("#vy").oninput = () => {
-    state.vy = +$("#vy").value;
+    commitVideo({ op: "pan", vy: +$("#vy").value });
     paintFrame();
     saveEditor();
     draw(state.t || 1);
@@ -3644,6 +3663,7 @@
     else $("#modelText").textContent = "The listener saves inside the Android app.";
   };
   $("#syncBtn").onclick = () => {
+    if (syncReady() && !window.confirm("Re-sync replaces the locked word timings. Continue?")) return;
     if (!window.Luciel) { applyWords(DEMO.flatMap((l) => l.words)); return; }
     let info = {};
     try { info = JSON.parse(Luciel.info()); } catch (e) {}
@@ -3766,6 +3786,9 @@
   }
 
   window.LucielApp = {
+    lyricStamp() {
+      return window.LucielLayers.lyricStamp(state.lines, state.textStyle);
+    },
     back() {
       const order = ["track", "sync", "video", "look", "time", "render"];
       const i = order.indexOf(state.screen);
@@ -3801,7 +3824,7 @@
           $("#modelText").textContent = "Listening is saved on this phone.";
           const status = $("#syncStatus").textContent;
           if (status.indexOf("Saving") >= 0 || status.indexOf("isn't on this phone") >= 0) {
-            $("#syncStatus").textContent = "Listening is ready. Tap Line up lyrics.";
+            $("#syncStatus").textContent = syncReady() ? "Listening is ready." : "Listening is ready. Tap Line up lyrics.";
           }
           mascot("happy");
         }
@@ -3817,6 +3840,7 @@
           state.lines = res.lines;
           state.synced = true;
           paintLines();
+          paintFlow();
           const low = res.lines.filter((ln) => ln.low_confidence).length;
           $("#syncStatus").textContent = low
             ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
