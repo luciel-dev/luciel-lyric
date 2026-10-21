@@ -11,12 +11,15 @@ struct RawTok {
     std::string text;
     double t0 = 0;
     double t1 = 0;
+    float p = 1.f;
 };
 
 struct MergedWord {
     std::string text;
     double start = 0;
     double end = 0;
+    float confidence = 1.f;
+    int n = 1;
 };
 
 inline bool wm_space(unsigned char c) {
@@ -50,21 +53,30 @@ inline std::vector<MergedWord> merge_tokens(const std::vector<RawTok> &toks) {
         const std::string piece = tok.text.substr(i);
         if (piece[0] == '[' || piece[0] == '<') continue;
         const bool boundary = words.empty() || wm_space(static_cast<unsigned char>(tok.text[0]));
+        auto mix = [](MergedWord &dst, float p) {
+            const float sum = dst.confidence * static_cast<float>(dst.n) + p;
+            dst.n += 1;
+            dst.confidence = sum / static_cast<float>(dst.n);
+        };
         if (!words.empty() && !boundary) {
             words.back().text += piece;
             words.back().end = std::max(words.back().end, tok.t1);
             if (words.back().start <= 0.0 && tok.t0 > 0.0) words.back().start = tok.t0;
+            mix(words.back(), tok.p);
             continue;
         }
         if (!words.empty() && (wm_punct(piece) || wm_apos(piece))) {
             words.back().text += piece;
             words.back().end = std::max(words.back().end, tok.t1);
+            mix(words.back(), tok.p);
             continue;
         }
         MergedWord w;
         w.text = piece;
         w.start = tok.t0;
         w.end = std::max(tok.t1, tok.t0);
+        w.confidence = tok.p;
+        w.n = 1;
         words.push_back(w);
     }
     return words;

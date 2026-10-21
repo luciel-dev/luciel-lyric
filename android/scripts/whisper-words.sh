@@ -9,14 +9,14 @@ WHISPER="$ROOT/android/third_party/whisper.cpp"
 MODEL="${LUCIEL_WHISPER_MODEL:-$HOME/.cache/luciel/ggml-tiny.en.bin}"
 BUILD="$ROOT/android/third_party/whisper-host"
 
-if [ ! -f "$WHISPER/CMakeLists.txt" ]; then
-  echo "Fetching whisper.cpp v1.7.5"
+if ! grep -q "VERSION 1.7.6" "$WHISPER/CMakeLists.txt" 2>/dev/null; then
+  echo "Fetching whisper.cpp v1.7.6"
   mkdir -p "$ROOT/android/third_party"
   tar="$(mktemp)"
-  curl -fsSL "https://github.com/ggerganov/whisper.cpp/archive/refs/tags/v1.7.5.tar.gz" -o "$tar"
-  rm -rf "$WHISPER" "$ROOT/android/third_party/whisper.cpp-1.7.5"
+  curl -fsSL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.7.6.tar.gz" -o "$tar"
+  rm -rf "$WHISPER" "$ROOT/android/third_party/whisper.cpp-1.7.6"
   tar -xzf "$tar" -C "$ROOT/android/third_party"
-  mv "$ROOT/android/third_party/whisper.cpp-1.7.5" "$WHISPER"
+  mv "$ROOT/android/third_party/whisper.cpp-1.7.6" "$WHISPER"
   rm -f "$tar"
 fi
 

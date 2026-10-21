@@ -33,6 +33,7 @@ need = {
     "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1"],
     "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1"],
     "time": ["title=1", "timeline=1", "zooms=5", "previewpin=1", "fold=1", "film=1", "actionfit=1"],
+    "video": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "vzoom=1", "previewpin=1"],
     "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1"],
     "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
 }[screen]
@@ -63,7 +64,7 @@ audit_matrix() {
     python3 - /tmp/luciel-ready.txt <<'PY'
 import pathlib, sys
 text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
-screens = ("track", "sync", "look", "time", "render")
+screens = ("track", "sync", "video", "look", "time", "render")
 themes = ("aero", "y2k", "winamp")
 found = {}
 for line in text.splitlines():
@@ -181,6 +182,7 @@ for theme in aero y2k winamp; do
   if [ "${theme}" != "aero" ]; then suffix="-${theme}"; fi
   capture track "${theme}" "android-track${suffix}.png"
   capture syncshot "${theme}" "android-sync${suffix}.png"
+  capture video "${theme}" "android-video${suffix}.png" asset:test-clip.mp4
   capture videocheck "${theme}" "android-look${suffix}.png" asset:test-clip.mp4
   capture time "${theme}" "android-time${suffix}.png" asset:test-clip.mp4
   capture render "${theme}" "android-render${suffix}.png" asset:test-clip.mp4

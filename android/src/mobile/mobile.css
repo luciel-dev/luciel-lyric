@@ -216,6 +216,7 @@ main {
    WebView frame is still the requested tab instead of the empty shell. */
 html[data-screen="track"] #screen-track,
 html[data-screen="sync"] #screen-sync,
+html[data-screen="video"] #screen-video,
 html[data-screen="look"] #screen-look,
 html[data-screen="time"] #screen-time,
 html[data-screen="render"] #screen-render { display: block; }
@@ -654,7 +655,6 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   pointer-events: none;
 }
 .tlscroll { overscroll-behavior-x: contain; }
-#pickVideo { width: 100%; --fs: 14; }
 #lyricInput { width: 100%; max-width: 100%; min-height: 44px; margin-top: 8px; }
 .preview-fields { display: block; min-width: 0; max-width: 100%; }
 .preview-fields > * + * { margin-top: 8px; }
@@ -768,6 +768,8 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   -webkit-user-select: text;
 }
 .lineedit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lineedit.low { box-shadow: inset 4px 0 0 #b56a45; }
+.lblock.low { box-shadow: inset 4px 0 0 #b56a45; }
 .keys li { min-height: 48px; }
 .fx { display: block; max-width: 100%; min-width: 0; }
 .fx label {
@@ -830,6 +832,7 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
 .dock button[aria-current="true"],
 html[data-screen="track"] .dock button[data-screen="track"],
 html[data-screen="sync"] .dock button[data-screen="sync"],
+html[data-screen="video"] .dock button[data-screen="video"],
 html[data-screen="look"] .dock button[data-screen="look"],
 html[data-screen="time"] .dock button[data-screen="time"],
 html[data-screen="render"] .dock button[data-screen="render"],
@@ -937,6 +940,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 [data-theme="aero"] .dock button[aria-current="true"],
 html[data-theme="aero"][data-screen="track"] .dock button[data-screen="track"],
 html[data-theme="aero"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="aero"][data-screen="video"] .dock button[data-screen="video"],
 html[data-theme="aero"][data-screen="look"] .dock button[data-screen="look"],
 html[data-theme="aero"][data-screen="time"] .dock button[data-screen="time"],
 html[data-theme="aero"][data-screen="render"] .dock button[data-screen="render"],
@@ -1037,6 +1041,7 @@ html[data-theme="aero"] .themes button[data-theme="aero"],
 [data-theme="y2k"] .dock button[aria-current="true"],
 html[data-theme="y2k"][data-screen="track"] .dock button[data-screen="track"],
 html[data-theme="y2k"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="y2k"][data-screen="video"] .dock button[data-screen="video"],
 html[data-theme="y2k"][data-screen="look"] .dock button[data-screen="look"],
 html[data-theme="y2k"][data-screen="time"] .dock button[data-screen="time"],
 html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"],
@@ -1053,6 +1058,7 @@ html[data-theme="y2k"] .themes button[data-theme="y2k"],
 [data-theme="y2k"] .dock button[aria-current="true"],
 html[data-theme="y2k"][data-screen="track"] .dock button[data-screen="track"],
 html[data-theme="y2k"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="y2k"][data-screen="video"] .dock button[data-screen="video"],
 html[data-theme="y2k"][data-screen="look"] .dock button[data-screen="look"],
 html[data-theme="y2k"][data-screen="time"] .dock button[data-screen="time"],
 html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"] { box-shadow: inset 3px 0 0 #6fa9a2; }
@@ -1150,6 +1156,7 @@ html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"] 
 [data-theme="winamp"] .dock button[aria-current="true"],
 html[data-theme="winamp"][data-screen="track"] .dock button[data-screen="track"],
 html[data-theme="winamp"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="winamp"][data-screen="video"] .dock button[data-screen="video"],
 html[data-theme="winamp"][data-screen="look"] .dock button[data-screen="look"],
 html[data-theme="winamp"][data-screen="time"] .dock button[data-screen="time"],
 html[data-theme="winamp"][data-screen="render"] .dock button[data-screen="render"],

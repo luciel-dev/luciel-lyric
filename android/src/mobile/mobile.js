@@ -29,6 +29,7 @@
     look: "noir", animId: "fadewords", animLive: false, fontId: "", hyp: [],
     palette: null, colorOv: null, title: "", artist: "", bg: "gradient", videoIn: 0,
     videoName: "", videoEl: null, videoReady: false, clips: [], nextClipId: 1,
+    aspect: "9:16", vfit: "fill", vscale: 1, vx: 0.5, vy: 0.5, tier: "fast", frameCv: null,
     selectedClip: 0, selectedLine: -1, pxPerSec: 46, thumbs: [],
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
     checks: null,
@@ -63,7 +64,7 @@
     if (host && pin) host.appendChild(pin);
     pinPreview();
     sizePreview();
-    if (id === "look" || id === "time" || id === "render") draw(state.t > 0.05 ? state.t : 1.2);
+    if (id === "look" || id === "time" || id === "render" || id === "video") draw(state.t > 0.05 ? state.t : 1.2);
     if (id === "time") { paintEditor(); paintTimeline(); }
     else {
       const timeHost = document.getElementById("pin-time");
@@ -73,7 +74,7 @@
     updatePreviewChrome();
     fitAll();
     if (id === "time") fitTimeFold();
-    else if (id === "look" || id === "render") fitPinClear();
+    else if (id === "look" || id === "render" || id === "video") fitPinClear();
   }
   function mascot(name) {
     const img = $("#mascot");
@@ -92,7 +93,7 @@
     document.querySelectorAll("#themes button").forEach((b) => b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false"));
     paintWave();
     paintTimeline();
-    if (stage && (state.screen === "look" || state.screen === "time" || state.screen === "render")) {
+    if (stage && (state.screen === "look" || state.screen === "time" || state.screen === "render" || state.screen === "video")) {
       draw(state.t > 0.05 ? state.t : 1.2);
     }
   }
@@ -347,7 +348,7 @@
   }
   function dockFits() {
     const buttons = [...document.querySelectorAll("#dock button")];
-    if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
+    if (buttons.length !== 6 || buttons.some(labelOverflow)) return false;
     const sizes = buttons.map((b) => getComputedStyle(b.querySelector(".docklabel") || b).fontSize);
     return sizes.every((size) => size === sizes[0]);
   }
@@ -366,7 +367,7 @@
   }
   function dockButtonsMiss() {
     const buttons = [...document.querySelectorAll("#dock button")];
-    if (buttons.length !== 5) return "count";
+    if (buttons.length !== 6) return "count";
     const bad = [];
     buttons.forEach((btn) => {
       const r = btn.getBoundingClientRect();
@@ -543,7 +544,7 @@
     return ok;
   }
   function contentFlags(screen) {
-    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0 };
+    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0 };
     const flags = [];
     if (!inView(document.querySelector(".screen.on h1"), 12)) flags.push("title");
     else expect.title = 1;
@@ -591,6 +592,22 @@
       if (expect.looks !== 13) flags.push("looks" + [bitmaps ? 1 : 0, firstOk ? 1 : 0, lastOk ? 1 : 0, gridOk ? 1 : 0, canvases.length].join(""));
       if (expect.palettes !== 12) flags.push("palettes");
       if (expect.anims !== 15) flags.push("anims");
+    } else if (screen === "video") {
+      const stageEl = $("#stage");
+      const stageBusy = canvasBusy(stageEl);
+      const stageSeen = inView(stageEl, 24);
+      expect.stage = stageBusy && stageSeen ? 1 : 0;
+      expect.upload = inView($("#uploadVideo"), 28) ? 1 : 0;
+      const aspects = document.querySelectorAll("#aspects button");
+      const fits = document.querySelectorAll("#vfit button");
+      expect.aspects = aspects.length === 4 && inView($("#aspects"), 16) ? 4 : 0;
+      expect.fits = fits.length === 3 && inView($("#vfit"), 16) ? 3 : 0;
+      expect.vzoom = inView($("#vscale"), 12) ? 1 : 0;
+      if (!expect.stage) flags.push(stageBusy ? "stageview" : stageSeen ? "stagepx" : "stage");
+      if (!expect.upload) flags.push("upload");
+      if (expect.aspects !== 4) flags.push("aspects");
+      if (expect.fits !== 3) flags.push("fits");
+      if (!expect.vzoom) flags.push("vzoom");
     } else if (screen === "time") {
       expect.timeline = canvasBusy($("#tl")) && inView($("#tlview"), 16, false) ? 1 : 0;
       const zooms = document.querySelectorAll("#zooms button");
@@ -910,7 +927,7 @@
     sizePreview();
     fitAll();
     if (logical === "time") fitTimeFold();
-    else if (logical === "look" || logical === "render") fitPinClear();
+    else if (logical === "look" || logical === "render" || logical === "video") fitPinClear();
     dropOverflowMeta();
     const hitOk = dockHitOk() ? 1 : 0;
     const actionOk = actionsFit() ? 1 : 0;
@@ -938,7 +955,7 @@
     const labels = [...document.querySelectorAll("#themes button")].map((b) => b.textContent.trim()).join("/");
     const dockWords = [...document.querySelectorAll("#dock button")].map((b) => b.textContent.trim()).join("/");
     const themesOk = labels === "Aero/Y2K/Winamp" ? 1 : 0;
-    const dockOk = dockWords === "Track/Sync/Look/Time/Render" ? 1 : 0;
+    const dockOk = dockWords === "Track/Sync/Video/Look/Time/Render" ? 1 : 0;
     if (!themesOk) flags.push("themes");
     if (!dockOk) flags.push("dock");
     const pad = parseFloat(getComputedStyle(document.querySelector(".app")).paddingTop) || 0;
@@ -979,7 +996,7 @@
       if (!headOk) flags.push("lineshead");
     }
     let pinOk = 0;
-    if (logical === "look" || logical === "time" || logical === "render") {
+    if (logical === "look" || logical === "time" || logical === "render" || logical === "video") {
       pinOk = previewPinned() ? 1 : 0;
       if (!pinOk) flags.push("previewpin" + (state.pinWhy ? ":" + state.pinWhy : ""));
     }
@@ -1004,6 +1021,10 @@
       "quality=" + expect.quality,
       "fx=" + expect.fx,
       "renderbtn=" + expect.renderbtn,
+      "upload=" + expect.upload,
+      "aspects=" + expect.aspects,
+      "fits=" + expect.fits,
+      "vzoom=" + expect.vzoom,
       "clear=" + clear,
       "fit=" + (box.length ? 0 : 1),
       "overflow=" + wide.length,
@@ -1065,26 +1086,78 @@
     $("#cTitle").value = hexColor(s.titleColor);
     $("#cArtist").value = hexColor(s.artistColor);
   }
-  function scene(t) {
+  function aspectParts() {
+    const raw = state.aspect || "9:16";
+    const bits = raw.split(":");
+    const w = +bits[0] || 9;
+    const h = +bits[1] || 16;
+    return { w: w, h: h, label: raw };
+  }
+  function frameWH(base) {
+    const a = aspectParts();
+    if (a.w >= a.h) {
+      const h = base;
+      const w = Math.round(h * a.w / a.h / 2) * 2;
+      return { w: w, h: h };
+    }
+    const w = base;
+    const h = Math.round(w * a.h / a.w / 2) * 2;
+    return { w: w, h: h };
+  }
+  function outputSize(q) {
+    return frameWH(q.w);
+  }
+  function placeWord(label, value) {
+    if (value < 0.35) return label === "x" ? "Left" : "Up";
+    if (value > 0.65) return label === "x" ? "Right" : "Down";
+    return "Center";
+  }
+  function framedVideo(W, H) {
+    const v = state.videoEl;
+    if (!v || !v.videoWidth || state.bg !== "video") return null;
+    if (!state.frameCv) state.frameCv = document.createElement("canvas");
+    const cv = state.frameCv;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    cv.videoWidth = W;
+    cv.videoHeight = H;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    const vw = v.videoWidth, vh = v.videoHeight;
+    const contain = Math.min(W / vw, H / vh);
+    const cover = Math.max(W / vw, H / vh);
+    let base = state.vfit === "fit" ? contain : cover;
+    if (state.vfit === "crop") base = cover * 1.18;
+    base *= Math.max(1, +state.vscale || 1);
+    const rw = vw * base;
+    const rh = vh * base;
+    const x = (W - rw) * (state.vx == null ? 0.5 : state.vx);
+    const y = (H - rh) * (state.vy == null ? 0.5 : state.vy);
+    ctx.drawImage(v, x, y, rw, rh);
+    return cv;
+  }
+  function scene(t, size) {
     const r = resolved();
     const groups = window.LL.prepare(state.lines, r.style, r.anim, state.length);
     const keys = state.zoomId === "custom" ? state.keys : (window.LL.zoomPreset(state.zoomId, state.length, groups) || []);
     const at = Math.max(0, t || 0);
     const src = state.bg === "video" ? sourceAt(at) : null;
+    const W = size ? size.w : (stage && stage.W) || 360;
+    const H = size ? size.h : (stage && stage.H) || 640;
     return {
       style: r.style, anim: r.anim, lines: state.lines, title: state.title, artist: state.artist,
       clipLen: state.length, visualizer: true, bgMode: state.bg, grad: r.lk.grad, wave: r.lk.wave,
       zoom: { keys, target: "bg" }, fx: state.fx.filter((f) => f.on), fps: 30,
-      video: src ? state.videoEl : null,
+      video: src ? framedVideo(W, H) : null,
       clip: src,
       darken: state.bg === "video" ? 0.35 : 0.35, blur: 0,
     };
   }
   function draw(t) {
     if (!stage) return;
-    const w = 360, h = 640;
+    const px = frameWH(360);
     const at = Math.max(0, Math.min(state.length - 0.05, t || 0));
-    stage.setSize(w, h, 1080);
+    stage.setSize(px.w, px.h, 1080);
     const slice = audioSlice();
     if (slice) stage.setAudio(slice, 8000);
     seekVideo(at);
@@ -1195,7 +1268,8 @@
       row.append(b);
     });
     const q = QUALITY[state.quality];
-    $("#qualityHint").textContent = (q.name || q.label) + ": " + q.w + "×" + q.h + " · " + q.fps + " fps. Phone Max is 1080p30 (desktop Max is 60 fps).";
+    const out = outputSize(q);
+    $("#qualityHint").textContent = (q.name || q.label) + ": " + out.w + "×" + out.h + " · " + q.fps + " fps. Phone Max is 1080p30.";
   }
   function paintWave() {
     const cv = $("#wave");
@@ -1233,7 +1307,7 @@
     state.lines.forEach((ln, i) => {
       const li = document.createElement("li");
       const edit = document.createElement("span");
-      edit.className = "lineedit";
+      edit.className = "lineedit" + (ln.low_confidence ? " low" : "");
       edit.contentEditable = "true";
       edit.spellcheck = false;
       edit.setAttribute("role", "textbox");
@@ -1373,17 +1447,24 @@
     const clip = state.length || cleaned[cleaned.length - 1].end;
     if (pasted.trim()) {
       const res = sync.alignLyrics(pasted, cleaned, clip);
-      if (res.error) {
+      if (res.lines && res.lines.length) {
+        state.lines = res.lines;
+      } else {
         state.lines = sync.linesFromText(pasted, clip);
         paintLines();
-        $("#syncStatus").textContent = res.error;
+        $("#syncStatus").textContent = res.error || "Couldn't match these lyrics.";
         mascot("crying");
         draw(Math.min(1.2, Math.max(0.2, state.length - 0.05)));
         return;
       }
-      state.lines = res.lines;
     } else {
       state.lines = sync.groupLines(cleaned);
+      state.lines.forEach((ln) => {
+        const cs = ln.words.map((w) => (w.confidence == null ? 1 : +w.confidence));
+        const mean = cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : 0;
+        ln.confidence = Math.round(mean * 1000) / 1000;
+        ln.low_confidence = mean < 0.35;
+      });
     }
     if (!state.lines.length) {
       $("#syncStatus").textContent = "No lyric lines came out of that section.";
@@ -1391,9 +1472,12 @@
       return;
     }
     paintLines();
-    $("#syncStatus").textContent = state.lines.length + " lines ready.";
-    mascot("happy");
-    show("look");
+    const low = state.lines.filter((ln) => ln.low_confidence).length;
+    $("#syncStatus").textContent = low
+      ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
+      : state.lines.length + " lines ready.";
+    mascot(low ? "confused" : "happy");
+    if (!low) show("video");
     draw(Math.min(1.2, Math.max(0.2, state.length - 0.05)));
   }
   function installSyncShot() {
@@ -1560,11 +1644,12 @@
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
     const availH = Math.max(48, box.clientHeight - padY - (bar ? bar.offsetHeight : 0));
     const availW = Math.max(48, box.clientWidth - padX);
+    const a = aspectParts();
     let h = availH;
-    let w = Math.round(h * 9 / 16);
+    let w = Math.round(h * a.w / a.h);
     if (w > availW) {
       w = availW;
-      h = Math.round(w * 16 / 9);
+      h = Math.round(w * a.h / a.w);
     }
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
@@ -1602,7 +1687,7 @@
   window.addEventListener("resize", () => {
     sizePreview();
     if (state.screen === "time") fitTimeFold();
-    else if (state.screen === "look" || state.screen === "render") fitPinClear();
+    else if (state.screen === "look" || state.screen === "render" || state.screen === "video") fitPinClear();
   });
 
   function videoDuration() {
@@ -1686,6 +1771,11 @@
         videoName: state.videoName,
         keys: state.keys,
         zoomId: state.zoomId,
+        aspect: state.aspect,
+        vfit: state.vfit,
+        vscale: state.vscale,
+        vx: state.vx,
+        vy: state.vy,
       }));
     } catch (e) {}
   }
@@ -1703,6 +1793,11 @@
       if (typeof o.videoIn === "number") state.videoIn = o.videoIn;
       if (Array.isArray(o.keys)) state.keys = o.keys.filter((k) => k && typeof k.t === "number");
       if (typeof o.zoomId === "string") state.zoomId = o.zoomId;
+      if (o.aspect === "9:16" || o.aspect === "1:1" || o.aspect === "16:9" || o.aspect === "4:5") state.aspect = o.aspect;
+      if (o.vfit === "fit" || o.vfit === "fill" || o.vfit === "crop") state.vfit = o.vfit;
+      if (typeof o.vscale === "number") state.vscale = Math.max(1, Math.min(2.5, o.vscale));
+      if (typeof o.vx === "number") state.vx = Math.max(0, Math.min(1, o.vx));
+      if (typeof o.vy === "number") state.vy = Math.max(0, Math.min(1, o.vy));
     } catch (e) {}
   }
   function syncBgPills() {
@@ -1748,9 +1843,9 @@
     if (meta) {
       if (state.screen === "render") {
         const q = QUALITY[state.quality] || QUALITY.standard;
-        meta.textContent = q.w + "×" + q.h;
-      } else if (state.videoName) meta.textContent = state.videoName;
-      else meta.textContent = "9:16";
+        const out = outputSize(q);
+        meta.textContent = out.w + "×" + out.h;
+      } else meta.textContent = aspectParts().label;
       dropOverflowMeta();
     }
     const labelEl = $("#clipLabel");
@@ -1758,7 +1853,7 @@
     const rm = $("#removeVideo");
     if (rm) rm.hidden = !state.videoName;
     const tn = $("#timeClipName");
-    if (tn) tn.textContent = state.videoName || "No background video yet";
+    if (tn) tn.textContent = state.videoName ? state.videoName : "Upload the MP4 on Video.";
     const speedBtn = $("#tlSpeed");
     if (speedBtn) {
       const c = state.clips[state.selectedClip];
@@ -2144,7 +2239,7 @@
       const a = words[0].start;
       const b = words[words.length - 1].end;
       const el = document.createElement("div");
-      el.className = "lblock" + (state.selectedLine === i ? " on" : "");
+      el.className = "lblock" + (state.selectedLine === i ? " on" : "") + (ln.low_confidence ? " low" : "");
       el.style.left = (origin + a * pps) + "px";
       el.style.width = Math.max(44, (b - a) * pps) + "px";
       const name = document.createElement("span");
@@ -2369,6 +2464,7 @@
 
   async function boot() {
     loadEditor();
+    paintFrame();
     const pendingVideo = params.get("videoPending") === "1";
     if (demo && !pendingVideo) {
       state.bg = "gradient";
@@ -2424,7 +2520,7 @@
     if (demo === "audit") {
       for (const th of ["aero", "y2k", "winamp"]) {
         theme(th);
-        for (const sc of ["track", "sync", "look", "time", "render"]) {
+        for (const sc of ["track", "sync", "video", "look", "time", "render"]) {
           show(sc);
           if (sc === "look" || sc === "time" || sc === "render") draw(1.35);
           await publish(sc);
@@ -2440,13 +2536,16 @@
       return;
     }
     theme(document.documentElement.dataset.theme || "aero");
-    const screen = ["track", "sync", "look", "time", "render"].includes(demo) ? demo : "track";
+    const screen = ["track", "sync", "video", "look", "time", "render"].includes(demo) ? demo : "track";
     show(screen);
-    if (screen === "look" || screen === "time" || screen === "render") draw(state.t > 0.05 ? state.t : 1.35);
+    if (screen === "look" || screen === "time" || screen === "render" || screen === "video") draw(state.t > 0.05 ? state.t : 1.35);
     await publish(screen);
     if (window.Luciel && Luciel.info) {
       try {
         const info = JSON.parse(Luciel.info());
+        if (info.tier === "accurate" || info.tier === "fast") state.tier = info.tier;
+        paintTier();
+        paintFrame();
         if (info.model) $("#modelText").textContent = "Speech model is on this phone. Sync works offline.";
       } catch (e) {}
     } else if (!demo) {
@@ -2488,12 +2587,15 @@
     }
     if (state.hyp && state.hyp.length) {
       const res = sync.alignLyrics(text, state.hyp, clip);
-      if (res.error) {
-        state.lines = sync.linesFromText(text, clip);
-        $("#syncStatus").textContent = res.error;
-      } else {
+      if (res.lines && res.lines.length) {
         state.lines = res.lines;
-        $("#syncStatus").textContent = state.lines.length + " lines ready.";
+        const low = res.lines.filter((ln) => ln.low_confidence).length;
+        $("#syncStatus").textContent = low
+          ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
+          : state.lines.length + " lines ready.";
+      } else {
+        state.lines = sync.linesFromText(text, clip);
+        $("#syncStatus").textContent = res.error || "Couldn't match these lyrics.";
       }
     } else {
       state.lines = sync.linesFromText(text, clip);
@@ -2506,7 +2608,6 @@
   $("#previewBtn").onclick = () => { togglePreview(); };
   $("#previewToggle").onclick = () => { togglePreview(); };
   $("#pickAudio").onclick = () => { if (window.Luciel) Luciel.pickAudio(); else $("#trackHint").textContent = "Song picking runs in the Android app."; };
-  $("#pickVideo").onclick = () => { requestVideo(); };
   $("#uploadVideo").onclick = () => { requestVideo(); };
   $("#removeVideo").onclick = () => { removeClip(); };
   $("#tlSplit").onclick = () => { if (splitAt(state.t)) paintEditor(); };
@@ -2517,14 +2618,141 @@
   $("#lyricInput").addEventListener("change", () => { commitLyricInput(); });
   $("#lyricInput").addEventListener("input", () => { commitLyricInput(); });
   $("#fontBtn").onclick = () => { if (window.Luciel) Luciel.pickFont(); };
+  function paintTier() {
+    document.querySelectorAll("#modelTier button").forEach((b) => b.classList.toggle("on", b.dataset.tier === state.tier));
+  }
+  function paintFrame() {
+    document.querySelectorAll("#aspects button").forEach((b) => b.classList.toggle("on", b.dataset.aspect === state.aspect));
+    document.querySelectorAll("#vfit button").forEach((b) => b.classList.toggle("on", b.dataset.fit === state.vfit));
+    const scale = $("#vscale");
+    const vx = $("#vx");
+    const vy = $("#vy");
+    if (scale) scale.value = String(state.vscale || 1);
+    if (vx) vx.value = String(state.vx == null ? 0.5 : state.vx);
+    if (vy) vy.value = String(state.vy == null ? 0.5 : state.vy);
+    const sv = $("#vscaleVal");
+    const xv = $("#vxVal");
+    const yv = $("#vyVal");
+    if (sv) sv.textContent = (+state.vscale || 1).toFixed(1) + "×";
+    if (xv) xv.textContent = placeWord("x", state.vx == null ? 0.5 : state.vx);
+    if (yv) yv.textContent = placeWord("y", state.vy == null ? 0.5 : state.vy);
+  }
+  const tapMarks = [];
+  function b64ToF32(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Float32Array(bytes.buffer);
+  }
+  function ensureTapLines() {
+    if (state.lines && state.lines.length) return true;
+    const text = $("#lyrics").value.trim();
+    if (!text) return false;
+    state.lines = LS().linesFromText(text, state.length || 20);
+    state.lines.forEach((ln) => { ln.low_confidence = true; ln.confidence = 0; });
+    paintLines();
+    return true;
+  }
+  function applyTapMarks() {
+    const len = state.length || 20;
+    state.lines.forEach((ln, i) => {
+      const words = ln.words || [];
+      if (!words.length || i >= tapMarks.length) return;
+      const start = tapMarks[i];
+      const next = i + 1 < tapMarks.length ? tapMarks[i + 1] : Math.min(len, start + Math.max(0.35, 0.28 * words.length));
+      const span = Math.max(0.02 * words.length, next - start);
+      words.forEach((w, k) => {
+        const a = start + span * k / words.length;
+        const b = start + span * (k + 1) / words.length;
+        w.start = Math.round(Math.min(a, len - 0.02) * 1000) / 1000;
+        w.end = Math.round(Math.min(len, Math.max(w.start + 0.02, b)) * 1000) / 1000;
+        w.low_confidence = false;
+        w.confidence = 1;
+      });
+      ln.low_confidence = false;
+      ln.confidence = 1;
+    });
+    paintLines();
+    if (state.screen === "time") paintEditor();
+    draw(state.t || 0);
+    const now = $("#tapNow");
+    if (now) now.textContent = "Marked " + tapMarks.length + "/" + state.lines.length;
+  }
+  $("#modelTier").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    state.tier = b.dataset.tier === "accurate" ? "accurate" : "fast";
+    paintTier();
+    if (window.Luciel && Luciel.setTier) Luciel.setTier(state.tier);
+    $("#modelText").textContent = state.tier === "accurate"
+      ? "Accurate is the larger English model, about 190 MB, downloaded once."
+      : "Fast is the tiny English model, about 75 MB, downloaded once.";
+  };
+  $("#aspects").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    state.aspect = b.dataset.aspect;
+    paintFrame();
+    saveEditor();
+    sizePreview();
+    draw(state.t || 1);
+    updatePreviewChrome();
+  };
+  $("#vfit").onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    state.vfit = b.dataset.fit;
+    paintFrame();
+    saveEditor();
+    draw(state.t || 1);
+  };
+  $("#vscale").oninput = () => {
+    state.vscale = +$("#vscale").value;
+    paintFrame();
+    saveEditor();
+    draw(state.t || 1);
+  };
+  $("#vx").oninput = () => {
+    state.vx = +$("#vx").value;
+    paintFrame();
+    saveEditor();
+    draw(state.t || 1);
+  };
+  $("#vy").oninput = () => {
+    state.vy = +$("#vy").value;
+    paintFrame();
+    saveEditor();
+    draw(state.t || 1);
+  };
+  $("#tapHear").onclick = () => {
+    tapMarks.length = 0;
+    if (!ensureTapLines()) { $("#tapNow").textContent = "Paste the lyrics first."; return; }
+    $("#tapNow").textContent = "Tap Mark as each line starts.";
+    play(false);
+  };
+  $("#tapMark").onclick = () => {
+    if (!ensureTapLines()) { $("#tapNow").textContent = "Paste the lyrics first."; return; }
+    const t = Math.max(0, state.t || 0);
+    if (tapMarks.length && t < tapMarks[tapMarks.length - 1]) return;
+    if (tapMarks.length >= state.lines.length) return;
+    tapMarks.push(Math.round(t * 1000) / 1000);
+    applyTapMarks();
+  };
   $("#getModel").onclick = () => {
-    if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(); }
+    if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(state.tier); }
     else $("#modelText").textContent = "The speech model downloads inside the Android app.";
   };
   $("#syncBtn").onclick = () => {
     if (!window.Luciel) { applyWords(DEMO.flatMap((l) => l.words)); return; }
     let info = {};
     try { info = JSON.parse(Luciel.info()); } catch (e) {}
+    const lyrics = $("#lyrics").value.trim();
+    if (lyrics && Luciel.alignLyrics) {
+      mascot("confused");
+      $("#syncStatus").textContent = info.aligner ? "Aligning the lyrics to the vocal…" : "Downloading the aligner, then lining up the words…";
+      Luciel.alignLyrics(state.start, state.length, lyrics);
+      return;
+    }
     if (!info.whisper) {
       $("#syncStatus").textContent = "Speech recognition isn't in this build.";
       mascot("crying");
@@ -2534,12 +2762,12 @@
       $("#syncStatus").textContent = "The speech model isn't on this phone yet. Downloading it now — tap Sync again when it finishes.";
       $("#modelText").textContent = "Downloading the speech model…";
       mascot("confused");
-      Luciel.downloadModel();
+      Luciel.downloadModel(state.tier);
       return;
     }
     mascot("confused");
     $("#syncStatus").textContent = "Listening to the section…";
-    Luciel.transcribe(state.start, state.length);
+    Luciel.transcribe(state.start, state.length, lyrics);
   };
   $("#bgModes").onclick = (e) => {
     const b = e.target.closest("button"); if (!b) return;
@@ -2547,7 +2775,7 @@
     document.querySelectorAll("#bgModes button").forEach((x) => x.classList.toggle("on", x === b));
     if (state.bg === "video" && !state.videoEl) {
       const status = $("#clipStatus");
-      if (status && !state.videoName) status.textContent = "Upload a video to use this background.";
+      if (status && !state.videoName) status.textContent = "Upload the MP4 on Video.";
     }
     saveEditor();
     draw(state.t || 1);
@@ -2589,20 +2817,21 @@
   async function render() {
     if (!window.Luciel) { $("#renderStatus").textContent = "Rendering runs in the Android app."; return; }
     const q = QUALITY[state.quality];
+    const out = outputSize(q);
     mascot("music");
     $("#renderStatus").textContent = "Drawing frames…";
     $("#shareBtn").hidden = true;
     const started = Luciel.beginRender(JSON.stringify({
-      width: q.w, height: q.h, fps: q.fps, bitrate: q.bitrate, start: state.start, length: state.length,
+      width: out.w, height: out.h, fps: q.fps, bitrate: q.bitrate, start: state.start, length: state.length,
     }));
     if (started && started !== "ok") { $("#renderStatus").textContent = started; mascot("crying"); return; }
     const canvas = document.createElement("canvas");
     const rs = new LLStage.Stage(canvas);
-    rs.setSize(q.w, q.h, 1080);
+    rs.setSize(out.w, out.h, out.w);
     const slice = audioSlice();
     if (slice) rs.setAudio(slice, 8000);
     const frames = Math.round(state.length * q.fps);
-    const rowBytes = q.w * 4;
+    const rowBytes = out.w * 4;
     const rows = Math.max(8, Math.min(32, Math.floor(180000 / rowBytes)));
     for (let f = 0; f < frames; f++) {
       const t = f / q.fps;
@@ -2612,11 +2841,11 @@
           await seekTo(state.videoEl, src.in);
         }
       }
-      rs.setScene(scene(t));
+      rs.setScene(scene(t, out));
       rs.drawFrame(t);
-      const data = rs.cv.getContext("2d").getImageData(0, 0, q.w, q.h).data;
-      for (let y = 0; y < q.h; y += rows) {
-        const rh = Math.min(rows, q.h - y);
+      const data = rs.cv.getContext("2d").getImageData(0, 0, out.w, out.h).data;
+      for (let y = 0; y < out.h; y += rows) {
+        const rh = Math.min(rows, out.h - y);
         const slice = data.subarray(y * rowBytes, (y + rh) * rowBytes);
         let bin = "";
         const step = 3 * 4096;
@@ -2637,7 +2866,7 @@
 
   window.LucielApp = {
     back() {
-      const order = ["track", "sync", "look", "time", "render"];
+      const order = ["track", "sync", "video", "look", "time", "render"];
       const i = order.indexOf(state.screen);
       if (i > 0) { show(order[i - 1]); return true; }
       return false;
@@ -2673,11 +2902,39 @@
           mascot("happy");
         }
         else $("#modelText").textContent = "Downloading… " + Math.round((msg.progress || 0) * 100) + "%";
+      } else if (msg.type === "sync" && msg.phase === "logits") {
+        const flat = b64ToF32(msg.logits || "");
+        const res = LS().alignFromLogits(flat, msg.frames, msg.duration || state.length, $("#lyrics").value);
+        state.hyp = res.words || [];
+        if (!res.lines || !res.lines.length) {
+          $("#syncStatus").textContent = res.error || "Couldn't align these lyrics.";
+          mascot("crying");
+        } else {
+          state.lines = res.lines;
+          paintLines();
+          const low = res.lines.filter((ln) => ln.low_confidence).length;
+          $("#syncStatus").textContent = low
+            ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
+            : res.lines.length + " lines aligned.";
+          mascot(res.ok && !low ? "happy" : "confused");
+          if (!low) show("video");
+          draw(Math.min(1.2, Math.max(0.2, state.length - 0.05)));
+        }
       } else if (msg.type === "sync" && msg.phase === "words") {
-        const words = msg.words.map((w) => ({ text: w.text, start: w.start, end: w.end }));
+        const words = msg.words.map((w) => ({ text: w.text, start: w.start, end: w.end, confidence: w.confidence }));
         applyWords(words);
       } else if (msg.type === "sync" && msg.error) {
-        $("#syncStatus").textContent = msg.error; mascot("crying");
+        const lyrics = $("#lyrics").value.trim();
+        if (lyrics && window.Luciel && Luciel.transcribe && /align/i.test(msg.error || "")) {
+          $("#syncStatus").textContent = "Aligner unavailable. Matching the words that were heard…";
+          Luciel.transcribe(state.start, state.length, lyrics);
+        } else {
+          $("#syncStatus").textContent = msg.error; mascot("crying");
+        }
+      } else if (msg.type === "sync" && msg.phase === "download") {
+        $("#syncStatus").textContent = "Downloading the lyric aligner…";
+      } else if (msg.type === "sync" && msg.phase === "align") {
+        $("#syncStatus").textContent = "Aligning the lyrics to the vocal…";
       } else if (msg.type === "sync") {
         $("#syncStatus").textContent = "Listening…";
       } else if (msg.type === "video" && msg.phase === "convert") {

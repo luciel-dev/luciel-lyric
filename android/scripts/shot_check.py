@@ -6,14 +6,14 @@ bubbles, and an unhighlighted dock. Bubbles also satisfy a "not a flat color"
 test. This looks at the PNG itself.
 
 Usage: shot_check.py <png> <tab> <theme>
-tab is track, sync, look, time, or render.
+tab is track, sync, video, look, time, or render.
 """
 import pathlib
 import struct
 import sys
 import zlib
 
-TAB = {"track": 0, "sync": 1, "look": 2, "time": 3, "render": 4}
+TAB = {"track": 0, "sync": 1, "video": 2, "look": 3, "time": 4, "render": 5}
 
 
 def decode(path):
@@ -98,13 +98,14 @@ def main():
     idx = TAB[tab]
     y0, y1 = int(h * 0.78), int(h * 0.93)
     x0, x1 = int(w * 0.05), int(w * 0.95)
-    slots = [0, 0, 0, 0, 0]
+    nslot = len(TAB)
+    slots = [0] * nslot
     span = max(1, x1 - x0)
     for y in range(y0, y1, 2):
         for x in range(x0, x1, 2):
             if active(theme, *pix(rows, n, x, y)):
-                slots[min(4, int((x - x0) / span * 5))] += 1
-    second = max(slots[i] for i in range(5) if i != idx)
+                slots[min(nslot - 1, int((x - x0) / span * nslot))] += 1
+    second = max(slots[i] for i in range(nslot) if i != idx)
     floor = 180 if theme == "winamp" else 800
     highlight = slots[idx] >= floor and slots[idx] > second * 2.2
     bg = pix(rows, n, 4, h // 2)
