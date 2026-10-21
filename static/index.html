@@ -363,7 +363,6 @@
     </div>
     <div id="videoTl" class="dockline step-off">
       <div class="sublbl">Tracks</div>
-      <div id="atl" class="atl"></div>
       <div class="tlbar">
         <button class="btn ghost small" id="tlSplit" type="button" title="Cut the clip under the playhead (S)">Split</button>
         <button class="btn ghost small" id="tlDelete" type="button" title="Delete the selected clip">Delete</button>
@@ -374,13 +373,14 @@
       <div class="tlscroll" id="tlScroll">
         <div class="tlinner" id="tlInner">
           <div class="tlruler" id="tlRuler"></div>
-          <div class="tltrack" id="tlTrack"></div>
-          <div class="tllyrics" id="tlLyrics" title="Lyrics are read-only on this step"></div>
-          <div class="tllane" id="tlLane" title="Video camera keyframes"></div>
+          <div class="tlrow"><span class="tlname">Video</span><div class="tltrack" id="tlTrack"></div></div>
+          <div class="tlrow"><span class="tlname">Text</span><div class="tltexts" id="tlTexts" title="Extra titles and credits"></div></div>
+          <div class="tlrow"><span class="tlname">Lyrics</span><div class="tllyrics" id="tlLyrics" title="Lyrics are read-only on this step"></div></div>
+          <div class="tlrow"><span class="tlname">Audio</span><div class="tlaudiohost" id="tlAudio" title="Song audio. Choose the 15–30 second section on Render."></div></div>
           <div class="tlhead" id="tlHead"></div>
         </div>
       </div>
-      <div class="muted small" id="tlStatus">Drag a clip to move it. Drag its edges to trim. Lyrics on this track cannot be edited.</div>
+      <div class="muted small" id="tlStatus">One timeline. Drag a clip to move it and its edges to trim it. Lyrics on this track cannot be edited.</div>
     </div>
     <div id="textTl" class="dockline step-off">
       <div class="sublbl">Word times</div>

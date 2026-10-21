@@ -42,11 +42,28 @@
   // ---- LCD readout ----
   const lcd = document.getElementById('lcd'), audioEl = document.getElementById('audio');
   const pad = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
+  function setMarquee(text) {
+    const span = document.getElementById('lcdTitle');
+    span.dataset.full = text;
+    span.replaceChildren();
+    const a = document.createElement('em');
+    a.textContent = text;
+    span.appendChild(a);
+    const box = span.parentElement;
+    const tooWide = () => a.scrollWidth > box.clientWidth + 2;
+    span.classList.remove('scrolling');
+    if (tooWide()) {
+      const b = document.createElement('em');
+      b.textContent = text;
+      b.setAttribute('aria-hidden', 'true');
+      span.appendChild(b);
+      span.classList.add('scrolling');
+    }
+  }
   function lcdText() {
     if (typeof S === 'undefined' || !S.audio) return;
     const name = (S.audio.name || 'track').replace(/\.[^.]+$/, '');
-    document.getElementById('lcdTitle').textContent =
-      `${name.toUpperCase()}  ***  CLIP ${pad(S.start)} - ${pad(Math.min(S.audio.duration, S.start + S.len))} (${S.len}s)  ***  LUCIEL LYRIC`;
+    setMarquee(`${name.toUpperCase()}  ***  CLIP ${pad(S.start)} - ${pad(Math.min(S.audio.duration, S.start + S.len))} (${S.len}s)  ***  LUCIEL LYRIC`);
     document.getElementById('lcdKbps').textContent = pad(S.audio.duration).replace(/\.\d$/, '') + ' total';
     document.getElementById('lcdClip').textContent = `clip ${S.len}s`;
   }

@@ -30,8 +30,9 @@ animation-timeline-js 2.3.5
   https://github.com/ievgennaida/animation-timeline-control
   Files: static/vendor/animation-timeline/animation-timeline.min.js
          static/vendor/animation-timeline/LICENSE
-  Used on the Video step as the multitrack timeline (video, extra text, playhead)
-  with snapping. The lyric row on that timeline is read-only.
+  Vendored for the video multitrack model (groups, snapping, a read-only lyric row).
+  The page shows one DOM timeline — video, extra text, read-only lyrics, and audio —
+  so this canvas widget is not mounted on top of a second clip strip.
 
 Not included
 ------------

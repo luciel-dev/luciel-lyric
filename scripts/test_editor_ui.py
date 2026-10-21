@@ -44,9 +44,38 @@ def style_json(page):
     return page.evaluate("() => JSON.stringify(ED.state().styleOv)")
 
 
+def lyric_lines(page):
+    return page.evaluate("() => S.lines.map(ln => ln.words.map(w => w.text).join(' '))")
+
+
 def overflow(page):
     return page.evaluate("""() => {
       const bad = [];
+      const step1 = document.querySelector('#step1');
+      if (step1 && !step1.classList.contains('step-off')) {
+        const box = step1.querySelector('.lcd-marquee');
+        const span = box && box.querySelector('span');
+        const em = span && span.querySelector('em');
+        if (!box || !span || !span.dataset.full || !em || !em.firstChild) bad.push('LCD title missing');
+        else {
+          const prevAnim = span.style.animation;
+          const prevPad = span.style.paddingLeft;
+          span.style.animation = 'none';
+          span.style.transform = 'none';
+          const range = document.createRange();
+          const n = Math.min(12, em.firstChild.textContent.length);
+          range.setStart(em.firstChild, 0);
+          range.setEnd(em.firstChild, n);
+          const r = range.getBoundingClientRect();
+          const b = box.getBoundingClientRect();
+          const startVisible = r.width > 0 && r.left >= b.left - 1 && r.left < b.right - 4;
+          let fits = true;
+          if (!span.classList.contains('scrolling')) fits = em.getBoundingClientRect().right <= b.right + 2;
+          span.style.animation = prevAnim;
+          span.style.paddingLeft = prevPad;
+          if (!startVisible || !fits) bad.push('LCD title is cut off');
+        }
+      }
       for (const el of document.querySelectorAll('body *')) {
         if (el.closest('.step-off, .hidden, #mascot, .bgfx, #helpOverlay, #tour, .tlscroll, #lines, .rotimes, .presets, .lcd-marquee')) continue;
         const s = getComputedStyle(el);
@@ -94,6 +123,12 @@ def main():
         page.fill("#lyricsIn", LYRICS)
         page.click("#syncBtn")
         page.wait_for_function("() => S.timingLock === true && S.lines.length >= 1", timeout=180000)
+        typed = [ln.strip() for ln in LYRICS.splitlines() if ln.strip()]
+        assert lyric_lines(page) == typed, lyric_lines(page)
+        page.evaluate("() => { const t = +S.lines[0].words[0].start + 0.05; ED.seek(t); updatePreview(t); }")
+        preview = " ".join(page.locator("#pvLine").inner_text().split())
+        for word in typed[0].split():
+            assert word in preview, (word, preview)
         before = times(page)
         assert before and before[0], before
         words = page.locator("#lines input.wt")
@@ -117,9 +152,19 @@ def main():
         assert page.evaluate("() => S.timingLock === true")
         locked_text = page.locator("#lockToggle").inner_text()
         assert "locked" in locked_text.lower(), locked_text
+        page.evaluate("""(typed) => {
+          const rows = typed.map(line => line.split(/\\s+/));
+          S.lines.forEach((ln, li) => ln.words.forEach((w, wi) => { if (rows[li] && rows[li][wi] != null) w.text = rows[li][wi]; }));
+          renderLines();
+        }""", typed)
+        assert lyric_lines(page) == typed
 
         page.click("#next2")
         page.wait_for_selector("#step3:not(.step-off)")
+        assert page.locator("#atl").count() == 0
+        assert page.locator("#videoTl .tlscroll").count() == 1
+        for name in ("Video", "Text", "Lyrics", "Audio"):
+            assert page.locator("#videoTl .tlname", has_text=name).count() == 1
         page.set_input_files("#bgVideoFile", str(MP4))
         page.wait_for_function("() => ED.clipCount() > 0 && S.bgMode === 'video'", timeout=60000)
         page.wait_for_function("() => document.querySelector('#vidHandle').classList.contains('on')", timeout=20000)
@@ -194,6 +239,26 @@ def main():
             lyric.click()
             assert lines_json(page) == lj
 
+        page.evaluate("() => LCFlow.show(1)")
+        page.click("#themePick button[data-theme='winamp']")
+        caught = page.evaluate("""() => {
+          const span = document.querySelector('#lcdTitle');
+          const prev = span.style.paddingLeft;
+          span.style.paddingLeft = '100%';
+          span.style.animation = 'none';
+          const box = span.parentElement;
+          const em = span.querySelector('em');
+          const range = document.createRange();
+          range.setStart(em.firstChild, 0);
+          range.setEnd(em.firstChild, Math.min(12, em.firstChild.textContent.length));
+          const r = range.getBoundingClientRect();
+          const b = box.getBoundingClientRect();
+          const cut = !(r.width > 0 && r.left >= b.left - 1 && r.left < b.right - 4);
+          span.style.paddingLeft = prev;
+          span.style.animation = '';
+          return cut;
+        }""")
+        assert caught, "overflow check did not catch a clipped LCD title"
         leaks = []
         for step, label in ((1, "step1"), (2, "step2_lock"), (3, "step3_handles"), (4, "step4"), (5, "step5")):
             page.evaluate(f"() => LCFlow.show({step})")

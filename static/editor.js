@@ -523,12 +523,13 @@
   }
   let tlDrag = null;
   function tlTime(e) {
-    const r = $('#tlInner').getBoundingClientRect();
+    const track = $('#tlTrack') || $('#tlInner');
+    const r = track.getBoundingClientRect();
     return Math.max(0, (e.clientX - r.left) / E.tlPps);
   }
   function tlHead() {
     const head = $('#tlHead');
-    if (head) head.style.left = (E.t * E.tlPps) + 'px';
+    if (head) head.style.left = (54 + E.t * E.tlPps) + 'px';
   }
   function tlRender() {
     const inner = $('#tlInner'); if (!inner) return;
@@ -545,7 +546,21 @@
       const bg = c.thumbs ? `background-image:url(${c.thumbs});background-size:auto 100%;background-repeat:repeat-x;` : '';
       return `<div class="tlclip${i === E.selClip ? ' sel' : ''}" data-i="${i}" style="left:${c.start * pps}px;width:${Math.max(24, d * pps)}px;${bg}"><i class="edge in" data-edge="in"></i><span class="nm">${esc(c.name || 'clip')}</span><i class="edge out" data-edge="out"></i></div>`;
     }).join('');
-    $('#tlLane').innerHTML = E.zoom.keys.map((k, i) => `<i class="tlkf${i === E.sel ? ' sel' : ''}" data-i="${i}" style="left:${k.t * pps}px" title="${k.t.toFixed(2)}s ×${k.z.toFixed(2)}"></i>`).join('');
+    const lane = $('#tlLane');
+    if (lane) lane.innerHTML = E.zoom.keys.map((k, i) => `<i class="tlkf${i === E.sel ? ' sel' : ''}" data-i="${i}" style="left:${k.t * pps}px" title="${k.t.toFixed(2)}s ×${k.z.toFixed(2)}"></i>`).join('');
+    const texts = $('#tlTexts');
+    if (texts) {
+      texts.innerHTML = (E.overlays || []).map(o => {
+        const a = +o.start || 0;
+        const b = Math.max(a + 0.1, +o.end || 0);
+        return `<div class="tlov" style="left:${a * pps}px;width:${Math.max(18, (b - a) * pps)}px" title="${esc(o.text)}"><span>${esc(o.text)}</span></div>`;
+      }).join('');
+    }
+    const audioLane = $('#tlAudio');
+    if (audioLane) {
+      const dur = Math.max(S.len || 20, E.clips.reduce((m, c) => Math.max(m, c.start + clipSpan(c)), 0));
+      audioLane.innerHTML = `<div class="tlaudio" style="width:${Math.max(24, dur * pps)}px"></div>`;
+    }
     const lyricLane = $('#tlLyrics');
     if (lyricLane) {
       lyricLane.innerHTML = (S.lines || []).map((ln, i) => {
