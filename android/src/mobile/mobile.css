@@ -127,7 +127,7 @@ button { cursor: pointer; }
 img, canvas, video { max-width: 100%; }
 img { display: block; }
 
-.bgfx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bgfx { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .bgfx i { position: absolute; display: block; }
 .app {
   position: relative;
@@ -339,10 +339,14 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
   min-height: 210px;
   max-height: 40vh;
   max-width: 100%;
+  overflow: hidden;
 }
 .previewpin {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -357,8 +361,10 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
 .previewpin.stuck {
   position: fixed;
   top: var(--sys-top);
-  left: 8px;
   right: 8px;
+  bottom: auto;
+  left: 8px;
+  width: auto;
   height: 38vh;
   max-height: 40vh;
 }
@@ -422,7 +428,10 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
 }
 .tlscroll {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
@@ -457,7 +466,7 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
   box-sizing: border-box;
 }
 .vclip.on, .lblock.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.vclip canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.vclip canvas { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; }
 .trim {
   position: absolute;
   top: 0;
@@ -807,7 +816,10 @@ html[data-theme="aero"] .themes button[data-theme="aero"],
 [data-theme="y2k"] .bgfx::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background:
     linear-gradient(90deg, rgba(226, 221, 208, .04) 1px, transparent 1px) 0 0 / 96px 96px,
     linear-gradient(rgba(226, 221, 208, .04) 1px, transparent 1px) 0 0 / 96px 96px;
