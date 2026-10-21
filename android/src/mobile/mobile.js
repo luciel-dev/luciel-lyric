@@ -161,30 +161,59 @@
     }
     return false;
   }
+  function labelProbe(label) {
+    const cs = getComputedStyle(label);
+    const probe = document.createElement("span");
+    probe.textContent = (label.textContent || "").trim();
+    probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;font:" + cs.font + ";letter-spacing:" + cs.letterSpacing + ";text-transform:" + cs.textTransform + ";";
+    document.body.appendChild(probe);
+    const rect = probe.getBoundingClientRect();
+    probe.remove();
+    return { w: rect.width, h: rect.height };
+  }
   function labelOverflow(btn) {
     const label = btn.querySelector(".docklabel") || btn;
-    if (btn.clientWidth < 2 || label.clientWidth < 2) return false;
-    // The button's own scrollWidth stays larger than its clientWidth in the
-    // Android WebView even when the label fits, so the label is what we measure.
+    if (btn.clientWidth < 2) return false;
+    const box = contentBox(btn);
+    const innerW = box.right - box.left;
+    const innerH = box.bottom - box.top;
+    if (innerW < 4 || innerH < 4) return true;
+    const probe = labelProbe(label);
+    const midX = (box.left + box.right) / 2;
+    const midY = (box.top + box.bottom) / 2;
+    const placed = {
+      left: midX - probe.w / 2,
+      right: midX + probe.w / 2,
+      top: midY - probe.h / 2,
+      bottom: midY + probe.h / 2,
+    };
     const scrollBad = label.scrollWidth > label.clientWidth + 2 || label.scrollHeight > label.clientHeight + 2;
     const text = textBounds(label);
-    if (!text) return scrollBad;
-    const box = contentBox(btn);
-    const outside = text.left < box.left - 1 || text.right > box.right + 1
+    const outside = !text || text.left < box.left - 1 || text.right > box.right + 1
       || text.top < box.top - 1 || text.bottom > box.bottom + 1;
-    return scrollBad || outside || curveClips(btn, text);
+    const probeBad = placed.left < box.left - 0.5 || placed.right > box.right + 0.5
+      || placed.top < box.top - 0.5 || placed.bottom > box.bottom + 0.5;
+    // WebView can report scrollWidth past clientWidth, or a clipped range box,
+    // after the glyphs already fit. Require the laid-out text and the probe.
+    return probeBad || curveClips(btn, placed) || (scrollBad && outside);
+  }
+  function applyDockFit(buttons, fit) {
+    const tz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tz")) || 1;
+    buttons.forEach((b) => {
+      const fs = parseFloat(getComputedStyle(b).getPropertyValue("--fs")) || 11;
+      b.style.letterSpacing = "0px";
+      b.style.setProperty("--fit", String(fit));
+      b.style.fontSize = (fs * tz * fit) + "px";
+    });
   }
   function fitDock() {
     const buttons = [...document.querySelectorAll("#dock button")];
-    buttons.forEach((b) => {
-      b.style.letterSpacing = "0px";
-      b.style.setProperty("--fit", "1");
-    });
+    applyDockFit(buttons, 1);
     let fit = 1;
     let guard = 0;
     while (guard++ < 20 && fit > 0.46 && buttons.some(labelOverflow)) {
       fit = Math.round((fit - 0.03) * 100) / 100;
-      buttons.forEach((b) => b.style.setProperty("--fit", String(fit)));
+      applyDockFit(buttons, fit);
     }
   }
   function lineEdits() {
@@ -285,6 +314,8 @@
     const id = el.id ? "#" + el.id : "";
     let cls = "";
     if (typeof el.className === "string" && el.className.trim()) cls = "." + el.className.trim().split(/\s+/).slice(0, 2).join(".");
+    const dockLabel = el.querySelector && el.querySelector(".docklabel");
+    if (dockLabel && dockLabel.textContent) return "dock-" + dockLabel.textContent.trim();
     return el.tagName.toLowerCase() + id + cls;
   }
   function pageWide() {
