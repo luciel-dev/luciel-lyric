@@ -68,6 +68,8 @@
     else {
       const timeHost = document.getElementById("pin-time");
       if (timeHost) { timeHost.style.height = ""; timeHost.style.maxHeight = ""; }
+      document.documentElement.style.removeProperty("--pin-h");
+      if (id === "look" || id === "render") fitPinClear();
     }
     updatePreviewChrome();
   }
@@ -107,7 +109,7 @@
       ".screen.on .colors label", "#previewTime", "#previewMeta"
     ].join(", ");
     document.querySelectorAll(sel).forEach((el) => {
-      if (el.closest("#dock") || el.clientWidth < 2) return;
+      if (el.closest("#dock") || el.closest(".tlactions") || el.clientWidth < 2) return;
       el.style.letterSpacing = "";
       el.style.setProperty("--fit", "1");
       const floor = el.matches(".themes button, .brand, .tag") ? 0.4 : 0.5;
@@ -121,6 +123,7 @@
     });
     fitThemes();
     fitDock();
+    fitActions();
     fitLines();
   }
   function visualTooWide(el) {
@@ -180,12 +183,13 @@
   function curveClips(btn, text) {
     const rect = btn.getBoundingClientRect();
     const cs = getComputedStyle(btn);
+    const maxR = Math.min(rect.width, rect.height) / 2;
     const radii = [
       parseFloat(cs.borderTopLeftRadius) || 0,
       parseFloat(cs.borderTopRightRadius) || 0,
       parseFloat(cs.borderBottomRightRadius) || 0,
       parseFloat(cs.borderBottomLeftRadius) || 0,
-    ];
+    ].map((r) => Math.min(r, maxR));
     const centers = [
       [rect.left + radii[0], rect.top + radii[0]],
       [rect.right - radii[1], rect.top + radii[1]],
@@ -301,6 +305,17 @@
       applyDockFit(buttons, fit);
     }
   }
+  function fitActions() {
+    const buttons = [...document.querySelectorAll("#screen-time .tlactions button")];
+    if (buttons.length !== 5) return;
+    applyDockFit(buttons, 1);
+    let fit = 1;
+    let guard = 0;
+    while (guard++ < 28 && fit > 0.28 && buttons.some(labelOverflow)) {
+      fit = Math.round((fit - 0.03) * 100) / 100;
+      applyDockFit(buttons, fit);
+    }
+  }
   function lineEdits() {
     return [...document.querySelectorAll(".screen.on #lineList .lineedit")].filter((el) => el.clientWidth >= 8);
   }
@@ -331,6 +346,60 @@
     if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
     const sizes = buttons.map((b) => getComputedStyle(b.querySelector(".docklabel") || b).fontSize);
     return sizes.every((size) => size === sizes[0]);
+  }
+  function actionsFit() {
+    if (state.screen !== "time") return true;
+    const buttons = [...document.querySelectorAll("#screen-time .tlactions button")];
+    if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
+    const sizes = buttons.map((b) => getComputedStyle(b).fontSize);
+    return sizes.every((size) => size === sizes[0]);
+  }
+  function dockButtonsMiss() {
+    const buttons = [...document.querySelectorAll("#dock button")];
+    if (buttons.length !== 5) return "count";
+    const bad = [];
+    buttons.forEach((btn) => {
+      const r = btn.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) { bad.push((btn.dataset.screen || "?") + ":size"); return; }
+      const x = Math.round(Math.min(window.innerWidth - 2, Math.max(2, r.left + r.width / 2)));
+      const y = Math.round(Math.min(window.innerHeight - 2, Math.max(2, r.top + r.height / 2)));
+      const hit = document.elementFromPoint(x, y);
+      if (hit !== btn) bad.push((btn.dataset.screen || "?") + ":" + (hit ? (hit.id || hit.className || hit.tagName) : "none"));
+    });
+    return bad.join("/");
+  }
+  function pinCoversDock() {
+    const pin = document.getElementById("previewPin");
+    const dock = document.querySelector(".dock");
+    if (!pin || !dock) return false;
+    const pr = pin.getBoundingClientRect();
+    const dr = dock.getBoundingClientRect();
+    if (pr.width < 2 || pr.height < 2) return false;
+    return pr.bottom > dr.top + 1 && pr.top < dr.bottom - 1 && pr.left < dr.right && pr.right > dr.left;
+  }
+  function dockHitOk() {
+    const bad = [];
+    const miss = dockButtonsMiss();
+    if (miss) bad.push(miss);
+    if (pinCoversDock()) bad.push("overlap");
+    const sc = document.scrollingElement || document.documentElement;
+    const saved = sc.scrollTop;
+    const max = Math.max(sc.scrollHeight, document.documentElement.scrollHeight, document.body.scrollHeight);
+    if (max > 8) {
+      sc.scrollTop = max;
+      document.documentElement.scrollTop = max;
+      document.body.scrollTop = max;
+      pinPreview();
+      const stuckMiss = dockButtonsMiss();
+      if (stuckMiss) bad.push("stuck:" + stuckMiss);
+      if (pinCoversDock()) bad.push("stuckoverlap");
+      sc.scrollTop = saved;
+      document.documentElement.scrollTop = saved;
+      document.body.scrollTop = saved;
+      pinPreview();
+    }
+    state.dockHitWhy = bad.join("/");
+    return bad.length === 0;
   }
   function placeSyncLines() {
     const head = document.getElementById("linesHead");
@@ -831,7 +900,10 @@
     sizePreview();
     fitAll();
     if (logical === "time") fitTimeFold();
+    else if (logical === "look" || logical === "render") fitPinClear();
     dropOverflowMeta();
+    const hitOk = dockHitOk() ? 1 : 0;
+    const actionOk = actionsFit() ? 1 : 0;
     const wrapHits = midWordWraps();
     const ellHits = ellipsisHits();
     const headVisible = headingClear() ? 1 : 0;
@@ -843,6 +915,8 @@
     if (!headVisible) flags.push("headclear" + (state.headWhy ? ":" + state.headWhy : ""));
     if (!foldOk) flags.push("fold");
     if (!filmOk) flags.push("film");
+    if (!hitOk) flags.push("dockhit" + (state.dockHitWhy ? ":" + state.dockHitWhy : ""));
+    if (!actionOk) flags.push("actionfit");
     const wide = pageWide();
     const box = textWide();
     const clear = clearsDock() ? 1 : 0;
@@ -940,6 +1014,8 @@
       "headclear=" + headVisible,
       "fold=" + foldOk,
       "film=" + filmOk,
+      "dockhit=" + hitOk,
+      "actionfit=" + actionOk,
       "bgvideo=" + (checks.bgvideo || 0),
       "split=" + (checks.split || 0),
       "trim=" + (checks.trim || 0),
@@ -1193,7 +1269,7 @@
     cv.width = cssW;
     cv.height = 64;
     cv.style.width = cssW + "px";
-    cv.style.height = "20px";
+    cv.style.height = "16px";
     const ctx = cv.getContext("2d");
     const w = cv.width, h = cv.height;
     ctx.clearRect(0, 0, w, h);
@@ -1372,14 +1448,61 @@
     sc.scrollTop += shift;
     pinPreview();
   }
+  function pinAnchor() {
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const header = document.querySelector(".top");
+    if (!header || getComputedStyle(header).display === "none") return sys;
+    const r = header.getBoundingClientRect();
+    if (r.height > 8 && r.bottom > sys + 8) return Math.ceil(r.bottom);
+    return sys;
+  }
   function pinPreview() {
     const pin = $("#previewPin");
     const host = pin && pin.parentElement;
     if (!pin || !host || !host.classList.contains("pinhost")) return;
-    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const anchor = pinAnchor();
     const top = host.getBoundingClientRect().top;
-    pin.classList.toggle("stuck", top < sys - 1);
+    const stuck = top < anchor - 1;
+    pin.classList.toggle("stuck", stuck);
+    document.documentElement.style.setProperty("--pin-top", anchor + "px");
     sizePreview();
+  }
+  function fitPinClear() {
+    const pin = $("#previewPin");
+    const host = pin && pin.parentElement;
+    const dock = document.querySelector(".dock");
+    if (!host || !host.classList.contains("pinhost") || !dock || state.screen === "time") return;
+    const lead = document.querySelector(".screen.on .screenhead .lead");
+    if (lead) lead.style.display = "";
+    const tighten = () => {
+      host.style.height = "";
+      host.style.maxHeight = "";
+      pin.classList.remove("stuck");
+      sizePreview();
+      const sc = document.scrollingElement || document.documentElement;
+      let guard = 0;
+      while (guard++ < 16) {
+        const hostDocTop = host.getBoundingClientRect().top + sc.scrollTop;
+        const limit = dock.getBoundingClientRect().top - 8;
+        const bottomAtRest = hostDocTop + host.getBoundingClientRect().height;
+        if (bottomAtRest <= limit) break;
+        const h = host.getBoundingClientRect().height;
+        const next = Math.floor(h - (bottomAtRest - limit) - 1);
+        if (!(next < h - 0.5)) break;
+        const clamped = Math.max(48, next);
+        host.style.height = clamped + "px";
+        host.style.maxHeight = clamped + "px";
+        sizePreview();
+        if (clamped <= 48) break;
+      }
+    };
+    tighten();
+    // A long lead can shove the preview into the dock. Drop it so the picture
+    // keeps a real stage and the dock stays clear.
+    if (lead && host.getBoundingClientRect().height < 120) {
+      lead.style.display = "none";
+      tighten();
+    }
   }
   function sizePreview() {
     const pin = $("#previewPin");
@@ -1388,10 +1511,17 @@
     const host = pin.parentElement && pin.parentElement.classList.contains("pinhost") ? pin.parentElement : null;
     const stuck = pin.classList.contains("stuck");
     const fitted = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pin-h")) || 0;
-    if (stuck && fitted > 48) {
-      pin.style.height = fitted + "px";
-      pin.style.maxHeight = fitted + "px";
-    } else if (!stuck) {
+    if (stuck) {
+      const dockEl = document.querySelector(".dock");
+      const anchor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pin-top")) || 0;
+      const dockTop = dockEl ? dockEl.getBoundingClientRect().top : window.innerHeight;
+      const cap = Math.max(48, dockTop - anchor - 8);
+      const vh = window.innerHeight * 0.3;
+      const want = fitted > 48 ? fitted : vh;
+      const used = Math.max(48, Math.min(want, cap, window.innerHeight * 0.32));
+      pin.style.height = Math.round(used) + "px";
+      pin.style.maxHeight = Math.round(used) + "px";
+    } else {
       pin.style.height = "";
       pin.style.maxHeight = "";
     }
@@ -1455,7 +1585,11 @@
     return why.length === 0;
   }
   window.addEventListener("scroll", () => { pinPreview(); }, { passive: true });
-  window.addEventListener("resize", () => { sizePreview(); if (state.screen === "time") fitTimeFold(); });
+  window.addEventListener("resize", () => {
+    sizePreview();
+    if (state.screen === "time") fitTimeFold();
+    else if (state.screen === "look" || state.screen === "render") fitPinClear();
+  });
 
   function videoDuration() {
     const v = state.videoEl;
