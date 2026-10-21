@@ -83,6 +83,8 @@ Download these files on any computer:
   * `htdemucs.yaml`
   * `955717e8.safetensors`
 
+**Sync models (desktop 1.4.0)** download the first time you press Sync lyrics. They are not in the installer. Fast, Accurate, and Best, plus the wav2vec2 aligner, land in the user data `models/` folder (next to the app's `data/` when you run from a checkout). A progress bar shows the download. Later syncs work offline. `base.en` stays bundled so the packaged app can still smoke-test with no network.
+
 Then place them like this (also shown in `models/README.txt`):
 ```
 models/faster-whisper-base.en/{config.json, model.bin, tokenizer.json, vocabulary.txt}

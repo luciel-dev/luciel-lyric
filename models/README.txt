@@ -12,3 +12,13 @@ models/
       htdemucs.yaml  955717e8.safetensors
 
 Check with:  python tools/fetch_models.py --check
+
+Desktop 1.4.0 also downloads, on first Sync, into the writable data/models folder (not this
+bundled folder, and not the installer):
+
+  faster-whisper-small/            Fast
+  faster-whisper-medium/           Accurate
+  faster-whisper-distil-large-v3/  Best (default)
+  wav2vec2-base-960h/              forced alignment of typed lyrics (model.onnx, vocab.json)
+
+Those stay on disk and work offline afterwards. Do not commit them.

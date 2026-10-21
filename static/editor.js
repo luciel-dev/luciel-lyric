@@ -514,12 +514,24 @@
     const inner = $('#tlInner'); if (!inner) return;
     if (tlDrag) { tlHead(); return; }
     const pps = E.tlPps;
-    const end = E.clips.reduce((m, c) => Math.max(m, c.start + clipSpan(c)), S.len || 20);
+    const lyricEnd = (S.lines || []).reduce((m, ln) => {
+      const ws = ln.words || [];
+      return ws.length ? Math.max(m, +ws[ws.length - 1].end) : m;
+    }, 0);
+    const end = Math.max(E.clips.reduce((m, c) => Math.max(m, c.start + clipSpan(c)), S.len || 20), lyricEnd);
     const w = Math.max(320, Math.ceil(end) * pps + 24);
     inner.style.width = w + 'px';
     let ruler = '';
     for (let s = 0; s <= Math.ceil(end); s++) ruler += `<i style="left:${s * pps}px">${s}s</i>`;
     $('#tlRuler').innerHTML = ruler;
+    const lane = $('#tlLyrics');
+    if (lane) lane.innerHTML = (S.lines || []).map(ln => {
+      const ws = ln.words || [];
+      if (!ws.length) return '';
+      const a = +ws[0].start, b = +ws[ws.length - 1].end;
+      const label = ws.map(w => w.text).join(' ');
+      return `<button type="button" class="tllyric${ln.low_confidence ? ' low' : ''}" data-t="${a}" style="left:${a * pps}px;width:${Math.max(10, (b - a) * pps)}px" title="${esc(label)}"><span>${esc(label)}</span></button>`;
+    }).join('');
     $('#tlTrack').innerHTML = E.clips.map((c, i) => {
       const d = clipSpan(c);
       const bg = c.thumbs ? `background-image:url(${c.thumbs});background-size:auto 100%;background-repeat:repeat-x;` : '';
@@ -598,6 +610,11 @@
         const kind = e.target.classList.contains('in') ? 'in' : e.target.classList.contains('out') ? 'out' : 'move';
         tlDrag = {kind, i, x0: e.clientX, start: c.start, inn: c.in, out: c.out, dur: c.duration};
         sc.setPointerCapture(e.pointerId); return;
+      }
+      const lyric = e.target.closest('.tllyric');
+      if (lyric) {
+        seek(Math.max(0, Math.min(S.len || 20, +lyric.dataset.t || 0)));
+        return;
       }
       if (e.target.closest('.tllane')) {
         E.t = Math.max(0, Math.min(S.len || 20, tlTime(e)));
@@ -762,6 +779,7 @@
     },
     onFont() { if (!E.stage) return; ST.loadFonts(resolve().style).then(refresh); },
     onAudio() { decodeAudio(); },
+    onLyrics() { if (E.stage) refresh(); else tlRender(); },
     onVideo(m) { addClip(m); },
     outputFps: () => (QUALITY[E.quality] || QUALITY.standard).fps,
     clipCount: () => E.clips.length,

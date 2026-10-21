@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Luciel Lyric · Lyric Video Maker</title>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('lc-theme')||'aero'}catch(e){document.documentElement.dataset.theme='aero'}</script>
+<script>try{var q=new URLSearchParams(location.search);document.documentElement.dataset.theme=q.get('theme')||localStorage.getItem('lc-theme')||'aero'}catch(e){document.documentElement.dataset.theme='aero'}</script>
 <link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/themes.css">
@@ -62,13 +62,39 @@
 
   <section class="card" id="step2">
     <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">2</span> Lyrics sync</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
-    <textarea id="lyricsIn" rows="5" placeholder="Optional: paste the known lyrics (whole song is fine, one line per lyric line). Leave empty to auto-transcribe."></textarea>
-    <div class="row">
-      <div class="field"><span>Model</span><select id="modelIn"></select></div>
-      <label class="check"><input type="checkbox" id="sepIn"> Isolate vocals first (Demucs, slower)</label>
-      <button id="syncBtn" class="btn primary" disabled>✨ Sync lyrics</button>
+    <textarea id="lyricsIn" rows="5" placeholder="Paste the lyrics, one line per lyric line. The whole song is fine. Leave empty to auto-transcribe."></textarea>
+    <div class="syncgrid">
+      <label class="syncfield">
+        <span>Sync model</span>
+        <select id="modelIn" aria-label="Sync model"></select>
+        <small id="modelHint" class="muted"></small>
+      </label>
+      <label class="check sepcheck"><input type="checkbox" id="sepIn"> Isolate vocals first (Demucs)</label>
+      <div class="syncactions">
+        <button id="syncBtn" class="btn primary" disabled>Sync lyrics</button>
+        <button id="tapBtn" class="btn ghost" disabled>Tap to sync</button>
+      </div>
     </div>
-    <div id="syncStatus" class="muted"></div>
+    <div id="dlBar" class="dlbar hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div class="dltrack"><div id="dlFill"></div></div>
+      <span id="dlLabel"></span>
+    </div>
+    <div id="syncStatus" class="syncstatus" role="status"></div>
+    <div id="tapBox" class="tapbox hidden">
+      <div class="tapmodes">
+        <label class="check"><input type="radio" name="tapMode" value="line" checked> Per line</label>
+        <label class="check"><input type="radio" name="tapMode" value="word"> Per word</label>
+        <span id="tapCount" class="muted"></span>
+      </div>
+      <div id="tapCue" class="tapcue">Press play, then tap each line as it starts.</div>
+      <div class="syncactions">
+        <button id="tapHit" class="btn primary" type="button">Tap</button>
+        <button id="tapUndo" class="btn ghost" type="button">Undo</button>
+        <button id="tapRestart" class="btn ghost" type="button">Restart</button>
+        <button id="tapDone" class="btn ghost" type="button">Done</button>
+      </div>
+      <p class="muted small" id="tapHelp">Space or Tap marks the start. Undo removes the last mark. Restart plays the clip from the top.</p>
+    </div>
   </section>
 
   <section class="card hidden" id="step3">
@@ -166,6 +192,7 @@
         <div class="tlscroll" id="tlScroll">
           <div class="tlinner" id="tlInner">
             <div class="tlruler" id="tlRuler"></div>
+            <div class="tllyrics" id="tlLyrics" title="Lyric lines. Amber stripes are low confidence."></div>
             <div class="tltrack" id="tlTrack"></div>
             <div class="tllane" id="tlLane" title="Zoom keyframes"></div>
             <div class="tlhead" id="tlHead"></div>
