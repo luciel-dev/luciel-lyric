@@ -36,7 +36,7 @@ need = {
     "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1"],
     "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
 }[screen]
-need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1"]
+need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "themefit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1"]
 have = set(line.split())
 missing = [tok for tok in need if tok not in have]
 if missing:
@@ -148,8 +148,12 @@ capture() {
     fi
   fi
   out="docs/screenshots/${file}"
+  tab="${file#android-}"
+  tab="${tab%.png}"
+  tab="${tab%-y2k}"
+  tab="${tab%-winamp}"
   blank=1
-  for _try in 1 2 3 4 5 6; do
+  for _try in 1 2 3 4 5 6 7 8; do
     sleep 2
     adb shell screencap -p /sdcard/luciel-shot.png >/dev/null || true
     adb pull /sdcard/luciel-shot.png "${out}" >/dev/null || true
@@ -158,87 +162,12 @@ capture() {
       echo "stale frame for ${file}, retry ${_try}"
       continue
     fi
-    if python3 - "$out" <<'PY'
-import pathlib, struct, sys, zlib
-p = pathlib.Path(sys.argv[1])
-b = p.read_bytes()
-if not b.startswith(b"\x89PNG\r\n\x1a\n") or len(b) < 8000:
-    raise SystemExit(f"bad screenshot {p} ({len(b)} bytes)")
-i, w, h, idat = 8, 0, 0, []
-color = depth = 0
-while i + 8 <= len(b):
-    ln, typ = struct.unpack(">I4s", b[i:i + 8])
-    data = b[i + 8:i + 8 + ln]
-    i += 12 + ln
-    if typ == b"IHDR":
-        w, h, depth, color = struct.unpack(">IIBB", data[:10])
-    elif typ == b"IDAT":
-        idat.append(data)
-    elif typ == b"IEND":
-        break
-if depth != 8 or color not in (2, 6) or not w or not h:
-    raise SystemExit(f"unsupported png {w}x{h} depth={depth} color={color}")
-n = 4 if color == 6 else 3
-raw = zlib.decompress(b"".join(idat))
-stride = w * n
-rows = []
-pos = 0
-prev = bytearray(stride)
-
-def paeth(a, b_, c):
-    pred = a + b_ - c
-    pa, pb, pc = abs(pred - a), abs(pred - b_), abs(pred - c)
-    if pa <= pb and pa <= pc:
-        return a
-    return b_ if pb <= pc else c
-
-for y in range(h):
-    f = raw[pos]
-    row = bytearray(raw[pos + 1:pos + 1 + stride])
-    pos += 1 + stride
-    if f == 1:
-        for x in range(stride):
-            row[x] = (row[x] + (row[x - n] if x >= n else 0)) & 255
-    elif f == 2:
-        for x in range(stride):
-            row[x] = (row[x] + prev[x]) & 255
-    elif f == 3:
-        for x in range(stride):
-            left = row[x - n] if x >= n else 0
-            row[x] = (row[x] + ((left + prev[x]) // 2)) & 255
-    elif f == 4:
-        for x in range(stride):
-            left = row[x - n] if x >= n else 0
-            up = prev[x]
-            ul = prev[x - n] if x >= n else 0
-            row[x] = (row[x] + paeth(left, up, ul)) & 255
-    elif f != 0:
-        raise SystemExit(f"bad filter {f}")
-    prev = row
-    rows.append(row)
-
-def span(y):
-    cols = set()
-    row = rows[y]
-    for x in range(0, w, 3):
-        o = x * n
-        cols.add((row[o] // 8, row[o + 1] // 8, row[o + 2] // 8))
-    return len(cols)
-
-busy = 0
-for y in range(int(h * 0.20), int(h * 0.78)):
-    if span(y) > 8:
-        busy += 1
-print(p, len(b), f"busy={busy}")
-if busy < 40:
-    raise SystemExit(f"empty screen busy={busy}")
-PY
-    then
+    if python3 android/scripts/shot_check.py "${out}" "${tab}" "${theme}"; then
       blank=0
       last_hash="${hash}"
       break
     fi
-    echo "blank frame for ${file}, retry ${_try}"
+    echo "screenshot not ready for ${file}, retry ${_try}"
   done
   if [ "${blank}" != 0 ]; then
     echo "screenshot stayed blank: ${file}"
@@ -247,17 +176,13 @@ PY
 }
 
 audit_matrix
-capture track aero android-track.png
-capture syncshot aero android-sync.png
-capture syncshot y2k android-sync-y2k.png
-capture syncshot winamp android-sync-winamp.png
-capture videocheck aero android-look.png asset:test-clip.mp4
-capture videocheck y2k android-look-y2k.png asset:test-clip.mp4
-capture videocheck winamp android-look-winamp.png asset:test-clip.mp4
-capture time aero android-time.png asset:test-clip.mp4
-capture time y2k android-time-y2k.png asset:test-clip.mp4
-capture time winamp android-time-winamp.png asset:test-clip.mp4
-capture render aero android-render.png asset:test-clip.mp4
-capture render y2k android-render-y2k.png asset:test-clip.mp4
-capture render winamp android-render-winamp.png asset:test-clip.mp4
+for theme in aero y2k winamp; do
+  suffix=""
+  if [ "${theme}" != "aero" ]; then suffix="-${theme}"; fi
+  capture track "${theme}" "android-track${suffix}.png"
+  capture syncshot "${theme}" "android-sync${suffix}.png"
+  capture videocheck "${theme}" "android-look${suffix}.png" asset:test-clip.mp4
+  capture time "${theme}" "android-time${suffix}.png" asset:test-clip.mp4
+  capture render "${theme}" "android-render${suffix}.png" asset:test-clip.mp4
+done
 exit "${fail}"

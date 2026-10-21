@@ -212,6 +212,13 @@ main {
 }
 .screen { display: none; max-width: 100%; min-width: 0; }
 .screen.on { display: block; }
+/* The head script sets data-screen before the first paint, so a frozen
+   WebView frame is still the requested tab instead of the empty shell. */
+html[data-screen="track"] #screen-track,
+html[data-screen="sync"] #screen-sync,
+html[data-screen="look"] #screen-look,
+html[data-screen="time"] #screen-time,
+html[data-screen="render"] #screen-render { display: block; }
 .screen.on > * + * { margin-top: 16px; }
 #screen-time.on > * + * { margin-top: 6px; }
 #screen-time .screenhead h1 { margin: 0; --fs: 22; }
@@ -820,7 +827,13 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   border: 2px solid var(--accent-ink);
 }
 .hscroll button.on, .pills button.on, .lookgrid button.on,
-.dock button[aria-current="true"], .themes button[aria-checked="true"],
+.dock button[aria-current="true"],
+html[data-screen="track"] .dock button[data-screen="track"],
+html[data-screen="sync"] .dock button[data-screen="sync"],
+html[data-screen="look"] .dock button[data-screen="look"],
+html[data-screen="time"] .dock button[data-screen="time"],
+html[data-screen="render"] .dock button[data-screen="render"],
+.themes button[aria-checked="true"],
 html[data-theme="aero"] .themes button[data-theme="aero"],
 html[data-theme="y2k"] .themes button[data-theme="y2k"],
 html[data-theme="winamp"] .themes button[data-theme="winamp"] {
@@ -914,18 +927,19 @@ button:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus
 [data-theme="aero"] .group {
   background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.55));
 }
-[data-theme="aero"] .dock {
-  background: rgba(231, 238, 242, .97);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-}
+[data-theme="aero"] .dock,
 [data-theme="aero"] .dockplate {
+  /* backdrop-filter on API 30 drops later WebView frames, so Aero Time
+     and Render screenshots stayed on the empty first paint. */
   background: rgba(231, 238, 242, .97);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
 }
 [data-theme="aero"] .pill.primary,
 [data-theme="aero"] .dock button[aria-current="true"],
+html[data-theme="aero"][data-screen="track"] .dock button[data-screen="track"],
+html[data-theme="aero"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="aero"][data-screen="look"] .dock button[data-screen="look"],
+html[data-theme="aero"][data-screen="time"] .dock button[data-screen="time"],
+html[data-theme="aero"][data-screen="render"] .dock button[data-screen="render"],
 [data-theme="aero"] .themes button[aria-checked="true"],
 html[data-theme="aero"] .themes button[data-theme="aero"],
 [data-theme="aero"] .hscroll button.on,
@@ -1021,6 +1035,11 @@ html[data-theme="aero"] .themes button[data-theme="aero"],
 }
 [data-theme="y2k"] .pill.primary,
 [data-theme="y2k"] .dock button[aria-current="true"],
+html[data-theme="y2k"][data-screen="track"] .dock button[data-screen="track"],
+html[data-theme="y2k"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="y2k"][data-screen="look"] .dock button[data-screen="look"],
+html[data-theme="y2k"][data-screen="time"] .dock button[data-screen="time"],
+html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"],
 [data-theme="y2k"] .themes button[aria-checked="true"],
 html[data-theme="y2k"] .themes button[data-theme="y2k"],
 [data-theme="y2k"] .hscroll button.on,
@@ -1031,7 +1050,12 @@ html[data-theme="y2k"] .themes button[data-theme="y2k"],
   border-color: #8a6a2f;
   box-shadow: inset 0 -3px 0 #8a6a2f;
 }
-[data-theme="y2k"] .dock button[aria-current="true"] { box-shadow: inset 3px 0 0 #6fa9a2; }
+[data-theme="y2k"] .dock button[aria-current="true"],
+html[data-theme="y2k"][data-screen="track"] .dock button[data-screen="track"],
+html[data-theme="y2k"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="y2k"][data-screen="look"] .dock button[data-screen="look"],
+html[data-theme="y2k"][data-screen="time"] .dock button[data-screen="time"],
+html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"] { box-shadow: inset 3px 0 0 #6fa9a2; }
 [data-theme="y2k"] .lcd { border-radius: 0; border-color: #3a4247; }
 
 /* Winamp: gunmetal bevels, LCD green, pixel titles */
@@ -1124,6 +1148,11 @@ html[data-theme="y2k"] .themes button[data-theme="y2k"],
 }
 [data-theme="winamp"] .pill.primary,
 [data-theme="winamp"] .dock button[aria-current="true"],
+html[data-theme="winamp"][data-screen="track"] .dock button[data-screen="track"],
+html[data-theme="winamp"][data-screen="sync"] .dock button[data-screen="sync"],
+html[data-theme="winamp"][data-screen="look"] .dock button[data-screen="look"],
+html[data-theme="winamp"][data-screen="time"] .dock button[data-screen="time"],
+html[data-theme="winamp"][data-screen="render"] .dock button[data-screen="render"],
 [data-theme="winamp"] .themes button[aria-checked="true"],
 html[data-theme="winamp"] .themes button[data-theme="winamp"],
 [data-theme="winamp"] .hscroll button.on,

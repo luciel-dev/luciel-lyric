@@ -64,14 +64,16 @@
     pinPreview();
     sizePreview();
     if (id === "look" || id === "time" || id === "render") draw(state.t > 0.05 ? state.t : 1.2);
-    if (id === "time") { paintEditor(); paintTimeline(); fitTimeFold(); }
+    if (id === "time") { paintEditor(); paintTimeline(); }
     else {
       const timeHost = document.getElementById("pin-time");
       if (timeHost) { timeHost.style.height = ""; timeHost.style.maxHeight = ""; }
       document.documentElement.style.removeProperty("--pin-h");
-      if (id === "look" || id === "render") fitPinClear();
     }
     updatePreviewChrome();
+    fitAll();
+    if (id === "time") fitTimeFold();
+    else if (id === "look" || id === "render") fitPinClear();
   }
   function mascot(name) {
     const img = $("#mascot");
@@ -140,7 +142,8 @@
   }
   function fitThemes() {
     const buttons = [...document.querySelectorAll("#themes button")];
-    if (!buttons.length) return;
+    // Time hides the header, so the theme buttons have no box to fit.
+    if (!buttons.length || buttons.some((b) => b.clientWidth < 2)) return;
     buttons.forEach((b) => {
       b.style.letterSpacing = "0px";
       b.style.setProperty("--fit", "1");
@@ -213,42 +216,43 @@
     }
     return false;
   }
-  function zoomScale() {
-    const tz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tz")) || 1;
-    const zoom = (parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100) / 100;
-    return zoom / tz;
+  function paintedWidth(label) {
+    const text = (label.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text) return 0;
+    const cs = getComputedStyle(label);
+    const probe = paintedWidth.probe || (paintedWidth.probe = document.createElement("span"));
+    if (!probe.parentNode) {
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;margin:0;padding:0;border:0;";
+      document.body.appendChild(probe);
+    }
+    // A live span picks up WebView textZoom. Canvas measureText does not, and
+    // scaling it by 1.3 still undershoots Istok Web, so Winamp and Render
+    // were clipped while the fitter thought they fit.
+    probe.style.font = cs.font;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.letterSpacing = "0px";
+    probe.style.textTransform = cs.textTransform;
+    probe.textContent = text;
+    return probe.getBoundingClientRect().width;
   }
   function measuredGlyph(label) {
-    const canvas = measuredGlyph.canvas || (measuredGlyph.canvas = document.createElement("canvas"));
-    const ctx = canvas.getContext("2d");
-    ctx.font = getComputedStyle(label).font;
-    const measured = ctx.measureText((label.textContent || "").trim());
-    const scale = zoomScale();
-    const advance = Math.max(0, measured.width || 0) * scale;
-    const cap = Math.max(1.5, advance * 0.4);
-    const pastLeft = Math.min(cap, Math.max(0, (measured.actualBoundingBoxLeft || 0) * scale));
-    const pastRight = Math.min(cap, Math.max(0, ((measured.actualBoundingBoxRight || 0) - (measured.width || 0)) * scale));
-    return { advance, pastLeft, pastRight, width: advance + pastLeft + pastRight };
+    const width = paintedWidth(label);
+    return { advance: width, pastLeft: 0, pastRight: 0, width: width };
   }
   function glyphBox(label) {
     const text = textBounds(label);
-    if (!text) return null;
     const glyph = measuredGlyph(label);
-    const rangeWidth = text.right - text.left;
     const labelRect = label.getBoundingClientRect();
-    // WebView's range for a full-width label is the line box, not the glyphs.
-    // A clipped overflow is also as wide as the label; the advance is wider then,
-    // so the edge comparison below still fails.
-    if (glyph.width > 1 && rangeWidth > glyph.width + 1 && rangeWidth > labelRect.width - 2) {
-      const mid = (labelRect.left + labelRect.right) / 2;
-      const half = glyph.width / 2;
-      return { left: mid - half, right: mid + half, top: text.top, bottom: text.bottom };
-    }
+    if (!text && glyph.width < 1) return null;
+    const mid = (labelRect.left + labelRect.right) / 2;
+    const half = glyph.width / 2;
     return {
-      left: text.left - glyph.pastLeft,
-      right: text.right + glyph.pastRight,
-      top: text.top,
-      bottom: text.bottom,
+      left: mid - half,
+      right: mid + half,
+      top: text ? text.top : labelRect.top,
+      bottom: text ? text.bottom : labelRect.bottom,
     };
   }
   function labelOverflow(btn) {
@@ -345,6 +349,12 @@
     const buttons = [...document.querySelectorAll("#dock button")];
     if (buttons.length !== 5 || buttons.some(labelOverflow)) return false;
     const sizes = buttons.map((b) => getComputedStyle(b.querySelector(".docklabel") || b).fontSize);
+    return sizes.every((size) => size === sizes[0]);
+  }
+  function themeFits() {
+    const buttons = [...document.querySelectorAll("#themes button")];
+    if (buttons.length !== 3 || buttons.some(labelOverflow)) return false;
+    const sizes = buttons.map((b) => getComputedStyle(b).fontSize);
     return sizes.every((size) => size === sizes[0]);
   }
   function actionsFit() {
@@ -956,6 +966,8 @@
     fitLines();
     const dockFit = dockFits() ? 1 : 0;
     if (!dockFit) flags.push("dockfit");
+    const themeFit = themeFits() ? 1 : 0;
+    if (!themeFit) flags.push("themefit");
     const edits = lineEdits();
     const maxRows = edits.reduce((max, el) => Math.max(max, lineRows(el)), 0);
     const lineOk = edits.every((el) => lineRows(el) <= 2.35) ? 1 : 0;
@@ -1000,6 +1012,7 @@
       "themes=" + themesOk,
       "dock=" + dockOk,
       "dockfit=" + dockFit,
+      "themefit=" + themeFit,
       "linerows=" + lineOk,
       "lineshead=" + headOk,
       "rows=" + maxRows.toFixed(2),
