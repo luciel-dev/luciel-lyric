@@ -352,6 +352,7 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
   background: var(--card-solid);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 .previewpin.stuck {
   position: fixed;
@@ -362,18 +363,20 @@ canvas#tl { height: 56px; width: 100%; max-width: none; }
   max-height: 40vh;
 }
 .previewpin .stagewrap {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .previewpin .stagewrap canvas {
+  display: block;
   width: auto;
   height: 100%;
   max-width: 100%;
   max-height: 100%;
-  aspect-ratio: 9 / 16;
 }
 .previewbar {
   display: flex;
