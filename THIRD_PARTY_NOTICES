@@ -12,9 +12,10 @@ wavesurfer.js 7.9.5
          static/vendor/wavesurfer/regions.min.js
          static/vendor/wavesurfer/timeline.min.js
          static/vendor/wavesurfer/LICENSE
-  Used offline by the Android WebView on the Time step for the waveform, the
+  Used offline by the Android WebView on the Sync step for the waveform, the
   time ruler, and draggable lyric regions. Those regions are an explicit
-  timing edit. The desktop Sync step uses the same files.
+  timing edit. They are not mounted on the Video step. The desktop Sync
+  step uses the same files.
 
 moveable 0.53.0
   License: MIT
@@ -22,11 +23,11 @@ moveable 0.53.0
   https://github.com/daybrush/moveable
   Files: static/vendor/moveable/moveable.min.js
          static/vendor/moveable/LICENSE
-  Used offline by the Android WebView on the Video and Time steps for
-  resize, scale, drag, and pinch handles on the video layer. The handles
-  are at least 48 CSS pixels. They write video scale and pan only. They do
-  not write lyric words, timings, or text style. The desktop Video step
-  uses the same file for the video layer and extra text overlays.
+  Used offline by the Android WebView on the Video step for resize, scale,
+  drag, and pinch handles on the video layer. The handles are at least 48
+  CSS pixels. They write video scale and pan only. They do not write lyric
+  words, timings, or text style. The desktop Video step uses the same file
+  for the video layer and extra text overlays.
 
 animation-timeline-js 2.3.5
   License: MIT
@@ -34,11 +35,12 @@ animation-timeline-js 2.3.5
   https://github.com/ievgennaida/animation-timeline-control
   Files: static/vendor/animation-timeline/animation-timeline.min.js
          static/vendor/animation-timeline/LICENSE
-  Used offline by the Android WebView as the multitrack under the centered
-  playhead: one video row and one read-only lyric row. Dragging a video
-  keyframe trims or moves that clip. The lyric row cannot be dragged, so
-  the widget does not change lyric text or timings. This canvas is the
-  timeline. It is not mounted on top of a second clip strip.
+  Used offline by the Android WebView on the Video step as the multitrack
+  under the centered playhead: one video row and one extra-text row.
+  Dragging a video keyframe trims or moves that clip. Dragging an extra-text
+  keyframe moves that title only. There is no lyric row, so the widget does
+  not change lyric text or timings. This canvas is the timeline. It is not
+  mounted on top of a second clip strip.
 
 Not included
 ------------

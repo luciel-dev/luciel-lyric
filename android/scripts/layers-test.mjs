@@ -47,6 +47,18 @@ assert(ran.video.vfit === "crop", "crop missed");
 assert(ran.video.vscale === 1.85, "zoom missed");
 assert(ran.stamp === Layers.lyricStamp(lines, textStyle), "styled lyrics changed");
 
+const stamp = Layers.lyricStamp(lines, textStyle);
+const wordStart = lines[0].words[0].start;
+let overlays = Layers.applyOverlayEdit([], { op: "add", id: 1, text: "Opening title", start: 0.2, end: 2.5 }, 12);
+assert(overlays.length === 1 && overlays[0].text === "Opening title", "add title");
+overlays = Layers.applyOverlayEdit(overlays, { op: "move", id: 1, start: 1, end: 4 }, 12);
+assert(overlays[0].start === 1 && overlays[0].end === 4, "move title");
+assert(Layers.lyricStamp(lines, textStyle) === stamp, "overlay edit changed lyric text");
+assert(lines[0].words[0].start === wordStart, "overlay edit moved a lyric");
+overlays = Layers.applyOverlayEdit(overlays, { op: "remove", id: 1 }, 12);
+assert(overlays.length === 0, "remove title");
+assert(Layers.lyricStamp(lines, textStyle) === stamp, "remove title changed lyrics");
+
 const line = { words: lines[0].words.map((w) => Object.assign({}, w)) };
 const times = line.words.map((w) => [w.start, w.end]);
 const edited = line.words.map((w) => w.text).join(" ").replace(/^Sing\b/, "Song");

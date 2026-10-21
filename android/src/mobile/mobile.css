@@ -230,34 +230,31 @@ html[data-screen="home"] .dockplate,
 html[data-screen="intro"] .dockplate { display: none; }
 html[data-screen="home"] main,
 html[data-screen="intro"] main { padding-bottom: 24px; }
-html[data-screen="time"] .stepper { display: none; }
+html[data-screen="video"] .stepper { display: none; }
 .screen.on > * + * { margin-top: 16px; }
-#screen-time.on > * + * { margin-top: 6px; }
-#screen-time .screenhead h1 { margin: 0; --fs: 22; }
-#screen-time .screenhead .lead { margin-top: 2px; --fs: 12; line-height: 1.2; }
-#screen-time .editorcard { padding: 6px 8px; }
-#screen-time .editorcard > * + * { margin-top: 4px; }
-/* The emulator frame is about 465 CSS pixels tall. Time drops the brand row
-   and the lead so the preview, ruler, four tracks, and action bar sit above
-   the dock. Track rows stay at 36px; the waveform strip is the short one. */
-html[data-screen="time"] .top,
-html[data-screen="time"] .stepper { display: none; }
-html[data-screen="time"] .app { padding-top: calc(var(--sys-top) + 2px); }
-html[data-screen="time"] #screen-time .screenhead .lead { display: none; }
-html[data-screen="time"] #screen-time .screenhead h1 { --fs: 16; margin: 0; line-height: 1.1; }
-html[data-screen="time"] #screen-time.on > * + * { margin-top: 0; }
-html[data-screen="time"] #screen-time .ruler { height: 20px; }
-html[data-screen="time"] #screen-time .track,
-html[data-screen="time"] #screen-time .ztrack { height: 36px; margin-top: 0; }
-html[data-screen="time"] #screen-time .vclip,
-html[data-screen="time"] #screen-time .lblock { height: 32px; line-height: 32px; top: 2px; }
-html[data-screen="time"] #screen-time .tlview { height: 144px; }
-html[data-screen="time"] #screen-time canvas#tl { height: 16px; }
-html[data-screen="time"] #screen-time .editorcard { padding: 0 6px; }
-html[data-screen="time"] #screen-time .editorcard > * + * { margin-top: 0; }
-html[data-screen="time"] .previewpin { padding: 2px 4px; }
-html[data-screen="time"] .app { padding-bottom: calc(64px + var(--dock-clear)); }
-html[data-screen="time"] #screen-time .tlactions {
+#screen-video.on > * + * { margin-top: 6px; }
+#screen-video .screenhead h1 { margin: 0; --fs: 22; }
+#screen-video .screenhead .lead { margin-top: 2px; --fs: 12; line-height: 1.2; }
+#screen-video .editorcard { padding: 6px 8px; }
+#screen-video .editorcard > * + * { margin-top: 4px; }
+/* The short phone frame drops the brand row and the lead so the preview,
+   video track, extra-text track, and action bar sit above the dock. */
+html[data-screen="video"] .top,
+html[data-screen="video"] .stepper { display: none; }
+html[data-screen="video"] .app { padding-top: calc(var(--sys-top) + 2px); }
+html[data-screen="video"] #screen-video .screenhead .lead { display: none; }
+html[data-screen="video"] #screen-video .screenhead h1 { --fs: 16; margin: 0; line-height: 1.1; }
+html[data-screen="video"] #screen-video.on > * + * { margin-top: 0; }
+html[data-screen="video"] #screen-video .ruler { height: 20px; }
+html[data-screen="video"] #screen-video .track { height: 36px; margin-top: 0; }
+html[data-screen="video"] #screen-video .vclip { height: 32px; line-height: 32px; top: 2px; }
+html[data-screen="video"] #screen-video .tlview { height: 100px; }
+html[data-screen="video"] #screen-video canvas#tl { height: 16px; }
+html[data-screen="video"] #screen-video .editorcard { padding: 0 6px; }
+html[data-screen="video"] #screen-video .editorcard > * + * { margin-top: 0; }
+html[data-screen="video"] .previewpin { padding: 2px 4px; }
+html[data-screen="video"] .app { padding-bottom: calc(64px + var(--dock-clear)); }
+html[data-screen="video"] #screen-video .tlactions {
   position: fixed;
   left: 8px;
   right: 8px;
@@ -666,9 +663,10 @@ html[data-compact="1"] .previewpin { padding: 2px; }
   background: #f6e27a;
   transform: rotate(45deg);
 }
-.librows { position: absolute; top: 0; height: 144px; min-width: 0; }
-#wsTime { height: 20px; overflow: hidden; position: relative; }
-#wsBox { height: 42px; position: relative; overflow: visible; }
+.librows { position: absolute; top: 8px; height: 82px; min-width: 0; }
+.syncwave { overflow: visible; }
+#syncWsTime { height: 20px; overflow: hidden; position: relative; }
+#syncWsBox { height: 56px; position: relative; overflow: visible; }
 .atline { position: relative; height: 82px; max-height: 82px; overflow: hidden; }
 #atl {
   position: absolute !important;
@@ -682,6 +680,7 @@ html[data-compact="1"] .previewpin { padding: 2px; }
   touch-action: pan-x;
 }
 #atl canvas { display: block; width: 100% !important; height: 82px !important; max-height: 82px !important; }
+#addOverlay { min-height: 48px; height: 48px; }
 #film {
   position: absolute;
   left: 0;
@@ -1325,7 +1324,7 @@ html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"] 
 }
 [data-theme="winamp"] .brand { --fs: 11; font-weight: 400; }
 [data-theme="winamp"] h1 { --fs: 16; }
-[data-theme="winamp"] #screen-time .screenhead h1 { --fs: 13; }
+[data-theme="winamp"] #screen-video .screenhead h1 { --fs: 13; }
 [data-theme="winamp"] .sum, [data-theme="winamp"] .card h2 { --fs: 11; }
 [data-theme="winamp"] .tag,
 [data-theme="winamp"] .lcd,

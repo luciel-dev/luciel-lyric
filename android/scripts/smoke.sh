@@ -29,11 +29,11 @@ if f"{screen} {theme} ok" not in line:
     raise SystemExit("audit not ok: " + line.strip())
 need = {
     "track": ["title=1", "wave=1", "start=1", "play=1", "next=1", "steps=6"],
-    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1", "previewpin=1", "next=1", "steps=6"],
+    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1", "previewpin=1", "syncregions=1", "next=1", "steps=6"],
     "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1", "previewpin=1", "next=1", "steps=6"],
     "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "next=1", "steps=6"],
-    "time": ["title=1", "timeline=1", "zooms=5", "previewpin=1", "fold=1", "film=1", "actionfit=1", "next=1", "steps=6"],
-    "video": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "vzoom=1", "previewpin=1", "next=1", "steps=6"],
+    "time": ["title=1", "zooms=5", "previewpin=1", "next=1", "steps=6"],
+    "video": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "vzoom=1", "previewpin=1", "timeline=1", "fold=1", "film=1", "actionfit=1", "overlay=1", "next=1", "steps=6"],
     "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1", "next=1", "steps=6"],
     "home": ["title=1", "continue=1", "startnew=1"],
     "intro": ["title=1", "intronext=1", "skip=1"],
