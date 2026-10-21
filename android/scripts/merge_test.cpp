@@ -75,6 +75,15 @@ static int from_stdin() {
     }
     auto words = merge_tokens(toks);
     if (words.empty()) return fail("no words from audio tokens");
+    // The phone sorts by start and closes gaps the same way. Tiny's token
+    // times sometimes step backwards by a few tens of milliseconds.
+    std::sort(words.begin(), words.end(), [](const MergedWord &a, const MergedWord &b) { return a.start < b.start; });
+    double prevEnd = 0;
+    for (auto &w : words) {
+        if (w.start < prevEnd) w.start = prevEnd;
+        if (w.end < w.start + 0.02) w.end = w.start + 0.02;
+        prevEnd = w.end;
+    }
     double prev = -1;
     double maxEnd = 0;
     bool moved = false;

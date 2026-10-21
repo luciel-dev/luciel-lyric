@@ -59,23 +59,41 @@ jobs:
           LUCIEL_KEY_PASSWORD: ${{ secrets.LUCIEL_KEY_PASSWORD }}
           LUCIEL_KEY_ALIAS: ${{ secrets.LUCIEL_KEY_ALIAS }}
         run: |
-          if [ -n "${LUCIEL_KEYSTORE_B64}" ]; then
-            echo "Using the LUCIEL_KEYSTORE_B64 secret."
-            printf '%s' "${LUCIEL_KEYSTORE_B64}" | base64 -d > android/ci.keystore
-            if [ -n "${LUCIEL_KEYSTORE_PASSWORD}" ]; then
-              echo "LUCIEL_KEYSTORE_PASSWORD=${LUCIEL_KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
+          set -euo pipefail
+          missing=0
+          for name in LUCIEL_KEYSTORE_B64 LUCIEL_KEYSTORE_PASSWORD LUCIEL_KEY_PASSWORD LUCIEL_KEY_ALIAS; do
+            if [ -z "${!name}" ]; then
+              echo "Missing release secret ${name}."
+              missing=1
             fi
-            if [ -n "${LUCIEL_KEY_PASSWORD}" ]; then
-              echo "LUCIEL_KEY_PASSWORD=${LUCIEL_KEY_PASSWORD}" >> "$GITHUB_ENV"
-            fi
-            if [ -n "${LUCIEL_KEY_ALIAS}" ]; then
-              echo "LUCIEL_KEY_ALIAS=${LUCIEL_KEY_ALIAS}" >> "$GITHUB_ENV"
-            fi
-          else
-            echo "No LUCIEL_KEYSTORE_B64 secret. Minting a throwaway self-signed keystore (alias luciel)."
-            echo "The key is not stable across runs. Installing a newer APK may require uninstalling the old one."
-            keytool -genkeypair -keystore android/ci.keystore -storepass "${LUCIEL_KEYSTORE_PASSWORD:-luciellyric}" -keypass "${LUCIEL_KEY_PASSWORD:-luciellyric}" -alias "${LUCIEL_KEY_ALIAS:-luciel}" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Luciel Lyric CI, OU=CI, O=Luciel, L=None, ST=None, C=US"
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
           fi
+          if [ "${LUCIEL_KEY_ALIAS}" != "luciel" ]; then
+            echo "LUCIEL_KEY_ALIAS must be luciel."
+            exit 1
+          fi
+          printf '%s' "${LUCIEL_KEYSTORE_B64}" | base64 -d > android/ci.keystore
+          keytool -list -keystore android/ci.keystore -storepass "${LUCIEL_KEYSTORE_PASSWORD}" > /tmp/luciel-store.txt
+          store_type=$(awk -F': ' '/Keystore type/{print $2; exit}' /tmp/luciel-store.txt)
+          if [ "$store_type" != "PKCS12" ]; then
+            echo "Release keystore type is ${store_type}, expected PKCS12."
+            exit 1
+          fi
+          if ! grep -q "luciel," /tmp/luciel-store.txt; then
+            echo "Release keystore has no luciel alias."
+            exit 1
+          fi
+          keytool -list -v -keystore android/ci.keystore -storepass "${LUCIEL_KEYSTORE_PASSWORD}" -alias luciel > /tmp/luciel-cert.txt
+          if grep -E -q "CN=Android Debug|CN=Luciel Lyric CI" /tmp/luciel-cert.txt; then
+            echo "Refusing a debug or throwaway signer."
+            exit 1
+          fi
+          echo "Using the permanent PKCS12 release key (alias luciel)."
+          echo "LUCIEL_KEYSTORE_PASSWORD=${LUCIEL_KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
+          echo "LUCIEL_KEY_PASSWORD=${LUCIEL_KEY_PASSWORD}" >> "$GITHUB_ENV"
+          echo "LUCIEL_KEY_ALIAS=${LUCIEL_KEY_ALIAS}" >> "$GITHUB_ENV"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -102,6 +120,34 @@ jobs:
           src=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
           cp "$src" LucielLyric-android.apk
           ls -l LucielLyric-android.apk
+
+      - name: Check the permanent signer
+        env:
+          LUCIEL_KEYSTORE_PASSWORD: ${{ secrets.LUCIEL_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort | tail -1)
+          "$APKSIGNER" verify --print-certs LucielLyric-android.apk | tee /tmp/luciel-apk-certs.txt
+          if grep -E -q "Signer #2|CN=Android Debug|CN=Luciel Lyric CI" /tmp/luciel-apk-certs.txt; then
+            echo "APK signer is not the single permanent release cert."
+            exit 1
+          fi
+          ks=$(grep -m1 'SHA256:' /tmp/luciel-cert.txt | sed 's/.*SHA256: *//' | tr -d ' :' | tr 'A-F' 'a-f')
+          apk=$(grep -m1 'SHA-256 digest' /tmp/luciel-apk-certs.txt | sed 's/.*: *//' | tr -d ' :' | tr 'A-F' 'a-f')
+          if [ -z "$ks" ] || [ "$ks" != "$apk" ]; then
+            echo "APK signer SHA-256 does not match the permanent keystore."
+            exit 1
+          fi
+          pretty=$(printf '%s' "$ks" | sed 's/\(..\)/\1:/g; s/:$//' | tr 'a-f' 'A-F')
+          echo "Permanent signer SHA-256: $pretty"
+          {
+            echo "### Permanent signer SHA-256"
+            echo
+            echo '```'
+            echo "$pretty"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -229,4 +275,4 @@ jobs:
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
               (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
-            * Android (arm64, Android 8+): install LucielLyric-android.apk. Speech models and the aligner download once, then sync and render stay on the phone. Vocal isolation is desktop-only. LUCIEL_KEYSTORE_B64 is not set, so this APK is signed with a throwaway key and will not install over an older copy. Uninstall the previous copy first.
+            * Android (arm64, Android 8+): install LucielLyric-android.apk. Speech models and the aligner download once, then sync and render stay on the phone. Vocal isolation is desktop-only. This build is signed with the permanent release key. This is the last time you must uninstall the previous copy before updating. Later updates install over this one.

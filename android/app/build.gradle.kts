@@ -71,9 +71,12 @@ android {
         if (keystore.isFile) {
             create("ci") {
                 storeFile = keystore
-                storePassword = System.getenv("LUCIEL_KEYSTORE_PASSWORD") ?: "luciellyric"
-                keyAlias = System.getenv("LUCIEL_KEY_ALIAS") ?: "luciel"
-                keyPassword = System.getenv("LUCIEL_KEY_PASSWORD") ?: "luciellyric"
+                storePassword = System.getenv("LUCIEL_KEYSTORE_PASSWORD")
+                    ?: error("LUCIEL_KEYSTORE_PASSWORD is required to sign a release APK")
+                keyAlias = System.getenv("LUCIEL_KEY_ALIAS")
+                    ?: error("LUCIEL_KEY_ALIAS is required to sign a release APK")
+                keyPassword = System.getenv("LUCIEL_KEY_PASSWORD")
+                    ?: error("LUCIEL_KEY_PASSWORD is required to sign a release APK")
             }
         }
     }
@@ -81,7 +84,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("ci") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("ci")
+                ?: error("Release APK requires the permanent keystore (LUCIEL_KEYSTORE_B64)")
         }
     }
 
