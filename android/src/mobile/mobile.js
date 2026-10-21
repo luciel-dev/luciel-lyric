@@ -61,6 +61,7 @@
     const pin = $("#previewPin");
     if (host && pin) host.appendChild(pin);
     pinPreview();
+    sizePreview();
     if (id === "look" || id === "time" || id === "render") draw(state.t > 0.05 ? state.t : 1.2);
     if (id === "time") { paintEditor(); paintTimeline(); }
     updatePreviewChrome();
@@ -629,6 +630,7 @@
     const sc = document.scrollingElement || document.documentElement;
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
+    sizePreview();
     fitAll();
     const { expect, flags } = contentFlags(logical);
     const wide = pageWide();
@@ -1157,6 +1159,26 @@
     const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
     const top = host.getBoundingClientRect().top;
     pin.classList.toggle("stuck", top < sys - 1);
+    sizePreview();
+  }
+  function sizePreview() {
+    const pin = $("#previewPin");
+    const canvas = $("#stage");
+    if (!pin || !canvas || pin.clientHeight < 48 || pin.clientWidth < 48) return;
+    const bar = pin.querySelector(".previewbar");
+    const cs = getComputedStyle(pin);
+    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    const availH = Math.max(48, pin.clientHeight - padY - (bar ? bar.offsetHeight : 0));
+    const availW = Math.max(48, pin.clientWidth - padX);
+    let h = availH;
+    let w = Math.round(h * 9 / 16);
+    if (w > availW) {
+      w = availW;
+      h = Math.round(w * 16 / 9);
+    }
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
   }
   function previewPinned() {
     const pin = $("#previewPin");
@@ -1188,6 +1210,7 @@
     return why.length === 0;
   }
   window.addEventListener("scroll", () => { pinPreview(); }, { passive: true });
+  window.addEventListener("resize", () => { sizePreview(); });
 
   function videoDuration() {
     const v = state.videoEl;
@@ -1835,10 +1858,18 @@
       if (sampleEdge(isRedPx)) checks.bgvideo = 1;
       const before = state.clips.length;
       if (splitAt((state.length || 20) / 2) && state.clips.length === before + 1) checks.split = 1;
-      state.clips = [freshClip(0, state.length || 20, 1, 1)];
-      state.videoIn = 1;
-      await seekTo(v, 1);
+      state.clips = [freshClip(0, state.length || 20, 1.4, 1)];
+      state.videoIn = 1.4;
+      const blueAt = (sourceAt(0.05) || { in: 1.45 }).in;
+      await seekTo(v, blueAt);
       draw(0.05);
+      await seekTo(v, (sourceAt(0.05) || { in: blueAt }).in);
+      draw(0.05);
+      if (!sampleEdge(isBluePx)) {
+        await new Promise((ok) => setTimeout(ok, 250));
+        await seekTo(v, (sourceAt(0.05) || { in: blueAt }).in);
+        draw(0.05);
+      }
       if (sampleEdge(isBluePx)) checks.trim = 1;
       const ln = state.lines[0];
       const end0 = ln && ln.words.length ? ln.words[ln.words.length - 1].end : 0;
