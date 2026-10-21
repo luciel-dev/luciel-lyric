@@ -46,6 +46,7 @@
   const LS = () => window.LyricSync;
 
   function show(id) {
+    if (!canOpen(id)) return;
     state.screen = id;
     document.documentElement.dataset.screen = id;
     document.querySelectorAll(".screen").forEach((el) => {
@@ -64,7 +65,7 @@
     if (host && pin) host.appendChild(pin);
     pinPreview();
     sizePreview();
-    if (id === "look" || id === "time" || id === "render" || id === "video") draw(state.t > 0.05 ? state.t : 1.2);
+    if (id === "look" || id === "time" || id === "render" || id === "video" || id === "sync") draw(state.t > 0.05 ? state.t : 1.2);
     if (id === "time") { paintEditor(); paintTimeline(); }
     else {
       const timeHost = document.getElementById("pin-time");
@@ -72,9 +73,193 @@
       document.documentElement.style.removeProperty("--pin-h");
     }
     updatePreviewChrome();
+    paintFlow();
     fitAll();
     if (id === "time") fitTimeFold();
-    else if (id === "look" || id === "render" || id === "video") fitPinClear();
+    else if (id === "look" || id === "render" || id === "video" || id === "sync") fitPinClear();
+    saveProject();
+  }
+  const STEP_ORDER = ["track", "sync", "video", "look", "time", "render"];
+  function audioReady() {
+    return !!state.audioReady && state.duration > 0 && state.peaks && state.peaks.length > 0;
+  }
+  function videoStepReady() {
+    return !!(state.videoEl && (state.videoReady || state.videoEl.videoWidth));
+  }
+  function syncReady() {
+    return (!!state.synced && state.lines && state.lines.length > 0) || (state.lines && state.lines.length > 0 && tapMarks.length >= state.lines.length);
+  }
+  function stepDone(id) {
+    if (id === "track") return audioReady();
+    if (id === "sync") return syncReady();
+    if (id === "video") return videoStepReady();
+    if (id === "look") return videoStepReady() && !!state.look;
+    if (id === "time") return stepDone("look");
+    if (id === "render") return !!(state.renderResult && state.renderResult.path);
+    return false;
+  }
+  function stepOpen(id) {
+    if (demo) return true;
+    const i = STEP_ORDER.indexOf(id);
+    if (i <= 0) return true;
+    for (let k = 0; k < i; k++) if (!stepDone(STEP_ORDER[k])) return false;
+    return true;
+  }
+  function canOpen(id) {
+    if (id === "home" || id === "intro") return true;
+    return stepOpen(id);
+  }
+  function stepHint(id) {
+    if (id === "track") return audioReady() ? "Song ready." : "Choose a song to continue.";
+    if (id === "sync") return syncReady() ? "Lyrics are lined up." : "Line up the lyrics to continue.";
+    if (id === "video") return videoStepReady() ? "Video ready." : "Add a video to continue.";
+    if (id === "look") return state.look ? "Look chosen." : "Pick a look to continue.";
+    if (id === "time") return "Trim the clip, or continue.";
+    if (id === "render") return stepDone("render") ? "Ready to share." : "Make the video to finish.";
+    return "";
+  }
+  function paintFlow() {
+    STEP_ORDER.forEach((id) => {
+      const done = stepDone(id);
+      const open = stepOpen(id);
+      const current = state.screen === id;
+      document.querySelectorAll("#stepper button[data-screen='" + id + "'], #dock button[data-screen='" + id + "']").forEach((el) => {
+        el.classList.toggle("done", done && !current);
+        el.classList.toggle("current", current);
+        el.classList.toggle("locked", !open && !current);
+        el.setAttribute("aria-disabled", !open && !current ? "true" : "false");
+      });
+    });
+    const emptyAudio = $("#audioEmpty");
+    const workAudio = $("#audioWork");
+    if (emptyAudio && workAudio) {
+      emptyAudio.hidden = audioReady();
+      workAudio.hidden = !audioReady();
+    }
+    const emptySync = $("#syncEmpty");
+    if (emptySync) emptySync.hidden = syncReady();
+    const emptyVideo = $("#videoEmpty");
+    if (emptyVideo) emptyVideo.hidden = videoStepReady();
+    document.querySelectorAll(".stepnext").forEach((btn) => {
+      const id = btn.closest(".screen") && btn.closest(".screen").dataset.screen;
+      const ready = id === "render" ? stepDone("render") : stepDone(id);
+      btn.disabled = !ready;
+      if (id === "render") btn.textContent = "Share";
+    });
+    const hints = { track: "#trackHint", sync: "#hintSync", video: "#hintVideo", look: "#hintLook", time: "#hintTime", render: "#hintRender" };
+    const hint = hints[state.screen] ? $(hints[state.screen]) : null;
+    if (hint && state.screen !== "track") hint.textContent = stepHint(state.screen);
+    else if (state.screen === "track" && $("#trackHint") && !audioReady()) $("#trackHint").textContent = stepHint("track");
+    const homeBtn = $("#continueProject");
+    if (homeBtn) {
+      const saved = hasProject();
+      homeBtn.disabled = !saved;
+      const homeHint = $("#homeHint");
+      if (homeHint) homeHint.textContent = saved ? "Your last clip is saved on this phone." : "No saved project yet.";
+    }
+  }
+  function hasProject() {
+    try {
+      const raw = localStorage.getItem("lc-project");
+      if (!raw) return false;
+      const o = JSON.parse(raw);
+      return !!(o && (o.lyrics || o.audioName || o.videoName || (o.lines && o.lines.length)));
+    } catch (e) { return false; }
+  }
+  let saveTimer = 0;
+  function saveProject() {
+    if (demo) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(writeProject, 250);
+  }
+  function writeProject() {
+    if (demo) return;
+    try {
+      const lyrics = $("#lyrics") ? $("#lyrics").value : "";
+      localStorage.setItem("lc-project", JSON.stringify({
+        lyrics: lyrics,
+        lines: state.lines,
+        hyp: state.hyp,
+        title: state.title,
+        artist: state.artist,
+        start: state.start,
+        length: state.length,
+        look: state.look,
+        animId: state.animId,
+        palette: state.palette,
+        colorOv: state.colorOv,
+        quality: state.quality,
+        tier: state.tier,
+        synced: !!state.synced,
+        audioReady: !!state.audioReady,
+        audioName: state.audioName || "",
+        videoName: state.videoName || "",
+        screen: state.screen,
+        bg: state.bg,
+      }));
+    } catch (e) {}
+    saveEditor();
+  }
+  function loadProject() {
+    try {
+      const raw = localStorage.getItem("lc-project");
+      if (!raw) return false;
+      const o = JSON.parse(raw);
+      if (!o || typeof o !== "object") return false;
+      if (typeof o.lyrics === "string" && $("#lyrics")) $("#lyrics").value = o.lyrics;
+      if (Array.isArray(o.lines)) state.lines = o.lines;
+      if (Array.isArray(o.hyp)) state.hyp = o.hyp;
+      if (typeof o.title === "string") { state.title = o.title; if ($("#title")) $("#title").value = o.title; }
+      if (typeof o.artist === "string") { state.artist = o.artist; if ($("#artist")) $("#artist").value = o.artist; }
+      if (typeof o.start === "number") state.start = o.start;
+      if (typeof o.length === "number") state.length = o.length;
+      if (typeof o.look === "string") state.look = o.look;
+      if (typeof o.animId === "string") state.animId = o.animId;
+      if (o.palette) state.palette = o.palette;
+      if (o.colorOv) state.colorOv = o.colorOv;
+      if (typeof o.quality === "string") state.quality = o.quality;
+      if (o.tier === "accurate" || o.tier === "fast") state.tier = o.tier;
+      state.synced = !!o.synced;
+      state.audioReady = !!o.audioReady;
+      state.audioName = o.audioName || "";
+      if (state.audioName && $("#trackName")) $("#trackName").textContent = state.audioName;
+      if (o.bg === "gradient" || o.bg === "video" || o.bg === "black" || o.bg === "green") state.bg = o.bg;
+      paintLines();
+      paintTier();
+      return true;
+    } catch (e) { return false; }
+  }
+  function startNewProject() {
+    try { localStorage.removeItem("lc-project"); localStorage.removeItem("lc-editor"); } catch (e) {}
+    state.lines = [];
+    state.hyp = [];
+    state.title = "";
+    state.artist = "";
+    state.synced = false;
+    state.audioReady = false;
+    state.audioName = "";
+    state.videoName = "";
+    state.videoEl = null;
+    state.videoReady = false;
+    state.duration = 0;
+    state.peaks = [];
+    state.renderResult = null;
+    state.bg = "gradient";
+    state.clips = [];
+    if ($("#lyrics")) $("#lyrics").value = "";
+    if ($("#title")) $("#title").value = "";
+    if ($("#artist")) $("#artist").value = "";
+    if ($("#trackName")) $("#trackName").textContent = "No song yet";
+    tapMarks.length = 0;
+    show("track");
+  }
+  function showIntro(page) {
+    const n = page === "intro3" ? 3 : page === "intro2" ? 2 : (state.introPage || 1);
+    state.introPage = n;
+    document.querySelectorAll(".intropage").forEach((el) => el.classList.toggle("on", el.dataset.intro === String(n)));
+    const next = $("#introNext");
+    if (next) next.textContent = n >= 3 ? "Start" : "Next";
+    show("intro");
   }
   function mascot(name) {
     const img = $("#mascot");
@@ -93,7 +278,7 @@
     document.querySelectorAll("#themes button").forEach((b) => b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false"));
     paintWave();
     paintTimeline();
-    if (stage && (state.screen === "look" || state.screen === "time" || state.screen === "render" || state.screen === "video")) {
+    if (stage && (state.screen === "look" || state.screen === "time" || state.screen === "render" || state.screen === "video" || state.screen === "sync")) {
       draw(state.t > 0.05 ? state.t : 1.2);
     }
   }
@@ -126,8 +311,20 @@
     });
     fitThemes();
     fitDock();
+    fitStepper();
     fitActions();
     fitLines();
+  }
+  function fitStepper() {
+    const buttons = [...document.querySelectorAll("#stepper button")];
+    if (!buttons.length || buttons.some((b) => b.clientWidth < 2)) return;
+    applyDockFit(buttons, 1);
+    let fit = 1;
+    let guard = 0;
+    while (guard++ < 24 && fit > 0.4 && buttons.some(labelOverflow)) {
+      fit = Math.round((fit - 0.03) * 100) / 100;
+      applyDockFit(buttons, fit);
+    }
   }
   function visualTooWide(el) {
     if (!el || el.clientWidth < 2) return false;
@@ -257,7 +454,7 @@
     };
   }
   function labelOverflow(btn) {
-    const label = btn.querySelector(".docklabel") || btn;
+    const label = btn.querySelector(".docklabel, .steplabel") || btn;
     if (btn.clientWidth < 2 || label.clientWidth < 2) return false;
     const box = contentBox(btn);
     const text = glyphBox(label);
@@ -468,7 +665,11 @@
     if (!el) return false;
     try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch (e) {}
     const r = el.getBoundingClientRect();
-    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const dockEl = document.querySelector(".dock");
+    const dockTop = (!dockEl || getComputedStyle(dockEl).display === "none")
+      ? window.innerHeight
+      : dockEl.getBoundingClientRect().top;
+    const dock = { top: dockTop };
     const vw = window.innerWidth;
     if (r.left < -1 || r.right > vw + 1) return false;
     if (full === false) {
@@ -535,7 +736,9 @@
     sc.scrollTop = sc.scrollHeight;
     document.documentElement.scrollTop = sc.scrollHeight;
     document.body.scrollTop = document.body.scrollHeight;
-    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const dockEl = document.querySelector(".dock");
+    const dockHidden = !dockEl || getComputedStyle(dockEl).display === "none";
+    const dock = dockHidden ? { top: window.innerHeight } : dockEl.getBoundingClientRect();
     const r = last.getBoundingClientRect();
     const ok = r.height > 8 && r.bottom <= dock.top + 2 && r.left >= -1 && r.right <= window.innerWidth + 1;
     sc.scrollTop = 0;
@@ -544,23 +747,25 @@
     return ok;
   }
   function contentFlags(screen) {
-    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0 };
+    const expect = { wave: 0, start: 0, play: 0, lyrics: 0, syncbtn: 0, stage: 0, looks: 0, palettes: 0, anims: 0, timeline: 0, zooms: 0, quality: 0, fx: 0, renderbtn: 0, title: 0, upload: 0, aspects: 0, fits: 0, vzoom: 0, next: 0, steps: 0, intronext: 0, skip: 0, continuebtn: 0, startnew: 0 };
     const flags = [];
-    if (!inView(document.querySelector(".screen.on h1"), 12)) flags.push("title");
+    const kind = screen === "intro2" || screen === "intro3" ? "intro" : screen;
+    const titleEl = [...document.querySelectorAll(".screen.on h1")].find((el) => el.getClientRects().length);
+    if (!inView(titleEl, 12)) flags.push("title");
     else expect.title = 1;
-    if (screen === "track") {
+    if (kind === "track") {
       expect.wave = canvasBusy($("#wave")) ? 1 : 0;
       expect.start = inView($("#start"), 12) ? 1 : 0;
       expect.play = inView($("#playClip"), 28) ? 1 : 0;
       if (!expect.wave) flags.push("wave");
       if (!expect.start) flags.push("start");
       if (!expect.play) flags.push("play");
-    } else if (screen === "sync") {
+    } else if (kind === "sync") {
       expect.lyrics = inView($("#lyrics"), 32) ? 1 : 0;
       expect.syncbtn = inView($("#syncBtn"), 28) ? 1 : 0;
       if (!expect.lyrics) flags.push("lyrics");
       if (!expect.syncbtn) flags.push("syncbtn");
-    } else if (screen === "look") {
+    } else if (kind === "look") {
       const stage = $("#stage");
       const cards = [...document.querySelectorAll("#looks button")];
       const canvases = cards.map((b) => b.querySelector("canvas")).filter(Boolean);
@@ -592,7 +797,7 @@
       if (expect.looks !== 13) flags.push("looks" + [bitmaps ? 1 : 0, firstOk ? 1 : 0, lastOk ? 1 : 0, gridOk ? 1 : 0, canvases.length].join(""));
       if (expect.palettes !== 12) flags.push("palettes");
       if (expect.anims !== 15) flags.push("anims");
-    } else if (screen === "video") {
+    } else if (kind === "video") {
       const stageEl = $("#stage");
       const stageBusy = canvasBusy(stageEl);
       const stageSeen = inView(stageEl, 24);
@@ -608,13 +813,13 @@
       if (expect.aspects !== 4) flags.push("aspects");
       if (expect.fits !== 3) flags.push("fits");
       if (!expect.vzoom) flags.push("vzoom");
-    } else if (screen === "time") {
+    } else if (kind === "time") {
       expect.timeline = canvasBusy($("#tl")) && inView($("#tlview"), 16, false) ? 1 : 0;
       const zooms = document.querySelectorAll("#zooms button");
       expect.zooms = zooms.length === 5 && inView($("#zooms"), 16) ? 5 : zooms.length;
       if (!expect.timeline) flags.push("timeline");
       if (expect.zooms !== 5) flags.push("zooms");
-    } else if (screen === "render") {
+    } else if (kind === "render") {
       const q = document.querySelectorAll("#quality button");
       const fx = document.querySelectorAll("#fx label");
       expect.quality = q.length;
@@ -623,6 +828,24 @@
       if (q.length !== 4 || !inView($("#quality"), 20, false)) flags.push("quality");
       if (fx.length < 1 || !inView($("#fx"), 24, false)) flags.push("fx");
       if (!expect.renderbtn) flags.push("renderbtn");
+    } else if (kind === "intro") {
+      expect.intronext = inView($("#introNext"), 28) ? 1 : 0;
+      expect.skip = inView($("#introSkip"), 28) ? 1 : 0;
+      if (!expect.intronext) flags.push("intronext");
+      if (!expect.skip) flags.push("skip");
+    } else if (kind === "home") {
+      expect.continuebtn = inView($("#continueProject"), 28) ? 1 : 0;
+      expect.startnew = inView($("#startNew"), 28) ? 1 : 0;
+      if (!expect.continuebtn) flags.push("continue");
+      if (!expect.startnew) flags.push("startnew");
+    }
+    if (STEP_ORDER.indexOf(kind) >= 0) {
+      const nextBtn = document.querySelector("#screen-" + kind + " .stepnext");
+      expect.next = nextBtn && inView(nextBtn, 28) ? 1 : 0;
+      const stepBtns = document.querySelectorAll("#stepper button");
+      expect.steps = (kind === "time" || (stepBtns.length === 6 && inView($("#stepper"), 28))) ? 6 : 0;
+      if (!expect.next) flags.push("next");
+      if (expect.steps !== 6) flags.push("steps");
     }
     return { expect, flags };
   }
@@ -638,7 +861,7 @@
     const wide = lead.scrollWidth > lead.clientWidth + 2;
     const xBad = r.left < 4 || r.right > window.innerWidth - 4;
     const yBad = r.top < sys - 1 || r.height <= 8;
-    const textBad = lead.textContent.indexOf("Paste the lyrics") === -1;
+    const textBad = lead.textContent.indexOf("Paste the words") === -1;
     const br = bar.getBoundingClientRect();
     const barOk = br.top <= 1 && br.height + 0.5 >= sys && br.left <= 1 && br.right >= window.innerWidth - 1;
     sc.scrollTop = 360;
@@ -836,12 +1059,19 @@
   }
   function headingClear() {
     const head = document.querySelector(".screen.on .screenhead");
-    const h1 = head && head.querySelector("h1");
-    const lead = head && head.querySelector(".lead");
+    let h1 = head && head.querySelector("h1");
+    let lead = head && head.querySelector(".lead");
+    if (!h1) {
+      h1 = [...document.querySelectorAll(".screen.on h1")].find((el) => el.getClientRects().length) || null;
+      lead = h1 && h1.parentElement ? h1.parentElement.querySelector(".lead") : null;
+    }
     if (!h1) return false;
     const leadShown = !!(lead && getComputedStyle(lead).display !== "none" && lead.getClientRects().length);
     const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
-    const dock = document.querySelector(".dock").getBoundingClientRect();
+    const dockEl = document.querySelector(".dock");
+    const dock = (dockEl && getComputedStyle(dockEl).display !== "none")
+      ? dockEl.getBoundingClientRect()
+      : { top: window.innerHeight, bottom: window.innerHeight, left: 0, right: 0, width: 0, height: 0 };
     const blockers = [document.getElementById("safebar"), document.querySelector(".dock"), document.querySelector(".dockplate"), document.getElementById("previewPin")];
     function problem(el) {
       const r = el.getBoundingClientRect();
@@ -862,7 +1092,7 @@
       const hit = document.elementFromPoint(x, y);
       if (!hit) return "miss";
       if (hit.id === "safebar" || (hit.closest && (hit.closest(".dock") || hit.closest(".dockplate") || hit.closest("#previewPin")))) return "hit";
-      if (hit !== el && !el.contains(hit) && !head.contains(hit)) return "cover";
+      if (hit !== el && !el.contains(hit) && !(head && head.contains(hit))) return "cover";
       return "";
     }
     const why = [problem(h1), leadShown ? problem(lead) : ""].filter(Boolean).join("/");
@@ -927,9 +1157,10 @@
     sizePreview();
     fitAll();
     if (logical === "time") fitTimeFold();
-    else if (logical === "look" || logical === "render" || logical === "video") fitPinClear();
+    else if (logical === "look" || logical === "render" || logical === "video" || logical === "sync") fitPinClear();
     dropOverflowMeta();
-    const hitOk = dockHitOk() ? 1 : 0;
+    const dockHidden = getComputedStyle(document.querySelector(".dock")).display === "none";
+    const hitOk = dockHidden ? 1 : (dockHitOk() ? 1 : 0);
     const actionOk = actionsFit() ? 1 : 0;
     const wrapHits = midWordWraps();
     const ellHits = ellipsisHits();
@@ -953,9 +1184,10 @@
     wide.slice(0, 4).forEach((w) => flags.push("wide:" + w));
     box.slice(0, 4).forEach((w) => flags.push("box:" + w));
     const labels = [...document.querySelectorAll("#themes button")].map((b) => b.textContent.trim()).join("/");
-    const dockWords = [...document.querySelectorAll("#dock button")].map((b) => b.textContent.trim()).join("/");
+    const dockWords = [...document.querySelectorAll("#dock .docklabel")].map((b) => b.textContent.trim()).join("/");
+    const dockNums = [...document.querySelectorAll("#dock .dockn")].map((b) => b.textContent.trim()).join("");
     const themesOk = labels === "Aero/Y2K/Winamp" ? 1 : 0;
-    const dockOk = dockWords === "Track/Sync/Video/Look/Time/Render" ? 1 : 0;
+    const dockOk = dockWords === "Audio/Sync/Video/Look/Time/Render" && dockNums === "123456" ? 1 : 0;
     if (!themesOk) flags.push("themes");
     if (!dockOk) flags.push("dock");
     const pad = parseFloat(getComputedStyle(document.querySelector(".app")).paddingTop) || 0;
@@ -996,7 +1228,7 @@
       if (!headOk) flags.push("lineshead");
     }
     let pinOk = 0;
-    if (logical === "look" || logical === "time" || logical === "render" || logical === "video") {
+    if (logical === "look" || logical === "time" || logical === "render" || logical === "video" || logical === "sync") {
       pinOk = previewPinned() ? 1 : 0;
       if (!pinOk) flags.push("previewpin" + (state.pinWhy ? ":" + state.pinWhy : ""));
     }
@@ -1025,6 +1257,12 @@
       "aspects=" + expect.aspects,
       "fits=" + expect.fits,
       "vzoom=" + expect.vzoom,
+      "next=" + expect.next,
+      "steps=" + expect.steps,
+      "intronext=" + expect.intronext,
+      "skip=" + expect.skip,
+      "continue=" + expect.continuebtn,
+      "startnew=" + expect.startnew,
       "clear=" + clear,
       "fit=" + (box.length ? 0 : 1),
       "overflow=" + wide.length,
@@ -1450,6 +1688,7 @@
       if (res.lines && res.lines.length) {
         state.lines = res.lines;
       } else {
+        state.synced = false;
         state.lines = sync.linesFromText(pasted, clip);
         paintLines();
         $("#syncStatus").textContent = res.error || "Couldn't match these lyrics.";
@@ -1471,6 +1710,7 @@
       mascot("crying");
       return;
     }
+    state.synced = true;
     paintLines();
     const low = state.lines.filter((ln) => ln.low_confidence).length;
     $("#syncStatus").textContent = low
@@ -1515,6 +1755,9 @@
     $("#startVal").textContent = state.start.toFixed(1) + "s";
     $("#lenVal").textContent = state.length + "s";
     sampleMode = "clip";
+    state.audioReady = true;
+    state.synced = true;
+    state.audioName = "sample · glass-static";
     const sr = 8000, n = sr * 8;
     samples = new Float32Array(n);
     for (let i = 0; i < n; i++) samples[i] = 0.4 * Math.sin(i / 18) * (0.5 + 0.5 * Math.sin(i / 400));
@@ -1565,12 +1808,31 @@
     document.documentElement.style.setProperty("--pin-top", anchor + "px");
     sizePreview();
   }
+  function stageRoom() {
+    const wrap = document.querySelector("#previewPin .stagewrap");
+    if (!wrap) return 0;
+    return wrap.getBoundingClientRect().height;
+  }
+  function pictureRoom() {
+    const wrap = document.querySelector("#previewPin .stagewrap");
+    const bar = document.querySelector("#previewPin .previewbar");
+    if (!wrap) return 0;
+    const wr = wrap.getBoundingClientRect();
+    if (!bar || getComputedStyle(bar).position !== "absolute") return wr.height;
+    const br = bar.getBoundingClientRect();
+    const top = Math.max(wr.top, br.top);
+    const bot = Math.min(wr.bottom, br.bottom);
+    const covered = bot > top ? bot - top : 0;
+    return Math.max(0, wr.height - covered);
+  }
   function fitPinClear() {
     const pin = $("#previewPin");
     const host = pin && pin.parentElement;
     const dock = document.querySelector(".dock");
     if (!host || !host.classList.contains("pinhost") || !dock || state.screen === "time") return;
     const lead = document.querySelector(".screen.on .screenhead .lead");
+    const root = document.documentElement;
+    root.removeAttribute("data-compact");
     if (lead) lead.style.display = "";
     const tighten = () => {
       host.style.height = "";
@@ -1587,17 +1849,30 @@
         const h = host.getBoundingClientRect().height;
         const next = Math.floor(h - (bottomAtRest - limit) - 1);
         if (!(next < h - 0.5)) break;
-        const clamped = Math.max(48, next);
+        // Stay above the dock. A 48px floor used to overlap it once the
+        // stepper and the lyrics line were on screen.
+        const clamped = Math.max(0, next);
         host.style.height = clamped + "px";
         host.style.maxHeight = clamped + "px";
         sizePreview();
-        if (clamped <= 48) break;
+        if (clamped <= 20) break;
       }
     };
+    const cramped = () => {
+      const dockTop = dock.getBoundingClientRect().top;
+      const leadShown = lead && getComputedStyle(lead).display !== "none";
+      const leadR = leadShown ? lead.getBoundingClientRect() : null;
+      const leadBad = state.screen === "sync" && (!leadR || leadR.height < 8 || leadR.bottom > dockTop - 2);
+      return pictureRoom() < 36 || stageRoom() < 28 || host.getBoundingClientRect().bottom > dockTop - 4 || leadBad;
+    };
     tighten();
-    // A long lead can shove the preview into the dock. Drop it so the picture
-    // keeps a real stage and the dock stays clear.
-    if (lead && host.getBoundingClientRect().height < 120) {
+    if (cramped()) {
+      root.dataset.compact = "1";
+      if (lead) lead.style.display = "";
+      tighten();
+    }
+    // Lyrics keeps its line. Other steps drop the line so the picture stays.
+    if (state.screen !== "sync" && lead && (pictureRoom() < 36 || stageRoom() < 28)) {
       lead.style.display = "none";
       tighten();
     }
@@ -1637,13 +1912,14 @@
       pin.style.left = "";
     }
     const box = stuck ? pin : (host || pin);
-    if (box.clientHeight < 48 || box.clientWidth < 48) return;
+    if (box.clientHeight < 20 || box.clientWidth < 20) return;
     const bar = pin.querySelector(".previewbar");
+    const barFloat = bar && getComputedStyle(bar).position === "absolute";
     const cs = getComputedStyle(pin);
     const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    const availH = Math.max(48, box.clientHeight - padY - (bar ? bar.offsetHeight : 0));
-    const availW = Math.max(48, box.clientWidth - padX);
+    const availH = Math.max(16, box.clientHeight - padY - (barFloat ? 0 : (bar ? bar.offsetHeight : 0)));
+    const availW = Math.max(16, box.clientWidth - padX);
     const a = aspectParts();
     let h = availH;
     let w = Math.round(h * a.w / a.h);
@@ -1687,7 +1963,7 @@
   window.addEventListener("resize", () => {
     sizePreview();
     if (state.screen === "time") fitTimeFold();
-    else if (state.screen === "look" || state.screen === "render" || state.screen === "video") fitPinClear();
+    else if (state.screen === "look" || state.screen === "render" || state.screen === "video" || state.screen === "sync") fitPinClear();
   });
 
   function videoDuration() {
@@ -1918,6 +2194,7 @@
       try { await grabThumbs(); } catch (e) {}
       state.videoReady = true;
       saveEditor();
+      paintFlow();
       syncBgPills();
       if (state.screen === "time") paintEditor();
       updatePreviewChrome();
@@ -2522,7 +2799,7 @@
         theme(th);
         for (const sc of ["track", "sync", "video", "look", "time", "render"]) {
           show(sc);
-          if (sc === "look" || sc === "time" || sc === "render") draw(1.35);
+          if (sc === "look" || sc === "time" || sc === "render" || sc === "sync" || sc === "video") draw(1.35);
           await publish(sc);
         }
       }
@@ -2535,10 +2812,34 @@
       await publish("syncshot");
       return;
     }
+    if (demo === "intro" || demo === "intro2" || demo === "intro3") {
+      theme(document.documentElement.dataset.theme || "aero");
+      showIntro(demo);
+      await publish(demo);
+      return;
+    }
+    if (demo === "home") {
+      try {
+        localStorage.setItem("lc-project", JSON.stringify({
+          lyrics: "Saved line", audioName: "Saved song",
+          lines: [{ words: [{ text: "Saved", start: 0.2, end: 0.6 }] }],
+        }));
+      } catch (e) {}
+      theme(document.documentElement.dataset.theme || "aero");
+      show("home");
+      await publish("home");
+      return;
+    }
+    if (!demo) {
+      theme(document.documentElement.dataset.theme || "aero");
+      if (!localStorage.getItem("lc-seen-intro")) showIntro("intro");
+      else show("home");
+      return;
+    }
     theme(document.documentElement.dataset.theme || "aero");
     const screen = ["track", "sync", "video", "look", "time", "render"].includes(demo) ? demo : "track";
     show(screen);
-    if (screen === "look" || screen === "time" || screen === "render" || screen === "video") draw(state.t > 0.05 ? state.t : 1.35);
+    if (screen === "look" || screen === "time" || screen === "render" || screen === "video" || screen === "sync") draw(state.t > 0.05 ? state.t : 1.35);
     await publish(screen);
     if (window.Luciel && Luciel.info) {
       try {
@@ -2546,7 +2847,7 @@
         if (info.tier === "accurate" || info.tier === "fast") state.tier = info.tier;
         paintTier();
         paintFrame();
-        if (info.model) $("#modelText").textContent = "Speech model is on this phone. Sync works offline.";
+        if (info.model) $("#modelText").textContent = "Listening is saved on this phone.";
       } catch (e) {}
     } else if (!demo) {
       $("#trackHint").textContent = "Open this page in the Luciel Lyric app to pick a song.";
@@ -2554,6 +2855,36 @@
   }
 
   $("#dock").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.screen); };
+  $("#stepper").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.screen); };
+  $("#changeAudio").onclick = () => { if (window.Luciel) Luciel.pickAudio(); };
+  $("#introNext").onclick = () => {
+    const page = state.introPage || 1;
+    if (page >= 3) {
+      try { localStorage.setItem("lc-seen-intro", "1"); } catch (e) {}
+      show("home");
+    } else showIntro(page === 1 ? "intro2" : "intro3");
+  };
+  $("#introSkip").onclick = () => {
+    try { localStorage.setItem("lc-seen-intro", "1"); } catch (e) {}
+    show("home");
+  };
+  $("#startNew").onclick = () => startNewProject();
+  $("#continueProject").onclick = () => {
+    if (!hasProject()) return;
+    loadEditor();
+    loadProject();
+    const next = STEP_ORDER.find((id) => !stepDone(id)) || "render";
+    show(stepOpen(next) ? next : "track");
+  };
+  document.querySelectorAll(".stepnext").forEach((btn) => {
+    btn.onclick = () => {
+      if (btn.disabled) return;
+      const next = btn.dataset.next;
+      if (next) show(next);
+      else if (window.Luciel && Luciel.share) Luciel.share();
+    };
+  });
+  window.addEventListener("pagehide", () => { writeProject(); });
   $("#themes").onclick = (e) => { const b = e.target.closest("button"); if (b) { theme(b.dataset.theme); mascot("surprised"); } };
   function onColor(key, input) {
     input.oninput = () => {
@@ -2580,28 +2911,36 @@
     const clip = state.length || 20;
     if (!text.trim()) {
       state.lines = [];
+      state.synced = false;
       paintLines();
+      paintFlow();
       draw(state.t || 1.2);
       $("#syncStatus").textContent = "Lyrics cleared.";
+      saveProject();
       return;
     }
     if (state.hyp && state.hyp.length) {
       const res = sync.alignLyrics(text, state.hyp, clip);
       if (res.lines && res.lines.length) {
         state.lines = res.lines;
+        state.synced = !res.error;
         const low = res.lines.filter((ln) => ln.low_confidence).length;
         $("#syncStatus").textContent = low
           ? low + (low === 1 ? " line needs" : " lines need") + " a look. Tap Mark to fix them."
           : state.lines.length + " lines ready.";
       } else {
         state.lines = sync.linesFromText(text, clip);
+        state.synced = false;
         $("#syncStatus").textContent = res.error || "Couldn't match these lyrics.";
       }
     } else {
       state.lines = sync.linesFromText(text, clip);
+      state.synced = false;
       $("#syncStatus").textContent = state.lines.length + " lines from your lyrics.";
     }
     paintLines();
+    paintFlow();
+    saveProject();
     draw(state.t || 1.2);
   });
   $("#playClip").onclick = () => { mascot("music"); play(false); };
@@ -2685,8 +3024,8 @@
     paintTier();
     if (window.Luciel && Luciel.setTier) Luciel.setTier(state.tier);
     $("#modelText").textContent = state.tier === "accurate"
-      ? "Accurate is the larger English model, about 190 MB, downloaded once."
-      : "Fast is the tiny English model, about 75 MB, downloaded once.";
+      ? "Clearer hears more of the singing. About 190 MB, saved once."
+      : "Quick is the smaller listener. About 75 MB, saved once.";
   };
   $("#aspects").onclick = (e) => {
     const b = e.target.closest("button");
@@ -2739,8 +3078,8 @@
     applyTapMarks();
   };
   $("#getModel").onclick = () => {
-    if (window.Luciel) { $("#modelText").textContent = "Downloading the speech model…"; Luciel.downloadModel(state.tier); }
-    else $("#modelText").textContent = "The speech model downloads inside the Android app.";
+    if (window.Luciel) { $("#modelText").textContent = "Saving the listener…"; Luciel.downloadModel(state.tier); }
+    else $("#modelText").textContent = "The listener saves inside the Android app.";
   };
   $("#syncBtn").onclick = () => {
     if (!window.Luciel) { applyWords(DEMO.flatMap((l) => l.words)); return; }
@@ -2749,24 +3088,24 @@
     const lyrics = $("#lyrics").value.trim();
     if (lyrics && Luciel.alignLyrics) {
       mascot("confused");
-      $("#syncStatus").textContent = info.aligner ? "Aligning the lyrics to the vocal…" : "Downloading the aligner, then lining up the words…";
+      $("#syncStatus").textContent = info.aligner ? "Lining up the words…" : "Saving the line-up file, then matching the words…";
       Luciel.alignLyrics(state.start, state.length, lyrics);
       return;
     }
     if (!info.whisper) {
-      $("#syncStatus").textContent = "Speech recognition isn't in this build.";
+      $("#syncStatus").textContent = "Listening isn't in this build.";
       mascot("crying");
       return;
     }
     if (!info.model) {
-      $("#syncStatus").textContent = "The speech model isn't on this phone yet. Downloading it now — tap Sync again when it finishes.";
-      $("#modelText").textContent = "Downloading the speech model…";
+      $("#syncStatus").textContent = "The listener isn't on this phone yet. Saving it now. Tap Line up lyrics when it finishes.";
+      $("#modelText").textContent = "Saving the listener…";
       mascot("confused");
       Luciel.downloadModel(state.tier);
       return;
     }
     mascot("confused");
-    $("#syncStatus").textContent = "Listening to the section…";
+    $("#syncStatus").textContent = "Listening to this part…";
     Luciel.transcribe(state.start, state.length, lyrics);
   };
   $("#bgModes").onclick = (e) => {
@@ -2877,9 +3216,12 @@
         state.duration = msg.duration;
         state.peaks = Array.from(msg.peaks);
         state.start = Math.min(state.start, Math.max(0, state.duration - state.length));
-        $("#trackName").textContent = (msg.name || "track") + " · " + state.duration.toFixed(1) + "s";
+        state.audioReady = true;
+        state.audioName = (msg.name || "song") + " · " + state.duration.toFixed(1) + "s";
+        $("#trackName").textContent = state.audioName;
+        paintFlow();
         $("#start").max = String(Math.max(0, state.duration - state.length));
-        $("#trackHint").textContent = "Drag the section. Sync listens only to those seconds.";
+        $("#trackHint").textContent = "Drag the part you want. Listening uses only those seconds.";
         if (msg.audio) $("#audio").src = "https://appassets.androidplatform.net/files/" + msg.audio;
         sampleMode = "song";
         fetch("https://appassets.androidplatform.net/files/preview.pcm").then((r) => r.arrayBuffer()).then((buf) => {
@@ -2894,14 +3236,14 @@
       } else if (msg.type === "model") {
         if (msg.error) { $("#modelText").textContent = msg.error; mascot("crying"); }
         else if (msg.ready) {
-          $("#modelText").textContent = "Speech model is on this phone. Sync works offline.";
+          $("#modelText").textContent = "Listening is saved on this phone.";
           const status = $("#syncStatus").textContent;
-          if (status.indexOf("Downloading") >= 0 || status.indexOf("isn't on this phone") >= 0) {
-            $("#syncStatus").textContent = "Speech model is ready. Tap Sync lyrics.";
+          if (status.indexOf("Saving") >= 0 || status.indexOf("isn't on this phone") >= 0) {
+            $("#syncStatus").textContent = "Listening is ready. Tap Line up lyrics.";
           }
           mascot("happy");
         }
-        else $("#modelText").textContent = "Downloading… " + Math.round((msg.progress || 0) * 100) + "%";
+        else $("#modelText").textContent = "Saving… " + Math.round((msg.progress || 0) * 100) + "%";
       } else if (msg.type === "sync" && msg.phase === "logits") {
         const flat = b64ToF32(msg.logits || "");
         const res = LS().alignFromLogits(flat, msg.frames, msg.duration || state.length, $("#lyrics").value);
@@ -2911,6 +3253,7 @@
           mascot("crying");
         } else {
           state.lines = res.lines;
+          state.synced = true;
           paintLines();
           const low = res.lines.filter((ln) => ln.low_confidence).length;
           $("#syncStatus").textContent = low
@@ -2926,15 +3269,15 @@
       } else if (msg.type === "sync" && msg.error) {
         const lyrics = $("#lyrics").value.trim();
         if (lyrics && window.Luciel && Luciel.transcribe && /align/i.test(msg.error || "")) {
-          $("#syncStatus").textContent = "Aligner unavailable. Matching the words that were heard…";
+          $("#syncStatus").textContent = "Line-up file unavailable. Matching the words that were heard…";
           Luciel.transcribe(state.start, state.length, lyrics);
         } else {
           $("#syncStatus").textContent = msg.error; mascot("crying");
         }
       } else if (msg.type === "sync" && msg.phase === "download") {
-        $("#syncStatus").textContent = "Downloading the lyric aligner…";
+        $("#syncStatus").textContent = "Saving the line-up file…";
       } else if (msg.type === "sync" && msg.phase === "align") {
-        $("#syncStatus").textContent = "Aligning the lyrics to the vocal…";
+        $("#syncStatus").textContent = "Lining up the words…";
       } else if (msg.type === "sync") {
         $("#syncStatus").textContent = "Listening…";
       } else if (msg.type === "video" && msg.phase === "convert") {

@@ -14,7 +14,9 @@ try {
   if (q === "aero" || q === "y2k" || q === "winamp") localStorage.setItem("lc-theme", q);
   var demo0 = params0.get("demo");
   var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
-  if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render") {
+  if (demo0 === "intro" || demo0 === "intro2" || demo0 === "intro3") screen0 = "intro";
+  if (demo0 === "home") screen0 = "home";
+  if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render" || screen0 === "home" || screen0 === "intro") {
     document.documentElement.dataset.screen = screen0;
   }
   var tz = params0.get("textZoom");
@@ -51,13 +53,60 @@ try {
     </div>
   </header>
 
+  <nav class="stepper" id="stepper" aria-label="Steps">
+    <button type="button" data-screen="track"><span class="stepn">1</span><span class="steplabel">Audio</span></button>
+    <button type="button" data-screen="sync"><span class="stepn">2</span><span class="steplabel">Sync</span></button>
+    <button type="button" data-screen="video"><span class="stepn">3</span><span class="steplabel">Video</span></button>
+    <button type="button" data-screen="look"><span class="stepn">4</span><span class="steplabel">Look</span></button>
+    <button type="button" data-screen="time"><span class="stepn">5</span><span class="steplabel">Time</span></button>
+    <button type="button" data-screen="render"><span class="stepn">6</span><span class="steplabel">Render</span></button>
+  </nav>
+
   <main>
+    <section class="screen" id="screen-intro" data-screen="intro">
+      <div class="emptycard intropage on" data-intro="1">
+        <img class="emptymascot" src="mascot/emote-music.webp" alt="">
+        <h1>Pick a song</h1>
+        <p class="lead">Choose an mp3. It stays on this phone.</p>
+      </div>
+      <div class="emptycard intropage" data-intro="2">
+        <img class="emptymascot" src="mascot/emote-happy.webp" alt="">
+        <h1>Line them up</h1>
+        <p class="lead">Paste the words. The phone matches the singing.</p>
+      </div>
+      <div class="emptycard intropage" data-intro="3">
+        <img class="emptymascot" src="mascot/emote-love.webp" alt="">
+        <h1>Make the video</h1>
+        <p class="lead">Add a background, pick a look, then save the clip.</p>
+      </div>
+      <button class="pill big primary" id="introNext" type="button">Next</button>
+      <button class="pill" id="introSkip" type="button">Skip</button>
+    </section>
+
+    <section class="screen" id="screen-home" data-screen="home">
+      <div class="emptycard homecard">
+        <img class="emptymascot" src="mascot/idle.png" alt="">
+        <h1>Your clip</h1>
+        <p class="lead">Start fresh, or pick up where you left off.</p>
+        <button class="pill big primary" id="continueProject" type="button">Continue last project</button>
+        <p class="hint" id="homeHint"></p>
+        <button class="pill big" id="startNew" type="button">Start new</button>
+      </div>
+    </section>
+
     <section class="screen" id="screen-track" data-screen="track">
       <header class="screenhead">
-        <h1>Track</h1>
-        <p class="lead">Pick a song, then set the 15–30 second section.</p>
+        <h1>Audio</h1>
+        <p class="lead">Choose the song, then the 15–30 second part.</p>
       </header>
-      <button class="pill big primary" id="pickAudio" type="button">Choose a song</button>
+      <div class="emptycard" id="audioEmpty">
+        <img class="emptymascot" src="mascot/emote-music.webp" alt="">
+        <h2>Pick a song</h2>
+        <p class="hint">mp3, m4a, or wav. It stays on this phone.</p>
+        <button class="pill big primary" id="pickAudio" type="button">Choose a song</button>
+      </div>
+      <div id="audioWork">
+      <button class="pill" id="changeAudio" type="button">Change song</button>
       <div class="card">
         <h2>Section</h2>
         <div class="lcd" id="trackName">No song yet</div>
@@ -70,54 +119,69 @@ try {
         </label>
         <button class="pill" id="playClip" type="button">Play section</button>
       </div>
-      <p class="hint" id="trackHint">mp3, m4a, wav. Everything stays on this phone.</p>
+      </div>
+      <p class="hint" id="trackHint">Choose a song to continue.</p>
+      <button class="pill big primary stepnext" id="nextTrack" type="button" data-next="sync">Next</button>
     </section>
 
     <section class="screen" id="screen-sync" data-screen="sync">
       <header class="screenhead">
-        <h1>Sync</h1>
-        <p class="lead">Paste the lyrics if you know them. Otherwise the phone listens.</p>
+        <h1>Lyrics</h1>
+        <p class="lead">Paste the words, then line them up.</p>
       </header>
+      <div class="pinhost" id="pin-sync"></div>
+      <div class="emptycard" id="syncEmpty">
+        <img class="emptymascot" src="mascot/emote-happy.webp" alt="">
+        <h2>Add the words</h2>
+        <p class="hint">One line per lyric line. An empty box just listens.</p>
+      </div>
       <div class="card">
         <h2>Lyrics</h2>
-        <textarea id="lyrics" rows="6" placeholder="One line per lyric line. The whole song is fine."></textarea>
+        <textarea id="lyrics" rows="6" placeholder="One line per lyric line."></textarea>
       </div>
       <div class="card" id="modelCard">
-        <h2>Speech model</h2>
+        <h2>Listening</h2>
         <div class="pills" id="modelTier">
-          <button type="button" data-tier="fast" class="on">Fast</button>
-          <button type="button" data-tier="accurate">Accurate</button>
+          <button type="button" data-tier="fast" class="on">Quick</button>
+          <button type="button" data-tier="accurate">Clearer</button>
         </div>
-        <p class="hint" id="modelText">Fast is the tiny model, about 75 MB. Accurate is the larger one, about 190 MB. Each downloads once.</p>
-        <button class="pill" id="getModel" type="button">Download model</button>
+        <p class="hint" id="modelText">Quick is smaller. Clearer hears more. Each saves once.</p>
+        <button class="pill" id="getModel" type="button">Save for offline</button>
       </div>
-      <button class="pill big primary" id="syncBtn" type="button">Sync lyrics</button>
+      <button class="pill big primary" id="syncBtn" type="button">Line up lyrics</button>
       <div class="actions" id="tapRow">
         <button class="pill" id="tapHear" type="button">Hear</button>
         <button class="pill" id="tapMark" type="button">Mark line</button>
       </div>
       <p class="hint" id="tapNow">Tap Mark as each line starts.</p>
-      <p class="hint" id="syncStatus">Typed lyrics are aligned to the vocal. An empty box listens instead.</p>
+      <p class="hint" id="syncStatus">Your words get lined up with the singing.</p>
       <div class="card">
         <h2 id="linesHead">Lines</h2>
         <ol id="lineList" class="lines"></ol>
       </div>
+      <p class="hint stephint" id="hintSync">Line up the lyrics to continue.</p>
+      <button class="pill big primary stepnext" id="nextSync" type="button" data-next="video">Next</button>
     </section>
 
     <section class="screen" id="screen-video" data-screen="video">
       <header class="screenhead">
         <h1>Video</h1>
-        <p class="lead">Add the MP4, then set the frame.</p>
+        <p class="lead">Add the picture, then set the size.</p>
       </header>
       <div class="pinhost" id="pin-video"></div>
-      <button class="pill big primary" id="uploadVideo" type="button">Upload MP4</button>
+      <div class="emptycard" id="videoEmpty">
+        <img class="emptymascot" src="mascot/emote-surprised.webp" alt="">
+        <h2>Add a video</h2>
+        <p class="hint">This is the picture behind the words.</p>
+      </div>
+      <button class="pill big primary" id="uploadVideo" type="button">Add video</button>
       <div class="cliprow">
         <div class="clipname" id="clipLabel">No video yet</div>
         <button class="pill" id="removeVideo" type="button" hidden>Remove</button>
       </div>
       <p class="hint" id="clipStatus"></p>
       <div class="card">
-        <h2>Frame</h2>
+        <h2>Size</h2>
         <div class="pills" id="aspects">
           <button type="button" data-aspect="9:16" class="on">9:16</button>
           <button type="button" data-aspect="1:1">1:1</button>
@@ -139,12 +203,14 @@ try {
           <input id="vy" type="range" min="0" max="1" step="0.01" value="0.5">
         </label>
       </div>
+      <p class="hint stephint" id="hintVideo">Add a video to continue.</p>
+      <button class="pill big primary stepnext" id="nextVideo" type="button" data-next="look">Next</button>
     </section>
 
     <section class="screen" id="screen-look" data-screen="look">
       <header class="screenhead">
         <h1>Look</h1>
-        <p class="lead">Pick a look. Animation stays still until you tap one.</p>
+        <p class="lead">Pick a look. Motion stays still until you tap one.</p>
       </header>
       <div class="pinhost" id="pin-look">
         <div class="previewpin" id="previewPin">
@@ -195,11 +261,13 @@ try {
           <div class="scroller"><div class="hscroll" id="anims"></div></div>
         </div>
       </section>
+      <p class="hint stephint" id="hintLook">Pick a look, then continue.</p>
+      <button class="pill big primary stepnext" id="nextLook" type="button" data-next="time">Next</button>
     </section>
 
     <section class="screen" id="screen-time" data-screen="time">
       <header class="screenhead">
-        <h1>Timeline</h1>
+        <h1>Time</h1>
         <p class="lead">Trim the picture, the lines, and the zoom.</p>
       </header>
       <div class="pinhost" id="pin-time"></div>
@@ -233,20 +301,22 @@ try {
           <button type="button" data-bg="black">Black</button>
           <button type="button" data-bg="green">Green</button>
         </div>
-        <p class="hint" id="timeClipName">Upload the MP4 on Video.</p>
+        <p class="hint" id="timeClipName">Add the video on the Video step.</p>
       </div>
       <div class="card">
         <h2>Zoom</h2>
         <div class="scroller"><div class="hscroll" id="zooms"></div></div>
-        <button class="pill" id="addKey" type="button">Add zoom keyframe</button>
+        <button class="pill" id="addKey" type="button">Add a zoom</button>
         <ul id="keys" class="keys"></ul>
       </div>
+      <p class="hint stephint" id="hintTime">Trim the clip, or continue.</p>
+      <button class="pill big primary stepnext" id="nextTime" type="button" data-next="render">Next</button>
     </section>
 
     <section class="screen" id="screen-render" data-screen="render">
       <header class="screenhead">
         <h1>Render</h1>
-        <p class="lead">Same looks as the desktop app. The phone writes an MP4.</p>
+        <p class="lead">Save the clip as a video on this phone.</p>
       </header>
       <div class="pinhost" id="pin-render"></div>
       <div class="card">
@@ -258,20 +328,22 @@ try {
         <h2>Effects</h2>
         <div id="fx" class="fx"></div>
       </div>
-      <button class="pill big primary" id="renderBtn" type="button">Render MP4</button>
-      <p class="hint" id="renderStatus">Black and green are for editors. Green turns glow off so the screen stays clean.</p>
+      <button class="pill big primary" id="renderBtn" type="button">Make video</button>
+      <p class="hint" id="renderStatus">Black and green are for editors. Green turns the glow off.</p>
       <button class="pill" id="shareBtn" type="button" hidden>Share video</button>
+      <p class="hint stephint" id="hintRender">Make the video to finish.</p>
+      <button class="pill big primary stepnext" id="nextRender" type="button">Share</button>
     </section>
   </main>
 
   <div class="dockplate" aria-hidden="true"></div>
   <nav class="dock" id="dock">
-    <button type="button" data-screen="track"><span class="docklabel">Track</span></button>
-    <button type="button" data-screen="sync"><span class="docklabel">Sync</span></button>
-    <button type="button" data-screen="video"><span class="docklabel">Video</span></button>
-    <button type="button" data-screen="look"><span class="docklabel">Look</span></button>
-    <button type="button" data-screen="time"><span class="docklabel">Time</span></button>
-    <button type="button" data-screen="render"><span class="docklabel">Render</span></button>
+    <button type="button" data-screen="track"><span class="dockn">1</span><span class="docklabel">Audio</span></button>
+    <button type="button" data-screen="sync"><span class="dockn">2</span><span class="docklabel">Sync</span></button>
+    <button type="button" data-screen="video"><span class="dockn">3</span><span class="docklabel">Video</span></button>
+    <button type="button" data-screen="look"><span class="dockn">4</span><span class="docklabel">Look</span></button>
+    <button type="button" data-screen="time"><span class="dockn">5</span><span class="docklabel">Time</span></button>
+    <button type="button" data-screen="render"><span class="dockn">6</span><span class="docklabel">Render</span></button>
   </nav>
 </div>
 <audio id="audio" preload="auto"></audio>

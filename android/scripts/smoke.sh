@@ -28,13 +28,17 @@ line, screen, theme = sys.argv[1:]
 if f"{screen} {theme} ok" not in line:
     raise SystemExit("audit not ok: " + line.strip())
 need = {
-    "track": ["title=1", "wave=1", "start=1", "play=1"],
-    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1"],
-    "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1"],
-    "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1"],
-    "time": ["title=1", "timeline=1", "zooms=5", "previewpin=1", "fold=1", "film=1", "actionfit=1"],
-    "video": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "vzoom=1", "previewpin=1"],
-    "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1"],
+    "track": ["title=1", "wave=1", "start=1", "play=1", "next=1", "steps=6"],
+    "sync": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "linerows=1", "previewpin=1", "next=1", "steps=6"],
+    "syncshot": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "words=1", "edit=1", "frames=1", "edited=1", "linerows=1", "lineshead=1", "previewpin=1", "next=1", "steps=6"],
+    "look": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "next=1", "steps=6"],
+    "time": ["title=1", "timeline=1", "zooms=5", "previewpin=1", "fold=1", "film=1", "actionfit=1", "next=1", "steps=6"],
+    "video": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "vzoom=1", "previewpin=1", "next=1", "steps=6"],
+    "render": ["title=1", "quality=4", "fx=7", "renderbtn=1", "previewpin=1", "next=1", "steps=6"],
+    "home": ["title=1", "continue=1", "startnew=1"],
+    "intro": ["title=1", "intronext=1", "skip=1"],
+    "intro2": ["title=1", "intronext=1", "skip=1"],
+    "intro3": ["title=1", "intronext=1", "skip=1"],
     "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
 }[screen]
 need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "themefit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1"]
@@ -186,5 +190,9 @@ for theme in aero y2k winamp; do
   capture videocheck "${theme}" "android-look${suffix}.png" asset:test-clip.mp4
   capture time "${theme}" "android-time${suffix}.png" asset:test-clip.mp4
   capture render "${theme}" "android-render${suffix}.png" asset:test-clip.mp4
+  capture home "${theme}" "android-home${suffix}.png"
+  capture intro "${theme}" "android-intro${suffix}.png"
+  capture intro2 "${theme}" "android-intro2${suffix}.png"
+  capture intro3 "${theme}" "android-intro3${suffix}.png"
 done
 exit "${fail}"
