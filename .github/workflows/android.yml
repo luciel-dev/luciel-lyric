@@ -108,6 +108,24 @@ jobs:
           ls -l /dev/kvm
 
       - name: Emulator smoke + screenshots
+        id: smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          disable-linux-hw-accel: false
+          ram-size: 2048M
+          emulator-boot-timeout: 600
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash android/scripts/smoke.sh
+
+      # sdkmanager sometimes unpacks a corrupt system image ("unknown archive") and the
+      # emulator never boots. A second attempt on the same runner usually gets a good zip.
+      - name: Retry emulator smoke
+        if: steps.smoke.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
