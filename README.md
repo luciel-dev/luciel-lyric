@@ -115,7 +115,7 @@ On the phone, whisper.cpp transcribes the section you picked and the page aligns
 ## Using it
 
 1. **Track**: drop an mp3/wav/m4a file. Click or drag on the waveform (or type a start time) to place the clip, and set its length with the slider (15–30 s, default 20 s). **Play clip** plays the selected range.
-2. **Lyrics sync**: you can paste lyrics; the whole song is fine because only the part sung in the clip is kept. Pick a model (`base.en` by default). **Isolate vocals** (Demucs) is on by default when it's installed. It adds about 6 s for a 20 s clip and makes the timing much tighter.
+2. **Lyrics sync**: paste the lyrics (one line per lyric line; the whole song is fine) and they are force-aligned to the vocal stem. Leave the box empty to transcribe. **Fast / Accurate / Best** pick the speech model (small, medium, or distil-large-v3). The best one that fits this computer is selected; it downloads on first use into `data/models`, then stays offline. **Isolate vocals** (Demucs, htdemucs) is on when it is installed. If the timings look wrong, the banner says so and the weak lines are highlighted. **Tap to sync** plays the clip so you can mark each line (or word) with Space or a click, with undo and restart.
 3. **Edit & preview**: every word has editable text, start and end times (seconds from the clip start). You can split or merge lines, add or delete words, and shift everything by ±0.1 s. **Preview sync** plays the clip with a live karaoke preview. Words that were pasted but not heard in the audio get interpolated timings and an orange outline.
 4. **Style, animate & render**: pick a **Look** (Neon Pop / Bold Poster / Dreamy Script: base colours, font, gradient), then use the four tabs. The canvas **stage** on the right shows the exact frame the renderer will produce; **▶ Preview** plays it with the song, and the scrubber (with keyframe diamonds) seeks.
    - **Text & animation**: animation library, font, full customisation, saved presets (below).
@@ -284,11 +284,10 @@ Screenshots: `samples/output/themes/` (`theme_{aero,y2k,winamp}_{start,full,view
 | Stage | Implementation |
 |---|---|
 | Upload | ffmpeg converts the file to 44.1 kHz WAV; numpy computes 1200 waveform peaks for the canvas |
-| Vocal isolation (optional) | `demucs --two-stems=vocals -n htdemucs` (CPU), run as a **subprocess** |
-| ASR + word timestamps | `faster-whisper` (CTranslate2, int8 on CPU), `word_timestamps=True`, beam 5 |
-| Onset refinement | When the vocal stem is available, word boundaries next to pauses are snapped to the vocal RMS envelope (Whisper word starts tend to be about 0.2–0.4 s early) |
-| Pasted-lyrics alignment | Semi-global Needleman–Wunsch between the pasted words and the Whisper words, scored with RapidFuzz similarity. Free leading/trailing skips mean pasting the whole song still works. Matched words take Whisper's times; unmatched words are interpolated between anchors, weighted by length. Line breaks follow the pasted text |
-| Line grouping (no pasted lyrics) | Breaks on pauses > 0.5 s, sentence punctuation, or a commas after 4+ words; at most 8 words or 38 characters per line |
+| Vocal isolation | `demucs --two-stems=vocals -n htdemucs` (CPU), run as a **subprocess**. The vocals stem is what sync listens to. If separation fails, sync says so and uses the mix |
+| ASR + word timestamps | `faster-whisper` (CTranslate2, int8 on CPU) when the lyric box is empty: `word_timestamps=True`, VAD on, beam 5, initial prompt `English song lyrics.` Model tiers Fast / Accurate / Best download into `data/models` on first use. Bundled `base.en` stays in the installer for the offline smoke test |
+| Pasted-lyrics alignment | Wav2vec2 CTC forced alignment (`data/models/wav2vec2-base-960h`, int8 ONNX, offline). Every typed word gets a monotonic start and end. Line breaks are the ones you typed. Extra lines that were not sung in the clip are dropped. This is not a fuzzy match against a Whisper transcript |
+| Line grouping (no pasted lyrics) | Breaks on a pause, a sentence, or the length the preview can show. A line is not cut every 8 tokens |
 | Render | `app/compose.py`: for every frame (thread pool, in order) background (gradient / image / decoded video) → float-box zoom/pan → waveform from the audio samples → lyric layer (`textanim` draw list rasterised by `raster.py`) → post FX (`fx.py`) → raw RGB(A) piped to ffmpeg, which adds the song (fades, optional video-audio mix) and encodes H.264/AAC, ProRes 4444 or VP9 alpha |
 
 Code: `app/main.py` (API), `app/align.py` (alignment + refinement), `app/compose.py`, `app/textanim.py`,
@@ -331,12 +330,9 @@ and `samples/testsong/e2e_editor.py` (API renders in every background mode, writ
 
 ## Known limitations
 
-- The test vocals are TTS speech over a beat. Real sung vocals with melisma, harmonies, ad-libs or heavy
-  effects will transcribe worse. Pasting the lyrics plus Demucs is the recommended path for real songs.
-- Whisper can hallucinate or skip words in instrumental sections or when the vocals are buried in the mix. Use
-  the editor to fix those, and check the preview before rendering.
-- Line timing comes from word timings: whole lines that Whisper missed and you pasted get interpolated (orange
-  outline) and may need manual adjustment.
+- Pasting the lyrics and isolating the vocals is the path for a real song. An empty lyric box still transcribes, and a bad transcription is reported instead of being presented as synced.
+- Melisma, harmonies, ad-libs, and buried vocals can still miss. Low-confidence lines are highlighted; tap-to-sync or the word times fix them.
+- The Fast / Accurate / Best weights and the aligner are not in the installer. They download once. `base.en` and htdemucs stay bundled so an offline install can still smoke-test.
 - Sync and render requests are synchronous with no job queue: a single user at a time, and the UI waits on
   each request (a render takes roughly as long as the clip).
 - Non-English: pick the multilingual `base`/`small` models. Scripts the chosen font lacks (CJK, emoji) render as

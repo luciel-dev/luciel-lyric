@@ -14,8 +14,9 @@ const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`
 // ---------- config ----------
 (async () => {
   S.cfg = await api('/api/config');
-  $('#modelIn').innerHTML = S.cfg.models.map(m => `<option ${m === 'base.en' ? 'selected' : ''}>${m}</option>`).join('');
-  if (S.cfg.demucs) $('#sepIn').checked = true; else { $('#sepIn').disabled = true; $('#sepIn').parentElement.title = 'demucs not installed'; $('#sepIn').parentElement.style.opacity = .5; }
+  S.tier = S.cfg.default_tier || 'best';
+  paintTiers();
+  if (S.cfg.demucs) $('#sepIn').checked = true; else { $('#sepIn').disabled = true; $('#sepIn').parentElement.title = 'Vocal isolation is not installed on this computer'; $('#sepIn').parentElement.style.opacity = .5; }
   const pc = $('#presets');
   for (const [k, p] of Object.entries(S.cfg.presets)) {
     const d = document.createElement('div');
@@ -117,6 +118,7 @@ async function uploadAudio(f) {
   audio.src = `/api/audio/${S.audio.id}`;
   S.start = 0; S.len = Math.min(+$('#lenIn').value, S.audio.duration);
   $('#waveWrap').classList.remove('hidden'); $('#syncBtn').disabled = false;
+  $('#tapBox').classList.remove('hidden'); paintTap();
   $('#startIn').max = Math.max(0, S.audio.duration - 15);
   drawWave(); emit('audio', S.audio); window.ED && ED.onAudio();
 }
@@ -220,38 +222,235 @@ function updatePreview(t) {
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
 // ---------- sync ----------
+function paintTiers() {
+  const row = $('#tierRow'); if (!row || !S.cfg) return;
+  const tiers = S.cfg.tiers || [];
+  row.innerHTML = tiers.map(t => {
+    const mb = Math.max(1, Math.round(t.bytes / 1e6));
+    const saved = t.ready ? ' · saved' : '';
+    return `<button type="button" class="tierbtn${t.id === S.tier ? ' on' : ''}" data-tier="${t.id}" role="radio" aria-checked="${t.id === S.tier}">
+      <b>${esc(t.label)}</b><small>${esc(t.detail)} · ${mb} MB${saved}</small></button>`;
+  }).join('');
+  row.querySelectorAll('button').forEach(b => b.onclick = () => { S.tier = b.dataset.tier; paintTiers(); });
+  const cur = tiers.find(t => t.id === S.tier);
+  const note = $('#tierNote');
+  if (note) note.textContent = cur
+    ? (cur.ready ? `${cur.label} is saved on this computer and stays offline.` : `${cur.label} downloads once, then stays on this computer.`)
+    : '';
+}
+let syncPoll = null;
+function watchProgress(on) {
+  clearInterval(syncPoll); syncPoll = null;
+  const box = $('#syncProgress');
+  if (!on) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const tick = async () => {
+    try {
+      const p = await api('/api/models/progress');
+      const frac = Math.max(0, Math.min(1, p.fraction || 0));
+      $('#syncBar').style.width = (frac * 100).toFixed(1) + '%';
+      box.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+      $('#syncProgressText').textContent = p.message || (p.error ? p.error : 'Working…');
+    } catch (e) {}
+  };
+  tick();
+  syncPoll = setInterval(tick, 400);
+}
+function showSyncBanner(r) {
+  const b = $('#syncBanner');
+  b.classList.remove('hidden', 'ok', 'warn', 'bad');
+  const low = (r.lines || []).filter(l => l.low_confidence).length;
+  let text;
+  if (r.ok === false) {
+    b.classList.add('bad');
+    text = r.error || 'These timings need a check. Low-confidence lines are marked.';
+  } else if (low) {
+    b.classList.add('warn');
+    text = r.error || `${low} line${low === 1 ? '' : 's'} look uncertain and are highlighted. Tap them in, or edit the times.`;
+  } else if (r.mode === 'forced_alignment') {
+    b.classList.add('ok');
+    text = `Lyrics aligned to the vocals. Confidence ${Math.round((r.confidence || 0) * 100)}%.`;
+  } else {
+    b.classList.add('ok');
+    text = `Heard ${r.stats?.hyp_words || 0} words.`;
+  }
+  if (r.separation_error) text += ' Vocal isolation did not run, so the mix was used.';
+  b.textContent = text;
+}
 $('#syncBtn').onclick = async () => {
   const sep = $('#sepIn').checked;
   $('#syncBtn').disabled = true; emit('sync-start');
-  $('#syncStatus').innerHTML = `<span class="spin"></span>${sep ? 'Isolating vocals + ' : ''}transcribing with word timestamps… (runs fully offline on this computer)`;
+  $('#syncBanner').classList.add('hidden');
+  const listening = $('#lyricsIn').value.trim() ? 'Aligning the lyrics to the vocals' : 'Listening for the words';
+  $('#syncStatus').innerHTML = `<span class="spin"></span>${sep ? 'Isolating vocals, then ' : ''}${listening}…`;
+  watchProgress(true);
   try {
     const r = await api('/api/sync', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({audio_id: S.audio.id, start: S.start, length: S.len, lyrics: $('#lyricsIn').value,
-        separate_vocals: sep, model: $('#modelIn').value})});
+        separate_vocals: sep, model: S.tier})});
     S.lines = r.lines; S.len = r.length;
     const st = r.stats || {};
-    let msg = `✅ ${r.mode === 'aligned_to_pasted_lyrics' ? `Aligned pasted lyrics: ${st.matched}/${st.ref_words_used} words matched to audio${st.matched < st.ref_words_used ? ' (rest interpolated, outlined orange)' : ''}` : `Transcribed ${st.hyp_words} words`} · ASR ${r.timing.asr_s}s`;
-    if (r.vocal_separation) msg += ` · vocals isolated in ${r.timing.separation_s}s`;
-    if (r.separation_error) msg += ` · ⚠ separation skipped: ${esc(r.separation_error.slice(0, 120))}`;
-    $('#syncStatus').innerHTML = msg;
-    renderLines(); emit('sync-done', r);
+    const bits = [];
+    if (r.mode === 'forced_alignment') bits.push(`Aligned ${st.ref_words_used || 0} typed words`);
+    else if (r.mode === 'transcribed_realigned') bits.push(`Retimed ${st.hyp_words || 0} heard words`);
+    else bits.push(`Transcribed ${st.hyp_words || 0} words`);
+    if (r.timing) {
+      if (r.timing.align_s) bits.push(`align ${r.timing.align_s}s`);
+      if (r.timing.asr_s) bits.push(`listen ${r.timing.asr_s}s`);
+      if (r.vocal_separation) bits.push(`vocals ${r.timing.separation_s}s`);
+      if (r.timing.download_s) bits.push(`download ${r.timing.download_s}s`);
+    }
+    $('#syncStatus').textContent = bits.join(' · ');
+    showSyncBanner(r);
+    if (S.cfg && S.cfg.tiers) { const hit = S.cfg.tiers.find(t => t.id === S.tier); if (hit) hit.ready = true; paintTiers(); }
+    snapshotTap(); renderLines(); emit('sync-done', r);
     $('#step3').classList.remove('hidden'); $('#step4').classList.remove('hidden');
+    $('#tapBox').classList.remove('hidden'); paintTap();
     updateStage(); const f0 = S.lines[0]?.words[0]; updatePreview(f0 ? +f0.start + 0.4 : 0);
     window.ED && ED.seek(f0 ? +f0.start + 0.6 : 0);
-  } catch (e) { $('#syncStatus').textContent = '❌ ' + e.message; emit('error', {where: 'sync', message: e.message}); }
+    window.ED && ED.refresh && ED.refresh();
+  } catch (e) {
+    $('#syncStatus').textContent = e.message;
+    const b = $('#syncBanner'); b.classList.remove('hidden', 'ok', 'warn'); b.classList.add('bad'); b.textContent = e.message;
+    emit('error', {where: 'sync', message: e.message});
+  }
+  watchProgress(false);
   $('#syncBtn').disabled = false;
 };
+
+// ---------- tap to sync ----------
+const tap = {mode: 'line', marks: []};
+function seedLinesFromPaste() {
+  const text = $('#lyricsIn').value || '';
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean).map(line => ({
+    low_confidence: true, confidence: 0,
+    words: line.split(/\s+/).filter(Boolean).map(t => ({text: t, start: S.len, end: +(S.len + 0.02).toFixed(3), confidence: 0, low_confidence: true})),
+  })).filter(ln => ln.words.length);
+  if (!lines.length) return false;
+  S.lines = lines;
+  return true;
+}
+function snapshotTap() {
+  tap.marks = [];
+  S.tapBase = S.lines.map(ln => ({
+    confidence: ln.confidence, low_confidence: !!ln.low_confidence,
+    words: ln.words.map(w => ({start: +w.start, end: +w.end, confidence: w.confidence, low_confidence: !!w.low_confidence})),
+  }));
+}
+function tapTargets() {
+  const out = [];
+  S.lines.forEach((ln, li) => {
+    if (tap.mode === 'line') out.push({li, words: ln.words, line: true});
+    else ln.words.forEach((w, wi) => out.push({li, wi, words: [w], line: false}));
+  });
+  return out;
+}
+function applyTaps() {
+  if (!S.tapBase) snapshotTap();
+  S.tapBase.forEach((src, li) => {
+    const ln = S.lines[li]; if (!ln) return;
+    src.words.forEach((w, wi) => { if (!ln.words[wi]) return; ln.words[wi].start = w.start; ln.words[wi].end = w.end; ln.words[wi].confidence = w.confidence; ln.words[wi].low_confidence = w.low_confidence; });
+    ln.confidence = src.confidence; ln.low_confidence = src.low_confidence;
+  });
+  if (!tap.marks.length) { renderLines(); window.ED && ED.refresh && ED.refresh(); paintTap(); return; }
+  const targets = tapTargets();
+  const len = S.len || 20;
+  targets.forEach((tg, i) => {
+    const words = tg.words;
+    if (i >= tap.marks.length) {
+      const start = Math.max(0, len - 0.08 * (targets.length - i));
+      words.forEach((w, k) => {
+        w.start = +Math.min(len - 0.02, start + k * 0.02).toFixed(3);
+        w.end = +Math.min(len, w.start + 0.02).toFixed(3);
+        w.low_confidence = true; w.confidence = 0;
+      });
+      return;
+    }
+    const start = Math.max(0, Math.min(len - 0.02, tap.marks[i]));
+    const next = i + 1 < tap.marks.length ? tap.marks[i + 1] : Math.min(len, start + Math.max(0.35, 0.28 * words.length));
+    const span = Math.max(0.02 * words.length, next - start);
+    words.forEach((w, k) => {
+      const a = start + span * (k / words.length);
+      const b = start + span * ((k + 1) / words.length);
+      w.start = +Math.min(a, len - 0.02).toFixed(3);
+      w.end = +Math.min(len, Math.max(w.start + 0.02, b)).toFixed(3);
+      w.low_confidence = false; w.confidence = 1;
+    });
+  });
+  let prev = 0;
+  S.lines.forEach(ln => {
+    ln.words.forEach(w => {
+      if (w.start < prev) w.start = +prev.toFixed(3);
+      if (w.end < w.start + 0.02) w.end = +(w.start + 0.02).toFixed(3);
+      prev = w.end;
+    });
+    const tapped = ln.words.some(w => w.confidence === 1);
+    ln.low_confidence = ln.words.some(w => w.low_confidence);
+    if (tapped && !ln.low_confidence) ln.confidence = 1;
+  });
+  renderLines();
+  window.ED && ED.refresh && ED.refresh();
+  paintTap();
+}
+function paintTap() {
+  const now = $('#tapNow'); if (!now) return;
+  const targets = S.lines.length ? tapTargets() : [];
+  const i = tap.marks.length;
+  if (!targets.length) { now.textContent = 'Paste lyrics or sync first, then tap along.'; return; }
+  if (i >= targets.length) { now.textContent = 'Every mark is in. Undo or restart to change them.'; return; }
+  const tg = targets[i];
+  const label = tg.words.map(w => w.text).join(' ');
+  now.textContent = `Next: ${label}`;
+}
+function tapMark() {
+  if (!S.audio) return;
+  if (!S.lines.length && !seedLinesFromPaste()) { $('#tapNow').textContent = 'Paste the lyrics first.'; return; }
+  if (!S.tapBase) snapshotTap();
+  $('#step3').classList.remove('hidden');
+  if (audio.paused) playClip(false);
+  const t = Math.max(0, audio.currentTime - S.start);
+  if (tap.marks.length && t < tap.marks[tap.marks.length - 1]) return;
+  if (tap.marks.length >= tapTargets().length) return;
+  tap.marks.push(+t.toFixed(3));
+  applyTaps();
+}
+$('#tapPlay').onclick = () => {
+  if (!S.audio) return;
+  if (!S.lines.length && !seedLinesFromPaste()) { $('#tapNow').textContent = 'Paste the lyrics first.'; return; }
+  if (!S.tapBase) snapshotTap();
+  $('#step3').classList.remove('hidden');
+  renderLines();
+  playClip(false);
+  paintTap();
+};
+$('#tapUndo').onclick = () => { tap.marks.pop(); if (S.tapBase) applyTaps(); else paintTap(); };
+$('#tapRestart').onclick = () => { tap.marks = []; if (S.tapBase) applyTaps(); };
+$('#tapHit').onclick = () => tapMark();
+$('#tapMode').querySelectorAll('button').forEach(b => b.onclick = () => {
+  tap.mode = b.dataset.mode;
+  $('#tapMode').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); });
+  tap.marks = [];
+  if (S.tapBase) applyTaps(); else paintTap();
+});
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || (document.activeElement && document.activeElement.isContentEditable)) return;
+  if ($('#tapBox').classList.contains('hidden')) return;
+  e.preventDefault();
+  tapMark();
+});
 
 // ---------- editor ----------
 function renderLines() {
   const box = $('#lines'); box.innerHTML = '';
   S.lines.forEach((ln, li) => {
-    const d = document.createElement('div'); d.className = 'line';
+    const d = document.createElement('div'); d.className = 'line' + (ln.low_confidence ? ' lowconf' : '');
     d.innerHTML = `<div class="lhead">${li + 1}<button title="Merge with line above" data-a="merge">⤒</button><button title="Delete line" data-a="del">🗑</button></div>`;
     d.querySelector('[data-a=merge]').onclick = () => { if (li > 0) { S.lines[li - 1].words.push(...ln.words); S.lines.splice(li, 1); renderLines(); } };
     d.querySelector('[data-a=del]').onclick = () => { S.lines.splice(li, 1); renderLines(); };
     ln.words.forEach((w, wi) => {
-      const wd = document.createElement('div'); wd.className = 'word' + (w.matched === false ? ' guess' : '');
+      const wd = document.createElement('div'); wd.className = 'word' + (w.low_confidence ? ' lowconf' : '') + (w.matched === false ? ' guess' : '');
       wd.innerHTML = `<input class="wt" value="${esc(w.text)}" size="${Math.max(3, w.text.length)}">
         <div class="tt"><input type="number" step="0.01" value="${(+w.start).toFixed(2)}" title="start"><input type="number" step="0.01" value="${(+w.end).toFixed(2)}" title="end"></div>
         <div class="wa"><button title="Split line after this word">↵</button><button title="Insert word after">＋</button><button title="Delete word">✕</button></div>`;

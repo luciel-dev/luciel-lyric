@@ -207,19 +207,39 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+  alignment:
+    name: alignment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install aligner dependencies
+        run: python -m pip install --upgrade pip && python -m pip install "onnxruntime==1.31.0" "numpy==2.5.4" "rapidfuzz==3.14.6"
+      - name: Cache the wav2vec2 aligner
+        uses: actions/cache@v4
+        with:
+          path: data/models/wav2vec2-base-960h
+          key: wav2vec2-base-960h-int8-a4249bb7
+      - name: Forced alignment on the sung clip
+        run: python scripts/test_sync.py
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, alignment]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
-      - run: ls -la out
+      - run: ls -la out docs/screenshots
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -227,10 +247,13 @@ jobs:
             out/*.zip
             out/*.dmg
             out/*.tar.gz
+            docs/screenshots/sync-v140.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric  — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+            Luciel Lyric 1.4.0 — pick a song, sync the lyrics, style a 15–30 s clip, render an MP4.
+
+            Desktop sync force-aligns pasted lyrics to the vocal stem (offline wav2vec2). Fast, Accurate, and Best speech models download on first use, then stay on the computer. A confidence warning replaces a silent bad sync, and tap-to-sync can write line or word times. The Sync panel screenshot is sync-v140.png.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time

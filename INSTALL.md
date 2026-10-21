@@ -43,6 +43,9 @@ Run Install again. If you move the LucielLyric folder, Install must run once mor
 **"vocal isolation is not available"**
 The app still works; only the *Isolate vocals* option is off. This happens on Intel Macs.
 
+**Fast / Accurate / Best, and the lyric aligner**
+Those weights are not in the installer. The first Sync that needs one downloads it into `data/models` (a progress bar shows the download) and then works offline. The bundled `base.en` model is only the offline fallback. A blocked `huggingface.co` shows an error on the Sync panel instead of a silent bad sync. `HF_ENDPOINT` applies to that download too.
+
 **It can't download the AI models (firewall, or huggingface.co blocked)**
 * Use a mirror:
   * Mac/Linux: `HF_ENDPOINT=https://hf-mirror.com ./install.sh`

@@ -8,11 +8,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .align import align_lyrics, group_into_lines, refine_with_energy
+from .align import finish_lines, group_into_lines, normalize_whisper_words, refine_with_energy, timings_look_real
 from .fonts import FontError, FontStore
 from .render import ENGINE, PRESETS, SIZES, render as render_frames
 from .compose import still as render_still
-from .runtime import FFMPEG, FFPROBE, available_whisper_models, whisper_model_path
+from .runtime import FFMPEG, FFPROBE, available_whisper_models
+from .model_store import (
+    aligner_ready, clear_progress, default_tier, ensure_aligner, ensure_whisper,
+    progress as model_progress, resolve_model, set_progress, tier_status, whisper_path,
+)
 from . import runtime
 
 ROOT = runtime.ROOT
@@ -30,11 +34,14 @@ MODELS = ["tiny.en", "base.en", "small.en", "base", "small"]
 
 
 def get_model(name: str):
+    """Load a whisper model that is already on disk. Never reaches the network."""
     from faster_whisper import WhisperModel
     with _model_lock:
         if name not in _models:
-            local = whisper_model_path(name)
-            _models[name] = WhisperModel(str(local) if local else name, device="cpu", compute_type="int8")
+            local = whisper_path(name)
+            if local is None:
+                raise HTTPException(400, f"Speech model {name} isn't on this computer.")
+            _models[name] = WhisperModel(str(local), device="cpu", compute_type="int8", local_files_only=True)
         return _models[name]
 
 
@@ -50,6 +57,13 @@ def audio_path(aid: str) -> Path:
     if not p.exists():
         raise HTTPException(404, "audio not found")
     return p
+
+
+def original_audio(aid: str) -> Path:
+    """The file the user dropped, before the 44.1 kHz playback copy. One decode keeps sung onsets put."""
+    d = UP / aid
+    orig = next((p for p in d.glob("orig*") if p.is_file()), None)
+    return orig or audio_path(aid)
 
 
 def demucs_available() -> bool:
@@ -73,6 +87,7 @@ def config(request: Request):
     return {"presets": PRESETS, "engine": ENGINE,
             "sizes": list(SIZES.keys()), "demucs": demucs_available(),
             "models": available_whisper_models(MODELS),
+            "tiers": tier_status(), "default_tier": default_tier(), "aligner_ready": aligner_ready(),
             # desktop helpers: folders can only be opened for a browser on this computer
             "can_open_folders": _is_local(request), "desktop_mode": runtime.DESKTOP_MODE or None,
             "can_quit": _is_local(request) and runtime.SHUTDOWN_HOOK is not None}
@@ -270,6 +285,12 @@ def delete_preset(pid: str):
     return {"deleted": pid}
 
 
+@app.get("/api/models/progress")
+def models_progress():
+    """Download / align progress for the Sync panel. Safe to poll during /api/sync."""
+    return model_progress()
+
+
 @app.get("/api/background/{name}")
 def get_bg(name: str):
     p = UP / Path(name).name
@@ -278,13 +299,108 @@ def get_bg(name: str):
     return FileResponse(p)
 
 
+def _section_pcm(src: Path, start: float, length: float) -> np.ndarray:
+    pcm16 = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
+                            "-i", str(src), "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                           capture_output=True).stdout
+    if not pcm16:
+        raise HTTPException(500, "couldn't read the audio for sync")
+    return np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def _load_mono16(path: Path) -> np.ndarray:
+    pcm16 = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(path), "-ac", "1",
+                            "-ar", "16000", "-f", "s16le", "-"], capture_output=True).stdout
+    if not pcm16:
+        raise HTTPException(500, "couldn't read the audio for sync")
+    return np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def _isolate_vocals(clip: Path, job: Path):
+    """Run htdemucs. Returns (audio_path, used, error). A failure stays on the mix, with a reason."""
+    if not demucs_available():
+        return clip, False, "Vocal isolation isn't installed, so the full mix was used."
+    r = subprocess.run(runtime.demucs_command(["--two-stems=vocals", "-n", "htdemucs", "-d", "cpu",
+                                               "-o", str(job / "sep"), str(clip)]),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    vocals = job / "sep" / "htdemucs" / "clip" / "vocals.wav"
+    if r.returncode == 0 and vocals.exists():
+        return vocals, True, None
+    return clip, False, "Vocal isolation failed, so the full mix was used."
+
+
+def _lyric_prompt(lyrics: str) -> str:
+    text = " ".join((lyrics or "").split())
+    if text:
+        return text[:220]
+    return "English song lyrics."
+
+
+def _whisper_lang(model_name: str, requested: str | None):
+    if requested:
+        return requested
+    if model_name.endswith(".en") or "distil" in model_name:
+        return "en"
+    return None
+
+
+def _transcribe(audio16: np.ndarray, model_name: str, prompt: str, language: str | None, length: float):
+    """Word timestamps, VAD, and a lyric prompt. Retries without VAD if it eats the take."""
+    model = get_model(model_name)
+    lang = _whisper_lang(model_name, language)
+
+    def once(use_vad: bool):
+        segs, info = model.transcribe(
+            audio16, word_timestamps=True, beam_size=5, vad_filter=use_vad,
+            condition_on_previous_text=False, language=lang,
+            initial_prompt=(prompt or "English song lyrics.")[:220],
+        )
+        raw = []
+        for seg in segs:
+            for w in (seg.words or []):
+                raw.append({"text": w.word, "start": float(w.start or 0), "end": float(w.end or 0),
+                            "confidence": float(w.probability or 0)})
+        return normalize_whisper_words(raw), info
+
+    words, info = once(True)
+    if len(words) < 2:
+        words, info = once(False)
+    kept = []
+    for w in words:
+        if w["start"] >= length:
+            continue
+        w["start"] = round(max(0.0, w["start"]), 3)
+        w["end"] = round(min(length, max(w["end"], w["start"] + 0.02)), 3)
+        kept.append(w)
+    return kept, info
+
+
+def _mark_all_low(lines):
+    for ln in lines:
+        ln["low_confidence"] = True
+        ln["confidence"] = min(float(ln.get("confidence") or 0), 0.2)
+        for w in ln.get("words") or []:
+            w["low_confidence"] = True
+    return lines
+
+
+def _sync_payload(lines, words, mode, stats, length, sep_used, sep_err, timing, language, ok, error, confidence):
+    return {
+        "lines": lines, "raw_words": words, "mode": mode, "stats": stats, "length": length,
+        "vocal_separation": sep_used, "separation_error": sep_err,
+        "timing": timing, "language": language,
+        "ok": ok, "error": error, "confidence": confidence,
+    }
+
+
 class SyncReq(BaseModel):
     audio_id: str
     start: float = 0.0
     length: float = 20.0
     lyrics: str = ""
-    separate_vocals: bool = False
-    model: str = "base.en"
+    separate_vocals: bool = True
+    model: str = ""
     language: str | None = None
 
 
@@ -293,53 +409,149 @@ def sync(req: SyncReq):
     src = audio_path(req.audio_id)
     length = min(30.0, max(15.0, req.length))
     job = WORK / f"sync_{uuid.uuid4().hex[:8]}"; job.mkdir()
-    clip = job / "clip.wav"
-    run([FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{req.start:.3f}", "-t", f"{length:.3f}",
-         "-i", str(src), "-ac", "2", "-ar", "44100", str(clip)])
+    # Align against the original file. The playback WAV is 44.1 kHz, and decoding that back
+    # to 16 kHz was enough to pull a sung word off its onset.
+    audio16 = _section_pcm(original_audio(req.audio_id), req.start, length)
     t0 = time.time()
-    asr_in, sep_used, sep_err = clip, False, None
+    sep_used, sep_err = False, None
     if req.separate_vocals:
-        if not demucs_available():
-            sep_err = "demucs not installed"
-        else:
-            r = subprocess.run(runtime.demucs_command(["--two-stems=vocals", "-n", "htdemucs", "-d", "cpu",
-                                                       "-o", str(job / "sep"), str(clip)]),
-                               capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            v = job / "sep" / "htdemucs" / "clip" / "vocals.wav"
-            if r.returncode == 0 and v.exists():
-                asr_in, sep_used = v, True
-            else:
-                sep_err = (r.stderr or "demucs failed")[-500:]
+        clip = job / "clip.wav"
+        run([FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{req.start:.3f}", "-t", f"{length:.3f}",
+             "-i", str(src), "-ac", "2", "-ar", "44100", str(clip)])
+        asr_in, sep_used, sep_err = _isolate_vocals(clip, job)
+        if sep_used:
+            audio16 = _load_mono16(asr_in)
     t_sep = time.time() - t0
-    model = get_model(req.model if req.model in available_whisper_models(MODELS) else "base.en")
-    lang = req.language or (None if not req.model.endswith(".en") else "en")
-    pcm16 = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(asr_in), "-ac", "1",
-                            "-ar", "16000", "-f", "s16le", "-"], capture_output=True).stdout
-    audio16 = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
-    segs, info = model.transcribe(audio16, word_timestamps=True, beam_size=5, vad_filter=False,
-                                  condition_on_previous_text=False, language=lang,
-                                  )
-    words = []
-    for s in segs:
-        for w in (s.words or []):
-            t = w.word.strip()
-            if t and w.start < length:
-                words.append({"text": t, "start": round(max(0, w.start), 3),
-                              "end": round(min(length, w.end), 3), "prob": round(w.probability, 3)})
-    t_asr = time.time() - t0 - t_sep
-    if sep_used:  # precise onsets from the isolated vocal stem
+    lyrics = (req.lyrics or "").strip()
+    # A named bundle (the smoke test's base.en) stays that model. A tier id, or nothing, picks Fast/Accurate/Best.
+    tier_id, model_name = resolve_model(req.model or default_tier())
+    download_s = 0.0
+    align_s = 0.0
+    asr_s = 0.0
+    info_lang = "en" if lyrics else None
+    try:
+        if lyrics:
+            lines, words, mode, stats, ok, error, confidence, info_lang, download_s, align_s, asr_s = _sync_pasted(
+                audio16, lyrics, model_name, req.language, length, sep_used)
+        else:
+            lines, words, mode, stats, ok, error, confidence, info_lang, download_s, align_s, asr_s = _sync_listen(
+                audio16, model_name, req.language, length, sep_used)
+    finally:
+        clear_progress()
+    if not lines:
+        raise HTTPException(422, error or "No words came back from sync.")
+    timing = {"separation_s": round(t_sep, 1), "asr_s": round(asr_s, 1),
+              "align_s": round(align_s, 1), "download_s": round(download_s, 1)}
+    return _sync_payload(lines, words, mode, stats, length, sep_used, sep_err, timing, info_lang, ok, error, confidence)
+
+
+def _sync_pasted(audio16, lyrics, model_name, language, length, sep_used):
+    """Typed lyrics are force-aligned. Whisper is only the fallback when the aligner can't be loaded."""
+    t_dl = time.time()
+    aligner_err = None
+    try:
+        ensure_aligner()
+    except Exception as e:  # noqa: BLE001
+        aligner_err = str(e)
+    download_s = time.time() - t_dl
+    if aligner_err is None:
+        set_progress(active=True, name="align", done=1, total=1, message="Aligning the lyrics to the vocals…")
+        t_a = time.time()
+        try:
+            from .forced_align import align_lyrics_audio
+            result = align_lyrics_audio(audio16, 16000, lyrics)
+        except Exception as e:  # noqa: BLE001
+            aligner_err = str(e)
+            result = None
+        align_s = time.time() - t_a
+        lines = finish_lines((result or {}).get("lines") or [])
+        if lines:
+            ok = bool(result.get("ok"))
+            error = result.get("error")
+            confidence = result.get("confidence") or 0
+            stats = {
+                "matched": result.get("ref_words_used") if ok else 0,
+                "ref_words": result.get("ref_words"),
+                "ref_words_used": result.get("ref_words_used"),
+                "hyp_words": result.get("ref_words_used"),
+                "confidence": confidence,
+            }
+            return lines, result.get("words") or [], "forced_alignment", stats, ok, error, confidence, "en", download_s, align_s, 0.0
+        aligner_err = aligner_err or (result or {}).get("error") or "alignment produced no words"
+    # Offline smoke test, or a download that didn't finish: transcribe, and say so.
+    t_asr = time.time()
+    try:
+        ensure_whisper(model_name)
+        words, info = _transcribe(audio16, model_name, _lyric_prompt(lyrics), language, length)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"Couldn't align the lyrics ({aligner_err}) and couldn't transcribe either: {e}")
+    if sep_used:
         words = refine_with_energy(words, audio16)
-    if req.lyrics.strip():
-        lines, stats = align_lyrics(req.lyrics, words, length)
-        mode = "aligned_to_pasted_lyrics"
-    else:
-        lines, stats = group_into_lines(words), {"hyp_words": len(words)}
-        mode = "transcribed"
-    return {"lines": lines, "raw_words": words, "mode": mode, "stats": stats, "length": length,
-            "vocal_separation": sep_used, "separation_error": sep_err,
-            "timing": {"separation_s": round(t_sep, 1), "asr_s": round(t_asr, 1)},
-            "language": getattr(info, "language", None)}
+    asr_s = time.time() - t_asr
+    lines = finish_lines(group_into_lines(words))
+    real = timings_look_real(words, length)
+    error = f"Forced alignment isn't available ({aligner_err}). Showing a transcription instead — check the words, or tap them in."
+    if not real or len(words) < max(4, length * 0.35):
+        error = "Forced alignment isn't available, and the transcription timings don't look reliable. Tap the lines in."
+        _mark_all_low(lines)
+    stats = {"matched": 0, "ref_words": len(lyrics.split()), "ref_words_used": 0, "hyp_words": len(words), "confidence": 0}
+    return lines, words, "transcribed_fallback", stats, False, error, 0.0, getattr(info, "language", None), download_s, 0.0, asr_s
+
+
+def _sync_listen(audio16, model_name, language, length, sep_used):
+    """Empty lyric box: the chosen model, VAD, word timestamps, lyric prompt, vocals stem."""
+    t_dl = time.time()
+    try:
+        ensure_whisper(model_name)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"Couldn't download the speech model: {e}")
+    download_s = time.time() - t_dl
+    set_progress(active=True, name="listen", done=1, total=1, message="Listening for the words…")
+    t_asr = time.time()
+    words, info = _transcribe(audio16, model_name, _lyric_prompt(""), language, length)
+    if sep_used:
+        words = refine_with_energy(words, audio16)
+    asr_s = time.time() - t_asr
+    real = timings_look_real(words, length)
+    short = len(words) < max(4, length * 0.35)
+    grouped = group_into_lines(words)
+    if real and not short:
+        lines = finish_lines(grouped)
+        conf = sum(w["confidence"] for w in words) / len(words) if words else 0
+        stats = {"hyp_words": len(words), "confidence": round(conf, 3)}
+        return lines, words, "transcribed", stats, True, None, round(conf, 3), getattr(info, "language", None), download_s, 0.0, asr_s
+    transcript = "\n".join(" ".join(w["text"] for w in ln["words"]) for ln in grouped if ln.get("words"))
+    align_s = 0.0
+    if transcript.strip():
+        try:
+            t_dl2 = time.time()
+            ensure_aligner()
+            download_s += time.time() - t_dl2
+            set_progress(active=True, name="align", done=1, total=1, message="Repairing word timings…")
+            t_a = time.time()
+            from .forced_align import align_lyrics_audio
+            repaired = align_lyrics_audio(audio16, 16000, transcript)
+            align_s = time.time() - t_a
+            lines = finish_lines(repaired.get("lines") or [])
+            if lines:
+                ok = bool(repaired.get("ok"))
+                error = None if ok else (
+                    repaired.get("error")
+                    or "The transcription timings don't look reliable. Paste the lyrics, or tap them in."
+                )
+                if not ok:
+                    _mark_all_low(lines)
+                conf = repaired.get("confidence") or 0
+                stats = {"hyp_words": len(words), "confidence": conf, "ref_words_used": repaired.get("ref_words_used")}
+                return lines, repaired.get("words") or words, "transcribed_realigned", stats, ok, error, conf, getattr(info, "language", None), download_s, align_s, asr_s
+        except Exception:  # noqa: BLE001
+            pass
+    lines = _mark_all_low(finish_lines(grouped))
+    error = "The transcription timings don't look reliable. Paste the lyrics for a proper alignment, or tap them in."
+    if not words:
+        error = "Couldn't hear words in this section. Paste the lyrics, or isolate the vocals and try again."
+    stats = {"hyp_words": len(words), "confidence": 0}
+    return lines, words, "transcribed", stats, False, error, 0.0, getattr(info, "language", None), download_s, align_s, asr_s
 
 
 class RenderReq(BaseModel):

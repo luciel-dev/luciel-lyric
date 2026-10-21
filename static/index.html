@@ -62,13 +62,39 @@
 
   <section class="card" id="step2">
     <div class="titlebar"><span class="wdots"><i></i><i></i><i></i></span><h2><span class="n">2</span> Lyrics sync</h2><span class="wbtns"><i>_</i><i>□</i><i>×</i></span></div>
-    <textarea id="lyricsIn" rows="5" placeholder="Optional: paste the known lyrics (whole song is fine, one line per lyric line). Leave empty to auto-transcribe."></textarea>
-    <div class="row">
-      <div class="field"><span>Model</span><select id="modelIn"></select></div>
-      <label class="check"><input type="checkbox" id="sepIn"> Isolate vocals first (Demucs, slower)</label>
-      <button id="syncBtn" class="btn primary" disabled>✨ Sync lyrics</button>
+    <textarea id="lyricsIn" rows="5" placeholder="Paste the lyrics, one line per lyric line. The whole song is fine. Leave empty to transcribe."></textarea>
+    <div class="syncbox">
+      <div class="synchead">
+        <span class="synclabel">Listen with</span>
+        <div class="tierrow" id="tierRow" role="radiogroup" aria-label="Speech model"></div>
+      </div>
+      <p class="muted syncnote" id="tierNote"></p>
+      <div class="row syncactions">
+        <label class="check"><input type="checkbox" id="sepIn"> Isolate vocals first</label>
+        <button id="syncBtn" class="btn primary" disabled>Sync lyrics</button>
+      </div>
+      <div id="syncProgress" class="syncprogress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="syncbar"><i id="syncBar"></i></div>
+        <span id="syncProgressText"></span>
+      </div>
+      <div id="syncBanner" class="syncbanner hidden" role="status"></div>
+      <div id="syncStatus" class="muted"></div>
     </div>
-    <div id="syncStatus" class="muted"></div>
+    <div id="tapBox" class="syncbox tapbox hidden">
+      <div class="taphead">
+        <span class="synclabel">Tap to sync</span>
+        <div class="tierrow" id="tapMode" role="radiogroup" aria-label="Tap mode">
+          <button type="button" class="tierbtn on" data-mode="line">Lines</button>
+          <button type="button" class="tierbtn" data-mode="word">Words</button>
+        </div>
+        <button type="button" id="tapPlay" class="btn ghost">Play and tap</button>
+        <button type="button" id="tapUndo" class="btn ghost">Undo</button>
+        <button type="button" id="tapRestart" class="btn ghost">Restart</button>
+      </div>
+      <p class="muted syncnote">Press Space, or the button, as each line starts. Undo steps back. Restart clears the taps.</p>
+      <button type="button" id="tapHit" class="taphit">Tap</button>
+      <div id="tapNow" class="tapnow"></div>
+    </div>
   </section>
 
   <section class="card hidden" id="step3">
@@ -167,6 +193,7 @@
           <div class="tlinner" id="tlInner">
             <div class="tlruler" id="tlRuler"></div>
             <div class="tltrack" id="tlTrack"></div>
+            <div class="tllyrics" id="tlLyrics" title="Lyric lines. Amber bars need a timing fix."></div>
             <div class="tllane" id="tlLane" title="Zoom keyframes"></div>
             <div class="tlhead" id="tlHead"></div>
           </div>

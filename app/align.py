@@ -9,22 +9,116 @@ def norm(w: str) -> str:
     return _norm_re.sub("", w.lower().replace("’", "'"))
 
 
-def group_into_lines(words, max_words=8, max_chars=38, gap=0.5):
-    """Group a flat list of whisper words into display lines."""
+def group_into_lines(words, max_chars=52, gap=0.45):
+    """Group whisper words into lines on pauses and punctuation.
+
+    A hard cut every 8 tokens (the old default) chopped sung phrases whether or
+    not the singer had finished the line. Lines break on a breath, a sentence,
+    or a length the preview can still show.
+    """
     lines, cur = [], []
-    for i, w in enumerate(words):
+    for w in words:
         if cur:
             prev = cur[-1]
             chars = sum(len(x["text"]) + 1 for x in cur)
-            if (w["start"] - prev["end"] > gap or len(cur) >= max_words
-                    or chars + len(w["text"]) > max_chars
-                    or re.search(r"[.!?]$", prev["text"])
-                    or (re.search(r"[,;:]$", prev["text"]) and len(cur) >= 4)):
+            sentence = re.search(r"[.!?…][\"']?$", prev["text"])
+            comma = re.search(r"[,;:]$", prev["text"]) and (len(cur) >= 4 or chars >= 24)
+            if w["start"] - prev["end"] > gap or sentence or comma or chars + len(w["text"]) > max_chars:
                 lines.append({"words": cur})
                 cur = []
         cur.append(w)
     if cur:
         lines.append({"words": cur})
+    return lines
+
+
+_CONTRACTIONS = {"n't", "'t", "'s", "'re", "'ve", "'ll", "'d", "'m"}
+
+
+def _is_punct(text: str) -> bool:
+    return bool(text) and not re.search(r"[0-9A-Za-z]", text)
+
+
+def normalize_whisper_words(words):
+    """Merge subword pieces and glue punctuation / contractions onto the word.
+
+    faster-whisper usually emits a leading space on a new word. A piece with no
+    leading space continues the previous word ("don" + "'t"). A comma or "'s"
+    never becomes its own word, so the line reads "there's" and "stop,".
+    """
+    merged = []
+    for w in words:
+        raw = str(w.get("text") or "")
+        if not raw.strip():
+            continue
+        piece = raw.lstrip()
+        if piece[0] in "[<":
+            continue
+        start = float(w.get("start") or 0)
+        end = float(w.get("end") or start)
+        conf = w.get("confidence", w.get("prob"))
+        conf = float(conf) if conf is not None else 0.5
+        boundary = not merged or raw[:1].isspace()
+        glue = piece.lower() in _CONTRACTIONS or piece.startswith("'") or _is_punct(piece)
+        if merged and (not boundary or glue):
+            if not boundary or glue:
+                merged[-1]["text"] += piece
+                merged[-1]["end"] = max(merged[-1]["end"], end)
+                if merged[-1]["start"] <= 0 and start > 0:
+                    merged[-1]["start"] = start
+                merged[-1]["confidence"] = min(merged[-1]["confidence"], conf)
+                continue
+        merged.append({"text": piece, "start": start, "end": max(end, start), "confidence": conf})
+    return merged
+
+
+def timings_look_real(words, audio_len: float) -> bool:
+    """Reject the collapsed / all-zero word times Whisper returns on some sung takes."""
+    if not words:
+        return False
+    audio_len = float(audio_len or 0)
+    starts, spans = [], []
+    prev = -0.05
+    max_end = 0.0
+    moved = False
+    for w in words:
+        s, e = float(w["start"]), float(w["end"])
+        if e < s - 0.01 or (len(words) > 1 and e - s < 0.015):
+            return False
+        if s < prev - 0.08:
+            return False
+        if s > 0.05:
+            moved = True
+        prev = s
+        max_end = max(max_end, e)
+        starts.append(s)
+        spans.append(e - s)
+    if audio_len > 1.5 and max_end < 0.4:
+        return False
+    if len(words) > 2 and not moved:
+        return False
+    if len(words) >= 3 and max(starts) - min(starts) < 0.05:
+        return False
+    if len(words) >= 3 and audio_len > 1 and max(spans) > 0.85 * audio_len:
+        return False
+    return True
+
+
+def finish_lines(lines, line_low=0.45, word_low=0.32):
+    """Attach a confidence to every line. Low lines are the ones to tap-fix."""
+    for ln in lines:
+        words = ln.get("words") or []
+        for w in words:
+            c = w.get("confidence", w.get("prob"))
+            c = float(c) if c is not None else (0.2 if w.get("matched") is False else 0.75)
+            w["confidence"] = round(c, 3)
+            if "low_confidence" not in w:
+                w["low_confidence"] = c < word_low
+        cs = [w["confidence"] for w in words]
+        mean = sum(cs) / len(cs) if cs else 0.0
+        ln["confidence"] = round(float(ln.get("confidence", mean)), 3) if "confidence" in ln else round(mean, 3)
+        if "low_confidence" not in ln:
+            ln["low_confidence"] = ln["confidence"] < line_low or any(w["low_confidence"] for w in words)
     return lines
 
 
@@ -118,7 +212,7 @@ def align_lyrics(pasted: str, wwords, clip_len: float):
     # Build lines following the pasted line breaks (split very long lines).
     lines, cur, cur_line = [], [], None
     for w in out:
-        if cur and (w["line"] != cur_line or len(cur) >= 8):
+        if cur and w["line"] != cur_line:
             lines.append({"words": cur}); cur = []
         cur_line = w["line"]
         cur.append({"text": w["text"], "start": w["start"], "end": w["end"], "matched": w["matched"]})
