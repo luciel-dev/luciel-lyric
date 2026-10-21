@@ -102,10 +102,13 @@ object VideoImport {
         }
     }
 
+    private fun filePath(uri: Uri): String =
+        uri.path ?: error("That file didn't include a video this phone can play.")
+
     private fun trackMime(context: Context, uri: Uri): String {
         val extractor = MediaExtractor()
         try {
-            if (uri.scheme == "file") extractor.setDataSource(uri.path)
+            if (uri.scheme == "file") extractor.setDataSource(filePath(uri))
             else extractor.setDataSource(context, uri, null)
             for (i in 0 until extractor.trackCount) {
                 val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME) ?: continue
@@ -119,7 +122,7 @@ object VideoImport {
     }
 
     private fun setRetriever(r: MediaMetadataRetriever, context: Context, uri: Uri) {
-        if (uri.scheme == "file") r.setDataSource(uri.path)
+        if (uri.scheme == "file") r.setDataSource(filePath(uri))
         else r.setDataSource(context, uri)
     }
 
@@ -147,7 +150,7 @@ object VideoImport {
 
     private fun transcode(context: Context, uri: Uri, dest: File, meta: Probe) {
         val extractor = MediaExtractor()
-        if (uri.scheme == "file") extractor.setDataSource(uri.path!!)
+        if (uri.scheme == "file") extractor.setDataSource(filePath(uri))
         else extractor.setDataSource(context, uri, null)
         var track = -1
         var format: MediaFormat? = null
