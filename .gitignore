@@ -13,6 +13,7 @@ packaging/build/
 *.spec.bak
 # large media (sample renders are produced locally, see README)
 *.mp4
+!android/app/src/main/assets/test-clip.mp4
 *.mov
 *.webm
 *.dmg

@@ -1,5 +1,6 @@
 package app.luciel.lyric
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Base64
@@ -33,6 +34,28 @@ class NativeBridge(private val activity: MainActivity) {
 
     @android.webkit.JavascriptInterface
     fun pickVideo() = activity.launchVideo()
+
+    @android.webkit.JavascriptInterface
+    fun removeVideo() {
+        io.execute {
+            val file = File(activity.filesDir, "bg.mp4")
+            if (file.exists()) file.delete()
+            videoPath = null
+            val prefs = activity.getSharedPreferences("luciel", Context.MODE_PRIVATE)
+            val saved = prefs.getString("videoUri", null)
+            if (!saved.isNullOrBlank()) {
+                try {
+                    activity.contentResolver.releasePersistableUriPermission(
+                        Uri.parse(saved),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                }
+            }
+            prefs.edit().remove("videoUri").remove("videoName").apply()
+            emit("video", JSONObject().put("removed", true))
+        }
+    }
 
     @android.webkit.JavascriptInterface
     fun pickFont() = activity.launchFont()
@@ -189,15 +212,33 @@ class NativeBridge(private val activity: MainActivity) {
         }
     }
 
+    fun rememberVideoUri(uri: Uri) {
+        if (uri.scheme == "content") {
+            activity.getSharedPreferences("luciel", Context.MODE_PRIVATE)
+                .edit().putString("videoUri", uri.toString()).apply()
+        }
+    }
+
+    fun restoreVideo() {
+        val file = File(activity.filesDir, "bg.mp4")
+        if (!file.isFile || file.length() < 32) return
+        val name = activity.getSharedPreferences("luciel", Context.MODE_PRIVATE)
+            .getString("videoName", file.name) ?: file.name
+        videoPath = file.absolutePath
+        emit("video", JSONObject().put("ok", true).put("name", name).put("restored", true))
+    }
+
     fun onPickedVideo(uri: Uri) {
         io.execute {
             try {
+                val name = VideoImport.import(activity, uri) { phase ->
+                    emit("video", JSONObject().put("phase", phase))
+                }
                 val dest = File(activity.filesDir, "bg.mp4")
-                activity.contentResolver.openInputStream(uri)?.use { input ->
-                    dest.outputStream().use { input.copyTo(it) }
-                } ?: error("could not read that video")
                 videoPath = dest.absolutePath
-                emit("video", JSONObject().put("ok", true).put("name", dest.name))
+                activity.getSharedPreferences("luciel", Context.MODE_PRIVATE)
+                    .edit().putString("videoName", name).apply()
+                emit("video", JSONObject().put("ok", true).put("name", name))
             } catch (e: Exception) {
                 emit("video", JSONObject().put("ok", false).put("error", e.message ?: "could not read video"))
             }
