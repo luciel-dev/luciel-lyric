@@ -51,8 +51,8 @@ android {
         applicationId = "app.luciel.lyric"
         minSdk = 26
         targetSdk = 35
-        versionCode = 155
-        versionName = "1.5.5"
+        versionCode = 156
+        versionName = "1.5.6"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -139,7 +139,7 @@ val downloadQuickModel = tasks.register("downloadQuickModel") {
                 instanceFollowRedirects = true
                 connectTimeout = 30_000
                 readTimeout = 180_000
-                setRequestProperty("User-Agent", "LucielLyric/1.5.5")
+                setRequestProperty("User-Agent", "LucielLyric/1.5.6")
             }
             conn.connect()
             if (conn.responseCode !in 200..299) {

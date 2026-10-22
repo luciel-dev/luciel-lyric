@@ -269,7 +269,7 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.5.5 — desktop and Android.
+            Luciel Lyric 1.5.6 — desktop and Android.
 
             Desktop is five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked, and typed words stay verbatim. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it. The mascot stays in its own row under the controls.
 
@@ -280,4 +280,4 @@ jobs:
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
               (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
-            * Android (arm64, Android 8+): install LucielLyric-android.apk over 1.5.4. The Quick voice model is in the APK. Clearer and the line-up file download once, then stay on the phone. Vocal isolation is desktop-only. This build is signed with the permanent release key. It installs over 1.5.4 with no uninstall. Later updates install over this one.
+            * Android (arm64, Android 8+): install LucielLyric-android.apk over 1.5.4 or 1.5.5. The Quick voice model is in the APK. Clearer and the line-up file download once, then stay on the phone. Vocal isolation is desktop-only. This build is signed with the permanent release key. It installs over 1.5.4 and 1.5.5 with no uninstall. Later updates install over this one.
