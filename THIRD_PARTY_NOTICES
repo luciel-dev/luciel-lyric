@@ -39,8 +39,9 @@ animation-timeline-js 2.3.5
   under the centered playhead: one video row and one extra-text row.
   Dragging a video keyframe trims or moves that clip. Dragging an extra-text
   keyframe moves that title only. There is no lyric row, so the widget does
-  not change lyric text or timings. This canvas is the timeline. It is not
-  mounted on top of a second clip strip.
+  not change lyric text or timings. The desktop page keeps one DOM timeline
+  (video, extra text, read-only lyrics, and audio) and does not mount this
+  canvas on top of that strip.
 
 Not included
 ------------
