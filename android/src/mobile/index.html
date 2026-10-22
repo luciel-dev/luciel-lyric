@@ -16,7 +16,7 @@ try {
   var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
   if (demo0 === "intro" || demo0 === "intro2" || demo0 === "intro3") screen0 = "intro";
   if (demo0 === "home") screen0 = "home";
-  if (demo0 === "sheet") screen0 = "sync";
+  if (demo0 === "sheet" || demo0 === "modelmiss" || demo0 === "modeldown" || demo0 === "modelready" || demo0 === "fresh") screen0 = "sync";
   if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render" || screen0 === "home" || screen0 === "intro") {
     document.documentElement.dataset.screen = screen0;
   }
@@ -140,21 +140,26 @@ try {
         <textarea id="lyrics" rows="3" placeholder="One line per lyric line."></textarea>
       </div>
       <div class="card" id="modelCard">
-        <h2>Listening</h2>
+        <h2>Voice model</h2>
         <div class="pills" id="modelTier">
           <button type="button" data-tier="fast" class="on">Quick</button>
           <button type="button" data-tier="accurate">Clearer</button>
         </div>
+        <p class="hint" id="modelState">Checking this phone…</p>
         <p class="hint" id="modelText">Quick is smaller. Clearer hears more. Each saves once.</p>
-        <button class="pill" id="getModel" type="button">Save for offline</button>
+        <div class="modelbar" id="modelBar" hidden><i id="modelFill"></i></div>
+        <button class="pill big primary" id="getModel" type="button">Get voice model</button>
+        <p class="hint" id="tapNow">No voice model yet. Play the song and tap Mark as each line starts.</p>
       </div>
-      <button class="pill big primary" id="syncBtn" type="button">Line up lyrics</button>
-      <div class="pinhost" id="pin-sync"></div>
+      <div class="actions" id="syncGo">
+        <button class="pill big primary" id="syncBtn" type="button">Line up lyrics</button>
+        <button class="pill big" id="skipSync" type="button">Skip sync</button>
+      </div>
       <div class="actions" id="tapRow">
         <button class="pill" id="tapHear" type="button">Hear</button>
         <button class="pill" id="tapMark" type="button">Mark line</button>
       </div>
-      <p class="hint" id="tapNow">Tap Mark as each line starts.</p>
+      <div class="pinhost" id="pin-sync"></div>
       <p class="hint" id="syncStatus">Your words get lined up with the singing.</p>
       <div class="card">
         <h2 id="linesHead">Lines</h2>
@@ -176,6 +181,7 @@ try {
       <header class="screenhead">
         <h1>Video</h1>
         <p class="lead">Edit the picture and add a title.</p>
+        <p class="hint" id="syncNotice" hidden>Lyrics aren't lined up yet.</p>
       </header>
       <div class="pinhost" id="pin-video"></div>
       <div class="card editorcard">

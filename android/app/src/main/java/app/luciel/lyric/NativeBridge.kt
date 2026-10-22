@@ -27,10 +27,11 @@ class NativeBridge(private val activity: MainActivity) {
 
     @android.webkit.JavascriptInterface
     fun info(): String {
+        ModelStore.installBundled(activity)
         val tier = tierId()
         val selected = ModelStore.ready(activity, ModelStore.spec(tier))
         return JSONObject()
-            .put("version", "1.5.4")
+            .put("version", "1.5.5")
             .put("model", selected)
             .put("tier", tier)
             .put("fast", ModelStore.ready(activity, ModelStore.FAST))

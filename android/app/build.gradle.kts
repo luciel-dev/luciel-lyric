@@ -51,8 +51,8 @@ android {
         applicationId = "app.luciel.lyric"
         minSdk = 26
         targetSdk = 35
-        versionCode = 154
-        versionName = "1.5.4"
+        versionCode = 155
+        versionName = "1.5.5"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -108,6 +108,10 @@ android {
     packaging {
         jniLibs { useLegacyPackaging = true }
     }
+
+    androidResources {
+        noCompress += "bin"
+    }
 }
 
 dependencies {
@@ -117,8 +121,46 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 }
 
+val downloadQuickModel = tasks.register("downloadQuickModel") {
+    val tiny = layout.buildDirectory.file("generated/assets/models/ggml-tiny.en.bin")
+    val vad = layout.buildDirectory.file("generated/assets/models/ggml-silero-v5.1.2.bin")
+    outputs.file(tiny)
+    outputs.file(vad)
+    doLast {
+        val jobs = listOf(
+            Triple(tiny.get().asFile, "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin", 70_000_000L),
+            Triple(vad.get().asFile, "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin", 800_000L),
+        )
+        jobs.forEach { (dest, url, min) ->
+            if (dest.isFile && dest.length() >= min) return@forEach
+            dest.parentFile.mkdirs()
+            val tmp = File(dest.absolutePath + ".part")
+            val conn = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+                instanceFollowRedirects = true
+                connectTimeout = 30_000
+                readTimeout = 180_000
+                setRequestProperty("User-Agent", "LucielLyric/1.5.5")
+            }
+            conn.connect()
+            if (conn.responseCode !in 200..299) {
+                conn.disconnect()
+                throw GradleException("voice model HTTP ${conn.responseCode} for ${dest.name}")
+            }
+            conn.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            conn.disconnect()
+            if (tmp.length() < min) {
+                val got = tmp.length()
+                tmp.delete()
+                throw GradleException("${dest.name} looks incomplete ($got bytes)")
+            }
+            if (dest.exists()) dest.delete()
+            if (!tmp.renameTo(dest)) throw GradleException("could not save ${dest.name}")
+        }
+    }
+}
+
 tasks.named("preBuild") {
-    dependsOn("downloadWhisper", copyWeb)
+    dependsOn("downloadWhisper", copyWeb, downloadQuickModel)
 }
 
 // CMake configure runs as its own task and will not see whisper.cpp unless this
@@ -128,6 +170,6 @@ tasks.configureEach {
         dependsOn("downloadWhisper")
     }
     if (name.startsWith("merge") && name.endsWith("Assets")) {
-        dependsOn(copyWeb)
+        dependsOn(copyWeb, downloadQuickModel)
     }
 }

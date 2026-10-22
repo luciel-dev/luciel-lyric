@@ -35,6 +35,7 @@
     textStyle: null, textScope: "all",
     zoomId: "none", keys: [], quality: "standard", fx: [], playing: false, loopPreview: false, t: 0,
     checks: null,
+    model: { fast: false, accurate: false, phase: "missing", progress: 0, error: "", forced: "" },
   };
   const libs = {
     ws: null, regions: null, atl: null, mv: null, mute: false, ready: false,
@@ -87,6 +88,16 @@
     document.documentElement.dataset.screen = id;
     document.documentElement.removeAttribute("data-compact");
     document.documentElement.removeAttribute("data-syncflat");
+    document.documentElement.removeAttribute("data-syncdense");
+    document.documentElement.removeAttribute("data-videodense");
+    if (id !== "sync") {
+      const mascotEl = document.getElementById("mascot");
+      const tapNowEl = document.getElementById("tapNow");
+      const modelTextEl = document.getElementById("modelText");
+      if (mascotEl) mascotEl.hidden = false;
+      if (tapNowEl) tapNowEl.hidden = false;
+      if (modelTextEl) modelTextEl.hidden = false;
+    }
     clearDockPad();
     document.querySelectorAll(".screen").forEach((el) => {
       const on = el.dataset.screen === id;
@@ -103,7 +114,7 @@
     sizePreview();
     if (id === "look" || id === "time" || id === "render" || id === "video" || id === "sync") draw(state.t > 0.05 ? state.t : 1.2);
     if (id === "video") { paintEditor(); mountMoveable(); }
-    if (id === "sync") { mountSyncWave(); syncRegions(); }
+    if (id === "sync") { readModelInfo(); mountSyncWave(); syncRegions(); }
     layoutVidHandle();
     if (id !== "video") {
       const videoHost = document.getElementById("pin-video");
@@ -138,11 +149,9 @@
     return false;
   }
   function stepOpen(id) {
-    if (demo) return true;
-    const i = STEP_ORDER.indexOf(id);
-    if (i <= 0) return true;
-    for (let k = 0; k < i; k++) if (!stepDone(STEP_ORDER[k])) return false;
-    return true;
+    // Every step stays reachable. A missing song, model, or sync shows a notice.
+    // The old gate returned false here, so a dock tap called show() and was ignored.
+    return STEP_ORDER.indexOf(id) >= 0 || id === "home" || id === "intro";
   }
   function canOpen(id) {
     if (id === "home" || id === "intro") return true;
@@ -150,7 +159,7 @@
   }
   function stepHint(id) {
     if (id === "track") return audioReady() ? "Song ready." : "Choose a song to continue.";
-    if (id === "sync") return syncReady() ? "Timings are locked." : "Line up the lyrics to continue.";
+    if (id === "sync") return syncReady() ? "Timings are ready." : "You can line the words up now, or skip and come back.";
     if (id === "video") return videoStepReady() ? "Video ready." : "Add a video to continue.";
     if (id === "look") return state.look ? "Look chosen." : "Pick a look to continue.";
     if (id === "time") return "Set a zoom, or continue.";
@@ -181,10 +190,12 @@
     if (emptyVideo) emptyVideo.hidden = videoStepReady();
     document.querySelectorAll(".stepnext").forEach((btn) => {
       const id = btn.closest(".screen") && btn.closest(".screen").dataset.screen;
-      const ready = id === "render" ? stepDone("render") : stepDone(id);
-      btn.disabled = !ready;
+      btn.disabled = id === "render" ? !stepDone("render") : false;
       if (id === "render") btn.textContent = "Share";
     });
+    const notice = $("#syncNotice");
+    if (notice) notice.hidden = syncReady();
+    paintModel();
     const hints = { track: "#trackHint", sync: "#hintSync", video: "#hintVideo", look: "#hintLook", time: "#hintTime", render: "#hintRender" };
     const hint = hints[state.screen] ? $(hints[state.screen]) : null;
     if (hint && state.screen !== "track") hint.textContent = stepHint(state.screen);
@@ -1081,7 +1092,13 @@
     host.style.maxHeight = "";
     document.documentElement.style.removeProperty("--pin-h");
     const lead = document.querySelector("#screen-video .screenhead .lead");
-    if (lead) lead.style.display = "";
+    const notice = document.getElementById("syncNotice");
+    const noticeOn = !!(notice && !notice.hidden);
+    if (lead) lead.style.display = noticeOn ? "none" : "";
+    if (notice) {
+      notice.style.whiteSpace = "";
+      notice.style.removeProperty("--fit");
+    }
     document.documentElement.dataset.compact = "1";
     const capToRoom = () => {
       const bar = pin.querySelector(".previewbar");
@@ -1107,6 +1124,13 @@
       if (next >= (parseFloat(pin.dataset.picH) || 0) - 0.5) break;
       pin.dataset.picH = String(Math.floor(next));
       sizePreview();
+    }
+    const stageEl = $("#stage");
+    const sr = stageEl && stageEl.getBoundingClientRect();
+    if (sr && sr.width < 64 && document.documentElement.dataset.videodense !== "1") {
+      document.documentElement.dataset.videodense = "1";
+      fitVideoFold();
+      return;
     }
     refreshMoveable();
   }
@@ -1410,7 +1434,7 @@
     if (stage && shown(stage)) underDock(stage, "preview");
     if (bar && shown(bar)) underDock(bar, "play");
     if (state.screen === "sync") {
-      ["#lyrics", "#modelTier", "#syncBtn"].forEach((sel) => {
+      ["#lyrics", "#modelTier", "#syncBtn", "#getModel", "#skipSync"].forEach((sel) => {
         const el = document.querySelector(sel);
         const r = el && el.getBoundingClientRect();
         if (!el || !r || r.height < 8 || r.bottom > dockTopPx() - 1 || r.top < 0) bad.push("fold:" + sel);
@@ -1428,8 +1452,28 @@
     document.documentElement.dataset.overlapWhy = bad.slice(0, 6).join("/");
     return bad;
   }
+  function dockNavOk() {
+    const here = state.screen;
+    const buttons = [...document.querySelectorAll("#dock button")];
+    if (buttons.length !== 6) return false;
+    const ids = buttons.map((b) => b.dataset.screen);
+    try {
+      for (let i = 0; i < buttons.length; i++) {
+        const b = buttons[i];
+        if (b.disabled || b.classList.contains("locked") || b.getAttribute("aria-disabled") === "true") return false;
+        if (!canOpen(b.dataset.screen)) return false;
+      }
+      for (let i = 0; i < ids.length; i++) {
+        show(ids[i]);
+        if (state.screen !== ids[i]) return false;
+      }
+      return true;
+    } finally {
+      if (state.screen !== here) show(here);
+    }
+  }
   function measure(screen) {
-    const logical = screen === "syncshot" || screen === "sheet" ? "sync" : screen === "videocheck" ? "look" : screen;
+    const logical = screen === "syncshot" || screen === "sheet" || screen === "modelmiss" || screen === "modeldown" || screen === "modelready" || screen === "freshsync" ? "sync" : screen === "videocheck" ? "look" : screen === "freshvideo" ? "video" : screen;
     resetScroll();
     clearDockPad();
     sizePreview();
@@ -1516,6 +1560,18 @@
     }
     resetScroll();
     if (logical === "video") refreshMoveable();
+    const foldShown = (el) => {
+      if (!el || el.hidden) return false;
+      const r = el.getBoundingClientRect();
+      return r.height >= 8 && r.top >= 0 && r.bottom <= dockTopPx() - 1;
+    };
+    const modelTok = modelReady() ? "ready" : (state.model.forced === "down" || state.model.phase === "down") ? "down" : "missing";
+    const getTok = foldShown($("#getModel")) ? 1 : 0;
+    const skipTok = foldShown($("#skipSync")) ? 1 : 0;
+    const noticeTok = $("#syncNotice") && !$("#syncNotice").hidden ? 1 : 0;
+    const navOk = dockNavOk() ? 1 : 0;
+    if (!navOk) flags.push("docknav");
+    if (logical === "video") refreshMoveable();
     const overlapBad = overlapHits();
     if (overlapBad.length) flags.push("overlap");
     const themeName = document.documentElement.dataset.theme || "aero";
@@ -1594,7 +1650,12 @@
       "lyricdrag=" + (checks.lyricdrag || 0),
       "renderframes=" + (checks.renderframes || 0),
       "layers=" + (checks.layers || 0),
-      "overlap=" + overlapBad.length
+      "overlap=" + overlapBad.length,
+      "docknav=" + navOk,
+      "model=" + modelTok,
+      "getmodel=" + getTok,
+      "skip=" + skipTok,
+      "notice=" + noticeTok
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
     if (overlapBad.length) parts.push("overlapwhy=" + overlapBad.slice(0, 4).join("|").replace(/\s+/g, ""));
@@ -2559,13 +2620,18 @@
     const root = document.documentElement;
     if (lead) lead.style.display = "";
     if (lyrics) { lyrics.style.minHeight = ""; lyrics.style.height = ""; }
+    const mascot = document.getElementById("mascot");
+    const tapNow = document.getElementById("tapNow");
     if (modelText) modelText.hidden = false;
     if (getModel) getModel.hidden = false;
+    if (mascot) mascot.hidden = false;
+    if (tapNow) tapNow.hidden = false;
     root.removeAttribute("data-compact");
     root.removeAttribute("data-syncflat");
+    root.removeAttribute("data-syncdense");
     clearDockPad();
-    const above = () => [lyrics, tier, syncBtn].every((el) => {
-      if (!el) return false;
+    const above = () => [lyrics, tier, syncBtn, getModel, document.getElementById("skipSync")].every((el) => {
+      if (!el || el.hidden) return false;
       const r = el.getBoundingClientRect();
       return r.height >= 8 && r.top >= 0 && r.bottom <= dockTopPx() - 1;
     });
@@ -2598,13 +2664,13 @@
     };
     const reductions = [
       () => { root.dataset.compact = "1"; },
-      () => {
-        if (modelText) modelText.hidden = true;
-        if (getModel) getModel.hidden = true;
-      },
+      () => { if (modelText) modelText.hidden = true; },
       () => { if (lyrics) { lyrics.style.minHeight = "48px"; lyrics.style.height = "48px"; } },
       () => { root.dataset.syncflat = "1"; tightenLead(); },
       () => { if (lyrics) { lyrics.style.minHeight = "36px"; lyrics.style.height = "36px"; } },
+      () => { if (tapNow) tapNow.hidden = true; },
+      () => { if (mascot) mascot.hidden = true; },
+      () => { root.dataset.syncdense = "1"; tightenLead(); },
     ];
     let step = 0;
     applyPic();
@@ -4114,7 +4180,7 @@
     async function publish(screen) {
       if (screen === "look" || screen === "videocheck") paintLooks();
       await settle();
-      if (screen === "sync" || screen === "syncshot" || screen === "sheet") await whenSync();
+      if (screen === "sync" || screen === "syncshot" || screen === "sheet" || screen === "modelmiss" || screen === "modeldown" || screen === "modelready" || screen === "freshsync") await whenSync();
       if (screen === "video") await whenEditor();
       fitAll();
       const msg = measure(screen);
@@ -4182,7 +4248,30 @@
       await publish("home");
       return;
     }
+    if (demo === "modelmiss" || demo === "modeldown" || demo === "modelready") {
+      state.model.forced = demo === "modelmiss" ? "missing" : demo === "modeldown" ? "down" : "ready";
+      if (demo === "modeldown") { state.model.phase = "down"; state.model.progress = 0.42; }
+      readModelInfo();
+      theme(document.documentElement.dataset.theme || "aero");
+      show("sync");
+      await publish(demo);
+      return;
+    }
+    if (demo === "fresh") {
+      state.model.forced = "";
+      readModelInfo();
+      theme(document.documentElement.dataset.theme || "aero");
+      show("sync");
+      await publish("freshsync");
+      state.synced = false;
+      tapMarks.length = 0;
+      paintFlow();
+      show("video");
+      await publish("freshvideo");
+      return;
+    }
     if (!demo) {
+      readModelInfo();
       theme(document.documentElement.dataset.theme || "aero");
       if (!localStorage.getItem("lc-seen-intro")) showIntro("intro");
       else show("home");
@@ -4193,15 +4282,8 @@
     show(screen);
     if (screen === "look" || screen === "time" || screen === "render" || screen === "video" || screen === "sync") draw(state.t > 0.05 ? state.t : 1.35);
     await publish(screen);
-    if (window.Luciel && Luciel.info) {
-      try {
-        const info = JSON.parse(Luciel.info());
-        if (info.tier === "accurate" || info.tier === "fast") state.tier = info.tier;
-        paintTier();
-        paintFrame();
-        if (info.model) $("#modelText").textContent = "Listening is saved on this phone.";
-      } catch (e) {}
-    } else if (!demo) {
+    readModelInfo();
+    if (!window.Luciel && !demo) {
       $("#trackHint").textContent = "Open this page in the Luciel Lyric app to pick a song.";
     }
   }
@@ -4455,6 +4537,56 @@
   $("#lyricInput").addEventListener("change", () => { commitLyricInput(); });
   $("#lyricInput").addEventListener("input", () => { commitLyricInput(); });
   $("#fontBtn").onclick = () => { if (window.Luciel) Luciel.pickFont(); };
+  function modelReady() {
+    if (state.model.forced === "missing" || state.model.forced === "down" || state.model.forced === "error") return false;
+    if (state.model.forced === "ready") return true;
+    return state.tier === "accurate" ? !!state.model.accurate : !!state.model.fast;
+  }
+  function paintModel() {
+    const btn = $("#getModel");
+    const text = $("#modelText");
+    const label = $("#modelState");
+    const bar = $("#modelBar");
+    const fill = $("#modelFill");
+    const tap = $("#tapRow");
+    const forced = state.model.forced;
+    const ready = modelReady();
+    const down = !ready && (forced === "down" || state.model.phase === "down");
+    const err = !ready && (forced === "error" || state.model.phase === "error");
+    if (bar) bar.hidden = !down;
+    if (fill) fill.style.width = Math.max(4, Math.round((state.model.progress || (down ? 0.08 : 0)) * 100)) + "%";
+    if (tap) tap.hidden = ready;
+    if (btn) {
+      btn.hidden = false;
+      btn.disabled = ready || down;
+      btn.textContent = ready ? "Model ready" : down ? "Downloading…" : err ? "Try again" : "Get voice model";
+    }
+    if (label) {
+      label.textContent = ready
+        ? (state.tier === "accurate" ? "Clearer is installed." : "Quick is installed.")
+        : down ? "Downloading…"
+        : err ? (state.model.error || "Download failed.")
+        : "Not on this phone yet.";
+    }
+    if (text && !text.hidden) {
+      text.textContent = state.tier === "accurate"
+        ? "Clearer hears more of the singing. About 190 MB, saved once."
+        : "Quick is the smaller listener. About 75 MB, saved once.";
+    }
+  }
+  function readModelInfo() {
+    if (state.model.forced) { paintModel(); return; }
+    if (!(window.Luciel && Luciel.info)) { paintModel(); return; }
+    try {
+      const info = JSON.parse(Luciel.info());
+      state.model.fast = !!info.fast;
+      state.model.accurate = !!info.accurate;
+      if (info.tier === "accurate" || info.tier === "fast") state.tier = info.tier;
+      state.model.phase = modelReady() ? "ready" : (state.model.phase === "down" || state.model.phase === "error" ? state.model.phase : "missing");
+      paintTier();
+    } catch (e) {}
+    paintModel();
+  }
   function paintTier() {
     document.querySelectorAll("#modelTier button").forEach((b) => b.classList.toggle("on", b.dataset.tier === state.tier));
   }
@@ -4513,9 +4645,8 @@
     state.tier = b.dataset.tier === "accurate" ? "accurate" : "fast";
     paintTier();
     if (window.Luciel && Luciel.setTier) Luciel.setTier(state.tier);
-    $("#modelText").textContent = state.tier === "accurate"
-      ? "Clearer hears more of the singing. About 190 MB, saved once."
-      : "Quick is the smaller listener. About 75 MB, saved once.";
+    if (state.model.phase !== "down") state.model.phase = modelReady() ? "ready" : "missing";
+    paintModel();
   };
   $("#aspects").onclick = (e) => {
     const b = e.target.closest("button");
@@ -4573,9 +4704,20 @@
     applyTapMarks();
   };
   $("#getModel").onclick = () => {
-    if (window.Luciel) { $("#modelText").textContent = "Saving the listener…"; Luciel.downloadModel(state.tier); }
-    else $("#modelText").textContent = "The listener saves inside the Android app.";
+    if (modelReady() || state.model.phase === "down") return;
+    state.model.forced = "";
+    state.model.phase = "down";
+    state.model.progress = 0;
+    state.model.error = "";
+    paintModel();
+    if (window.Luciel && Luciel.downloadModel) Luciel.downloadModel(state.tier);
+    else {
+      state.model.phase = "error";
+      state.model.error = "Open the Luciel Lyric app to download it.";
+      paintModel();
+    }
   };
+  $("#skipSync").onclick = () => show("video");
   $("#syncBtn").onclick = () => {
     if (syncReady() && !window.confirm("Re-sync replaces the locked word timings. Continue?")) return;
     if (!window.Luciel) { applyWords(DEMO.flatMap((l) => l.words)); return; }
@@ -4594,10 +4736,10 @@
       return;
     }
     if (!info.model) {
-      $("#syncStatus").textContent = "The listener isn't on this phone yet. Saving it now. Tap Line up lyrics when it finishes.";
-      $("#modelText").textContent = "Saving the listener…";
+      $("#syncStatus").textContent = "The voice model isn't on this phone yet. Tap Get voice model, or Skip sync.";
+      state.model.phase = "missing";
+      paintModel();
       mascot("confused");
-      Luciel.downloadModel(state.tier);
       return;
     }
     mascot("confused");
@@ -4770,16 +4912,30 @@
       } else if (msg.type === "track") {
         $("#trackHint").textContent = "Reading the song…";
       } else if (msg.type === "model") {
-        if (msg.error) { $("#modelText").textContent = msg.error; mascot("crying"); }
-        else if (msg.ready) {
-          $("#modelText").textContent = "Listening is saved on this phone.";
-          const status = $("#syncStatus").textContent;
-          if (status.indexOf("Saving") >= 0 || status.indexOf("isn't on this phone") >= 0) {
-            $("#syncStatus").textContent = syncReady() ? "Listening is ready." : "Listening is ready. Tap Line up lyrics.";
-          }
+        if (msg.id === "aligner") {
+          if (msg.error) $("#syncStatus").textContent = msg.error;
+          else if (!msg.ready) $("#syncStatus").textContent = "Saving the line-up file… " + Math.round((msg.progress || 0) * 100) + "%";
+        } else if (msg.error) {
+          state.model.phase = "error";
+          state.model.error = msg.error;
+          state.model.progress = 0;
+          mascot("crying");
+          paintModel();
+        } else if (msg.ready) {
+          if (msg.id === "accurate") state.model.accurate = true;
+          else state.model.fast = true;
+          state.model.phase = "ready";
+          state.model.progress = 1;
+          state.model.error = "";
+          $("#syncStatus").textContent = "Voice model ready. Tap Line up lyrics.";
           mascot("happy");
+          paintModel();
+        } else {
+          state.model.phase = "down";
+          state.model.progress = msg.progress || 0;
+          state.model.error = "";
+          paintModel();
         }
-        else $("#modelText").textContent = "Saving… " + Math.round((msg.progress || 0) * 100) + "%";
       } else if (msg.type === "sync" && msg.phase === "logits") {
         const flat = b64ToF32(msg.logits || "");
         const res = LS().alignFromLogits(flat, msg.frames, msg.duration || state.length, $("#lyrics").value);
