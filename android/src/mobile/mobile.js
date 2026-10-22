@@ -51,23 +51,53 @@
 
   const LS = () => window.LyricSync;
 
+  function scroller() {
+    const main = document.querySelector("main");
+    if (main) {
+      const oy = getComputedStyle(main).overflowY;
+      if (oy === "auto" || oy === "scroll" || oy === "overlay") return main;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function clearDockPad() {
+    const app = document.querySelector(".app");
+    const dock = document.querySelector(".dock");
+    if (!app) return;
+    const hidden = !dock || getComputedStyle(dock).display === "none";
+    if (hidden) { app.style.paddingBottom = ""; return; }
+    const gap = window.innerHeight - dock.getBoundingClientRect().top;
+    app.style.paddingBottom = Math.ceil(gap + 6) + "px";
+  }
+  function dockTopPx() {
+    const dock = document.querySelector(".dock");
+    if (!dock || getComputedStyle(dock).display === "none") return window.innerHeight;
+    return dock.getBoundingClientRect().top;
+  }
+  function resetScroll() {
+    const sc = scroller();
+    sc.scrollTop = 0;
+    sc.scrollLeft = 0;
+    const main = document.querySelector("main");
+    if (main && main !== sc) { main.scrollTop = 0; main.scrollLeft = 0; }
+  }
+
   function show(id) {
     if (!canOpen(id)) return;
     state.screen = id;
     document.documentElement.dataset.screen = id;
+    document.documentElement.removeAttribute("data-compact");
+    document.documentElement.removeAttribute("data-syncflat");
+    clearDockPad();
     document.querySelectorAll(".screen").forEach((el) => {
       const on = el.dataset.screen === id;
       el.classList.toggle("on", on);
       el.style.display = on ? "block" : "none";
     });
     document.querySelectorAll("#dock button").forEach((b) => b.setAttribute("aria-current", b.dataset.screen === id ? "true" : "false"));
-    const sc = document.scrollingElement || document.documentElement;
-    sc.scrollTop = 0;
-    sc.scrollLeft = 0;
-    const main = document.querySelector("main");
-    if (main) { main.scrollTop = 0; main.scrollLeft = 0; }
+    resetScroll();
     const host = document.getElementById("pin-" + id);
     const pin = $("#previewPin");
+    if (pin) delete pin.dataset.picH;
     if (host && pin) host.appendChild(pin);
     pinPreview();
     sizePreview();
@@ -85,6 +115,7 @@
     fitAll();
     if (id === "video") fitVideoFold();
     else if (id === "look" || id === "render" || id === "time" || id === "sync") fitPinClear();
+    else if (id === "home" || id === "intro") fitHome();
     saveProject();
   }
   const STEP_ORDER = ["track", "sync", "video", "look", "time", "render"];
@@ -594,9 +625,9 @@
     const pin = document.getElementById("previewPin");
     const dock = document.querySelector(".dock");
     if (!pin || !dock) return false;
-    const pr = pin.getBoundingClientRect();
+    const pr = visibleRect(pin);
     const dr = dock.getBoundingClientRect();
-    if (pr.width < 2 || pr.height < 2) return false;
+    if (!pr || pr.width < 2 || pr.height < 2) return false;
     return pr.bottom > dr.top + 1 && pr.top < dr.bottom - 1 && pr.left < dr.right && pr.right > dr.left;
   }
   function dockHitOk() {
@@ -604,7 +635,7 @@
     const miss = dockButtonsMiss();
     if (miss) bad.push(miss);
     if (pinCoversDock()) bad.push("overlap");
-    const sc = document.scrollingElement || document.documentElement;
+    const sc = scroller();
     const saved = sc.scrollTop;
     const max = Math.max(sc.scrollHeight, document.documentElement.scrollHeight, document.body.scrollHeight);
     if (max > 8) {
@@ -625,10 +656,10 @@
   }
   function placeSyncLines() {
     const head = document.getElementById("linesHead");
-    const sc = document.scrollingElement || document.documentElement;
+    const sc = scroller();
     if (!head) return;
-    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
-    const y = Math.max(0, Math.round(head.getBoundingClientRect().top + sc.scrollTop - sys - 12));
+    const origin = sc.getBoundingClientRect ? sc.getBoundingClientRect().top + 8 : 12;
+    const y = Math.max(0, Math.round(head.getBoundingClientRect().top + sc.scrollTop - origin));
     sc.scrollTop = y;
     document.documentElement.scrollTop = y;
     document.body.scrollTop = y;
@@ -718,7 +749,7 @@
         if (r.right > vw + 1.5 || r.left < -1.5) bad.push(describe(el));
       });
     });
-    const sc = document.scrollingElement;
+    const sc = scroller();
     if (sc && sc.scrollWidth > vw + 2) bad.push("page");
     return bad;
   }
@@ -746,7 +777,7 @@
     });
     const last = kids[kids.length - 1];
     if (!last) return false;
-    const sc = document.scrollingElement || document.documentElement;
+    const sc = scroller();
     sc.scrollTop = sc.scrollHeight;
     document.documentElement.scrollTop = sc.scrollHeight;
     document.body.scrollTop = document.body.scrollHeight;
@@ -834,8 +865,8 @@
       expect.aspects = aspects.length === 4 && inView($("#aspects"), 16) ? 4 : 0;
       expect.fits = fits.length === 3 && inView($("#vfit"), 16) ? 3 : 0;
       expect.vzoom = inView($("#vscale"), 12) ? 1 : 0;
-      const atlCv = document.querySelector("#atl canvas");
-      const painted = canvasBusy(atlCv) || canvasBusy($("#tl")) || canvasBusy(document.getElementById("film"));
+      const trackCv = document.querySelector("#videoTrack canvas") || document.querySelector("#audioTrack canvas");
+      const painted = canvasBusy(trackCv);
       expect.timeline = painted && inView($("#tlview"), 16, false) ? 1 : 0;
       expect.overlay = inView($("#addOverlay"), 28) ? 1 : 0;
       if (!expect.stage) flags.push(stageBusy ? "stageview" : stageSeen ? "stagepx" : "stage");
@@ -872,7 +903,7 @@
       if (!expect.startnew) flags.push("startnew");
     }
     if (screen === "sheet") {
-      const sc = document.scrollingElement || document.documentElement;
+      const sc = scroller();
       sc.scrollTop = 0;
       reserveSheet();
       placeSheet();
@@ -896,8 +927,8 @@
     if (STEP_ORDER.indexOf(kind) >= 0) {
       const nextBtn = document.querySelector("#screen-" + kind + " .stepnext");
       expect.next = nextBtn && inView(nextBtn, 28) ? 1 : 0;
-      const stepBtns = document.querySelectorAll("#stepper button");
-      expect.steps = (kind === "video" || (stepBtns.length === 6 && inView($("#stepper"), 28))) ? 6 : 0;
+      const dockBtns = document.querySelectorAll("#dock button");
+      expect.steps = dockBtns.length === 6 ? 6 : 0;
       if (!expect.next) flags.push("next");
       if (expect.steps !== 6) flags.push("steps");
     }
@@ -907,7 +938,7 @@
     const lead = document.querySelector("#screen-sync .lead");
     const bar = document.getElementById("safebar");
     if (!lead || !bar) return false;
-    const sc = document.scrollingElement || document.documentElement;
+    const sc = scroller();
     const saved = sc.scrollTop;
     sc.scrollTop = 0;
     const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
@@ -1041,33 +1072,74 @@
   }
   function fitVideoFold() {
     const host = document.getElementById("pin-video");
-    const actions = document.querySelector("#screen-video .tlactions");
-    const dock = document.querySelector(".dock");
-    if (!host || !actions || !dock || state.screen !== "video") return;
+    const pin = $("#previewPin");
+    if (!host || !pin || state.screen !== "video") return;
     host.style.height = "";
     host.style.maxHeight = "";
     document.documentElement.style.removeProperty("--pin-h");
-    sizePreview();
-    let guard = 0;
-    const timeline = document.getElementById("tlview");
-    while (guard++ < 24) {
-      const dockLimit = dock.getBoundingClientRect().top - 4;
-      const barTop = actions.getBoundingClientRect().top - 4;
-      const limit = Math.min(dockLimit, barTop);
-      const bottom = timeline ? timeline.getBoundingClientRect().bottom : actions.getBoundingClientRect().bottom;
-      if (bottom <= limit && actions.getBoundingClientRect().bottom <= dockLimit + 4) break;
-      const h = host.getBoundingClientRect().height;
-      const next = Math.floor(h - (bottom - limit) - 1);
-      if (!(next < h - 0.5)) break;
-      const clamped = Math.max(72, next);
-      host.style.height = clamped + "px";
-      host.style.maxHeight = clamped + "px";
+    const lead = document.querySelector("#screen-video .screenhead .lead");
+    if (lead) lead.style.display = "";
+    document.documentElement.dataset.compact = "1";
+    const capToRoom = () => {
+      const bar = pin.querySelector(".previewbar");
+      const barH = bar ? bar.offsetHeight : 48;
+      const room = dockTopPx() - pin.getBoundingClientRect().top - barH - 8;
+      // Leave a peek of the timeline when the phone is tall enough.
+      const peek = room > 280 ? 88 : 0;
+      const pic = Math.floor(room - peek);
+      pin.dataset.picH = String(Math.max(96, pic));
       sizePreview();
-      if (clamped <= 72) break;
+    };
+    delete pin.dataset.picH;
+    sizePreview();
+    capToRoom();
+    if (pin.getBoundingClientRect().bottom > dockTopPx() - 1 && lead) {
+      lead.style.display = "none";
+      capToRoom();
     }
-    const fitted = Math.round(host.getBoundingClientRect().height);
-    if (fitted > 48) document.documentElement.style.setProperty("--pin-h", fitted + "px");
+    let guard = 0;
+    while (guard++ < 6 && pin.getBoundingClientRect().bottom > dockTopPx() - 1) {
+      const over = pin.getBoundingClientRect().bottom - (dockTopPx() - 1);
+      const next = Math.max(96, (parseFloat(pin.dataset.picH) || 120) - over - 2);
+      if (next >= (parseFloat(pin.dataset.picH) || 0) - 0.5) break;
+      pin.dataset.picH = String(Math.floor(next));
+      sizePreview();
+    }
     refreshMoveable();
+  }
+  function fitHome() {
+    if (state.screen !== "home" && state.screen !== "intro") return;
+    const card = document.querySelector(".screen.on .emptycard, .screen.on .intropage.on");
+    const host = card || document.querySelector(".screen.on .homecard");
+    if (!host) return;
+    const mascot = host.querySelector(".emptymascot");
+    host.style.padding = "";
+    if (mascot) { mascot.style.width = ""; mascot.style.height = ""; }
+    const kids = [...host.children];
+    kids.forEach((el) => { el.style.marginTop = ""; });
+    const fits = () => {
+      const limit = window.innerHeight - 8;
+      return [...host.querySelectorAll("h1, .lead, .hint, button")].every((el) => {
+        if (getComputedStyle(el).display === "none") return true;
+        const r = el.getBoundingClientRect();
+        if (r.height < 8) return true;
+        return r.top >= -1 && r.bottom <= limit && r.left >= -1 && r.right <= window.innerWidth + 1;
+      });
+    };
+    if (fits()) return;
+    document.documentElement.dataset.compact = "1";
+    clearDockPad();
+    if (fits()) return;
+    if (mascot) { mascot.style.width = "48px"; mascot.style.height = "48px"; }
+    host.style.padding = "8px";
+    if (fits()) return;
+    if (mascot) { mascot.style.width = "28px"; mascot.style.height = "28px"; }
+    kids.forEach((el, i) => { if (i) el.style.marginTop = "4px"; });
+    if (fits()) return;
+    if (mascot) mascot.style.display = "none";
+    if (fits()) return;
+    const lead = host.querySelector(".lead");
+    if (lead) lead.style.display = "none";
   }
   function labelNodes() {
     const sel = "button, h1, h2, .sum, .brand, .tag, .docklabel, .lead, .hint, .lcd, #previewTime, #previewMeta, .clipname, .colors label, .lookgrid small, .fx span";
@@ -1159,53 +1231,39 @@
   }
   function videoFoldOk() {
     const why = (msg) => { document.documentElement.dataset.foldWhy = msg; return false; };
-    const dockTop = document.querySelector(".dock").getBoundingClientRect().top;
-    const view = document.getElementById("tlview");
-    const bar = document.querySelector("#screen-video .tlactions");
-    if (!view) return why("view");
-    const vr = view.getBoundingClientRect();
-    const barTop = bar ? bar.getBoundingClientRect().top : dockTop;
-    const limit = Math.min(dockTop, barTop);
-    if (vr.height < 80 || vr.top < -1 || vr.bottom > limit + 1) return why("viewbox" + Math.round(vr.top) + "-" + Math.round(vr.bottom) + "/" + Math.round(limit));
-    if (vr.left < -1 || vr.right > window.innerWidth + 1) return why("viewx");
-    if (document.documentElement.dataset.editor === "libs") {
-      const el = document.querySelector("#atl");
-      if (!el) return why("miss#atl");
+    const rows = ["#videoTrack", "#textTrack", "#lyricTrack", "#audioTrack"];
+    for (let i = 0; i < rows.length; i++) {
+      const el = document.querySelector(rows[i]);
+      if (!el) return why("miss" + rows[i]);
       const r = el.getBoundingClientRect();
-      if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why("#atlout" + Math.round(r.top) + "-" + Math.round(r.bottom));
-      if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why("#atlclip" + Math.round(r.bottom) + "/" + Math.round(vr.bottom));
-      if (r.height < 64 || r.height > 110) return why("band" + Math.round(r.height));
-      const controls = [...document.querySelectorAll(".moveable-control")];
-      if (controls.length < 2) return why("controls" + controls.length);
-      for (let i = 0; i < controls.length; i++) {
-        const cr = controls[i].getBoundingClientRect();
-        if (cr.width < 48 || cr.height < 48) return why("control" + Math.round(cr.width) + "x" + Math.round(cr.height));
-      }
-    } else {
-      const rows = ["#ruler", "#videoTrack"];
-      for (let i = 0; i < rows.length; i++) {
-        const el = document.querySelector(rows[i]);
-        if (!el) return why("miss" + rows[i]);
-        const r = el.getBoundingClientRect();
-        if (r.height < 12 || r.top < -1 || r.bottom > limit + 1) return why(rows[i]);
-        if (r.top < vr.top - 2 || r.bottom > vr.bottom + 2) return why(rows[i] + "clip");
-      }
+      if (r.height < 20 || r.width < 40) return why(rows[i] + Math.round(r.width) + "x" + Math.round(r.height));
+    }
+    const controls = [...document.querySelectorAll(".moveable-control")];
+    if (controls.length < 2) return why("controls" + controls.length);
+    const play = document.querySelector("#previewPin .previewbar");
+    const playR = play ? visibleRect(play) : null;
+    for (let i = 0; i < controls.length; i++) {
+      const el = controls[i];
+      const cr = el.getBoundingClientRect();
+      if (cr.width < 48 || cr.height < 48) return why("control" + Math.round(cr.width) + "x" + Math.round(cr.height));
+      const mark = parseFloat(getComputedStyle(el, "::after").width) || 0;
+      if (mark < 18 || mark > 26) return why("mark" + Math.round(mark));
+      const vis = visibleRect(el);
+      if (playR && vis && overlapArea(vis, playR) > 2) return why("play");
     }
     const actions = ["#tlSplit", "#tlDelete", "#tlAdd", "#tlReplace", "#tlSpeed"];
     for (let i = 0; i < actions.length; i++) {
       const el = document.querySelector(actions[i]);
       if (!el) return why("act");
       const r = el.getBoundingClientRect();
-      if (r.height < 48 || r.width < 28 || r.top < -1 || r.bottom > dockTop + 1) return why(actions[i] + Math.round(r.height) + "x" + Math.round(r.width) + "b" + Math.round(r.bottom) + "/" + Math.round(dockTop));
-      if (r.left < -1 || r.right > window.innerWidth + 1) return why(actions[i] + "x");
+      if (r.height < 48 || r.width < 28) return why(actions[i] + Math.round(r.height) + "x" + Math.round(r.width));
     }
     document.documentElement.dataset.foldWhy = "";
     return true;
   }
   function filmReady() {
-    const cv = document.getElementById("film")
-      || document.querySelector("#atl canvas")
-      || document.querySelector("#videoTrack canvas");
+    const cv = document.querySelector("#videoTrack canvas")
+      || document.querySelector("#audioTrack canvas");
     if (!cv || cv.width < 48 || cv.height < 20) return false;
     const rect = cv.getBoundingClientRect();
     if (rect.width < 24 || rect.height < 16) return false;
@@ -1224,11 +1282,153 @@
     } catch (e) { return false; }
     return changes >= 1;
   }
+  function visibleRect(el) {
+    if (!el) return null;
+    const base = el.getBoundingClientRect();
+    let left = base.left, top = base.top, right = base.right, bottom = base.bottom;
+    let node = el.parentElement;
+    while (node && node !== document.documentElement) {
+      const cs = getComputedStyle(node);
+      const clipX = cs.overflowX !== "visible" && cs.overflowX !== "";
+      const clipY = cs.overflowY !== "visible" && cs.overflowY !== "";
+      if (clipX || clipY) {
+        const c = node.getBoundingClientRect();
+        if (clipX) { left = Math.max(left, c.left); right = Math.min(right, c.right); }
+        if (clipY) { top = Math.max(top, c.top); bottom = Math.min(bottom, c.bottom); }
+      }
+      node = node.parentElement;
+    }
+    left = Math.max(left, 0);
+    top = Math.max(top, 0);
+    right = Math.min(right, window.innerWidth);
+    bottom = Math.min(bottom, window.innerHeight);
+    const width = right - left;
+    const height = bottom - top;
+    if (width < 1 || height < 1) return null;
+    return { left: left, top: top, right: right, bottom: bottom, width: width, height: height };
+  }
+  function overlapArea(a, b) {
+    if (!a || !b) return 0;
+    const iw = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const ih = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    if (iw <= 2 || ih <= 2) return 0;
+    return iw * ih;
+  }
+  function overlapHits() {
+    resetScroll();
+    const bad = [];
+    const sheet = document.getElementById("textSheet");
+    const sheetOn = sheet && !sheet.hidden;
+    const sheetR = sheetOn ? sheet.getBoundingClientRect() : null;
+    function coveredBySheet(el) {
+      if (!sheetR || !el || (sheet && sheet.contains(el))) return false;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return cx > sheetR.left && cx < sheetR.right && cy > sheetR.top && cy < sheetR.bottom;
+    }
+    function shown(el) {
+      if (!el || el.hidden) return false;
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") return false;
+      return !!visibleRect(el);
+    }
+    const dockEl = document.querySelector(".dock");
+    const dockOn = dockEl && getComputedStyle(dockEl).display !== "none";
+    const dock = dockOn ? dockEl.getBoundingClientRect() : null;
+    const root = document.querySelector(".screen.on");
+    const scopes = [root, sheetOn ? sheet : null, dockEl].filter(Boolean);
+    const interactive = [];
+    const seen = new Set();
+    scopes.forEach((scope) => {
+      scope.querySelectorAll("button, input, textarea, select, .moveable-control").forEach((el) => {
+        if (seen.has(el) || !shown(el) || coveredBySheet(el)) return;
+        seen.add(el);
+        interactive.push(el);
+      });
+    });
+    const texts = [];
+    const textRoot = root || document.body;
+    textRoot.querySelectorAll("h1, h2, .lead, .hint, textarea, .lineedit, .tllabel, #previewTime, #previewMeta").forEach((el) => {
+      if (shown(el) && !coveredBySheet(el)) texts.push(el);
+    });
+    if (sheetOn) {
+      sheet.querySelectorAll("h2, .hint, label").forEach((el) => {
+        if (shown(el)) texts.push(el);
+      });
+    }
+    const stage = document.getElementById("stage");
+    for (let i = 0; i < interactive.length; i++) {
+      for (let j = i + 1; j < interactive.length; j++) {
+        const a = interactive[i], b = interactive[j];
+        if (a.contains(b) || b.contains(a)) continue;
+        if (overlapArea(visibleRect(a), visibleRect(b)) > 0) bad.push("ctrl:" + describe(a) + "/" + describe(b));
+      }
+    }
+    const bar = document.querySelector("#previewPin .previewbar");
+    if (stage && shown(stage) && bar && shown(bar) && overlapArea(stage.getBoundingClientRect(), bar.getBoundingClientRect()) > 0) {
+      bad.push("preview/play");
+    }
+    if (stage && shown(stage)) {
+      const sr = stage.getBoundingClientRect();
+      const cx = (sr.left + sr.right) / 2;
+      const cy = (sr.top + sr.bottom) / 2;
+      document.querySelectorAll(".moveable-control").forEach((el) => {
+        if (!shown(el)) return;
+        const r = el.getBoundingClientRect();
+        const bg = getComputedStyle(el).backgroundColor;
+        const opaque = bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)";
+        if (opaque && r.left <= cx && cx <= r.right && r.top <= cy && cy <= r.bottom) bad.push("handle-center");
+        if (opaque && r.width > 30 && overlapArea(r, sr) > sr.width * sr.height * 0.18) bad.push("handle-cover");
+      });
+    }
+    texts.forEach((el) => {
+      const inSheet = sheet && sheet.contains(el);
+      interactive.forEach((ctrl) => {
+        if (el === ctrl || el.contains(ctrl) || ctrl.contains(el)) return;
+        if (inSheet && !sheet.contains(ctrl)) return;
+        if (overlapArea(visibleRect(el), visibleRect(ctrl)) > 0) bad.push("text:" + describe(el) + "/" + describe(ctrl));
+      });
+      if (inSheet) return;
+      if (stage && shown(stage) && !coveredBySheet(stage) && (el.closest(".previewbar") || !el.closest("#previewPin")) && overlapArea(visibleRect(el), visibleRect(stage)) > 0) {
+        bad.push("text/preview:" + describe(el));
+      }
+    });
+    function underDock(el, kind) {
+      if (!dock) return;
+      const r = visibleRect(el);
+      if (!r) return;
+      if (r.bottom > dock.top + 2 && r.top < dock.bottom - 2 && r.right > dock.left + 2 && r.left < dock.right - 2) {
+        bad.push("dock:" + kind + ":" + describe(el));
+      }
+    }
+    interactive.forEach((el) => { if (!el.closest(".dock")) underDock(el, "ctrl"); });
+    texts.forEach((el) => underDock(el, "text"));
+    if (stage && shown(stage)) underDock(stage, "preview");
+    if (bar && shown(bar)) underDock(bar, "play");
+    if (state.screen === "sync") {
+      ["#lyrics", "#modelTier", "#syncBtn"].forEach((sel) => {
+        const el = document.querySelector(sel);
+        const r = el && el.getBoundingClientRect();
+        if (!el || !r || r.height < 8 || r.bottom > dockTopPx() - 1 || r.top < 0) bad.push("fold:" + sel);
+      });
+    }
+    if (state.screen === "home") {
+      ["#homeHint", "#startNew"].forEach((sel) => {
+        const el = document.querySelector(sel);
+        const r = el && el.getBoundingClientRect();
+        if (el && r && r.height > 8 && r.bottom > window.innerHeight - 2) bad.push("clip:" + sel);
+      });
+    }
+    const stepper = document.getElementById("stepper");
+    if (stepper && getComputedStyle(stepper).display !== "none") bad.push("stepper");
+    document.documentElement.dataset.overlapWhy = bad.slice(0, 6).join("/");
+    return bad;
+  }
   function measure(screen) {
     const logical = screen === "syncshot" || screen === "sheet" ? "sync" : screen === "videocheck" ? "look" : screen;
-    const sc = document.scrollingElement || document.documentElement;
-    sc.scrollTop = 0;
-    sc.scrollLeft = 0;
+    resetScroll();
+    clearDockPad();
     sizePreview();
     fitAll();
     const sheetEl = document.getElementById("textSheet");
@@ -1236,6 +1436,7 @@
     else document.documentElement.removeAttribute("data-sheet");
     if (logical === "video") fitVideoFold();
     else if (logical === "look" || logical === "render" || logical === "time" || logical === "sync") fitPinClear();
+    else if (logical === "home" || logical === "intro") fitHome();
     reserveSheet();
     placeSheet();
     dropOverflowMeta();
@@ -1258,8 +1459,7 @@
     const wide = pageWide();
     const box = textWide();
     const clear = clearsDock() ? 1 : 0;
-    sc.scrollTop = 0;
-    sc.scrollLeft = 0;
+    resetScroll();
     if (!clear) flags.push("clear");
     wide.slice(0, 4).forEach((w) => flags.push("wide:" + w));
     box.slice(0, 4).forEach((w) => flags.push("box:" + w));
@@ -1288,8 +1488,7 @@
       if (!editOk) flags.push("edit");
       if (!framesOk) flags.push("frames");
       if (screen === "syncshot" && !editedOk) flags.push("edited");
-      sc.scrollTop = 0;
-      sc.scrollLeft = 0;
+      resetScroll();
     }
     fitDock();
     fitLines();
@@ -1312,6 +1511,10 @@
       pinOk = previewPinned() ? 1 : 0;
       if (!pinOk) flags.push("previewpin" + (state.pinWhy ? ":" + state.pinWhy : ""));
     }
+    resetScroll();
+    if (logical === "video") refreshMoveable();
+    const overlapBad = overlapHits();
+    if (overlapBad.length) flags.push("overlap");
     const themeName = document.documentElement.dataset.theme || "aero";
     const zoom = parseInt(document.documentElement.dataset.textZoom || "100", 10) || 100;
     const checks = state.checks || {};
@@ -1387,11 +1590,12 @@
       "trim=" + (checks.trim || 0),
       "lyricdrag=" + (checks.lyricdrag || 0),
       "renderframes=" + (checks.renderframes || 0),
-      "layers=" + (checks.layers || 0)
+      "layers=" + (checks.layers || 0),
+      "overlap=" + overlapBad.length
     ];
     if (flags.length) parts.push("missing=" + flags.slice(0, 8).join(","));
-    const scEnd = document.scrollingElement || document.documentElement;
-    scEnd.scrollTop = 0;
+    if (overlapBad.length) parts.push("overlapwhy=" + overlapBad.slice(0, 4).join("|").replace(/\s+/g, ""));
+    resetScroll();
     reserveSheet();
     placeSheet();
     return parts.join(" ");
@@ -1831,20 +2035,31 @@
     const sheet = $("#textSheet");
     const pin = $("#previewPin");
     const host = pin && pin.parentElement;
-    if (!sheet || sheet.hidden || !host || !host.classList.contains("pinhost")) return;
+    if (!sheet || sheet.hidden || !host || !host.classList.contains("pinhost")) {
+      if (host && host.classList.contains("pinhost") && (!sheet || sheet.hidden)) {
+        host.style.height = "";
+        host.style.maxHeight = "";
+        host.style.overflow = "";
+      }
+      return;
+    }
     const dock = document.querySelector(".dock");
     if (!dock) return;
     fitPinClear();
     const dockTop = dock.getBoundingClientRect().top;
+    const pinBottom = pin.getBoundingClientRect().bottom;
+    if (dockTop - pinBottom >= 100) return;
     const top = host.getBoundingClientRect().top;
     const available = Math.floor(dockTop - 8 - top);
-    const pinMin = 56;
-    const roomForSheet = available - pinMin;
-    if (roomForSheet < 64) return;
-    const sheetH = Math.min(240, Math.max(88, Math.min(Math.floor(available * 0.62), roomForSheet)));
+    const bar = pin.querySelector(".previewbar");
+    const barH = bar ? bar.offsetHeight : 48;
+    const sheetH = Math.min(220, Math.max(100, Math.floor(available * 0.42)));
     const pinH = available - sheetH;
+    if (pinH < barH + 96) return;
     host.style.height = pinH + "px";
     host.style.maxHeight = pinH + "px";
+    host.style.overflow = "hidden";
+    pin.dataset.picH = String(Math.max(120, pinH - barH - 8));
     sizePreview();
   }
   function placeSheet() {
@@ -1857,9 +2072,14 @@
     const pinBox = pin && pin.getBoundingClientRect().height > 8 ? pin.getBoundingClientRect() : null;
     const head = document.querySelector(".screen.on .screenhead");
     const headBottom = head && head.getBoundingClientRect().height > 8 ? head.getBoundingClientRect().bottom : 96;
-    const limit = pinBox ? Math.max(headBottom, pinBox.bottom) : headBottom;
-    const top = limit + 8;
-    const room = Math.floor(dockTop - 8 - top);
+    let limit = pinBox ? Math.max(headBottom, pinBox.bottom) : headBottom;
+    let top = limit + 8;
+    let room = Math.floor(dockTop - 8 - top);
+    if (room < 88) {
+      limit = headBottom;
+      top = limit + 8;
+      room = Math.floor(dockTop - 8 - top);
+    }
     sheet.style.bottom = Math.max(0, Math.round(window.innerHeight - dockTop + 8)) + "px";
     sheet.style.maxHeight = Math.max(0, room) + "px";
   }
@@ -2301,14 +2521,12 @@
   }
   function pinPreview() {
     const pin = $("#previewPin");
-    const host = pin && pin.parentElement;
-    if (!pin || !host || !host.classList.contains("pinhost")) return;
-    const anchor = pinAnchor();
-    const top = host.getBoundingClientRect().top;
-    const stuck = top < anchor - 1;
-    pin.classList.toggle("stuck", stuck);
-    document.documentElement.style.setProperty("--pin-top", anchor + "px");
-    sizePreview();
+    if (!pin) return;
+    pin.classList.remove("stuck");
+    pin.style.top = "";
+    pin.style.right = "";
+    pin.style.bottom = "";
+    pin.style.left = "";
   }
   function stageRoom() {
     const wrap = document.querySelector("#previewPin .stagewrap");
@@ -2327,54 +2545,100 @@
     const covered = bot > top ? bot - top : 0;
     return Math.max(0, wr.height - covered);
   }
+  function fitSyncStack() {
+    const pin = $("#previewPin");
+    const lyrics = $("#lyrics");
+    const modelText = $("#modelText");
+    const getModel = $("#getModel");
+    const tier = $("#modelTier");
+    const syncBtn = $("#syncBtn");
+    const lead = document.querySelector("#screen-sync .lead");
+    const root = document.documentElement;
+    if (lead) lead.style.display = "";
+    if (lyrics) { lyrics.style.minHeight = ""; lyrics.style.height = ""; }
+    if (modelText) modelText.hidden = false;
+    if (getModel) getModel.hidden = false;
+    root.removeAttribute("data-compact");
+    root.removeAttribute("data-syncflat");
+    clearDockPad();
+    const above = () => [lyrics, tier, syncBtn].every((el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.height >= 8 && r.top >= 0 && r.bottom <= dockTopPx() - 1;
+    });
+    const roomForPic = () => {
+      if (!pin) return 0;
+      const bar = pin.querySelector(".previewbar");
+      const barH = bar ? bar.offsetHeight : 48;
+      return dockTopPx() - pin.getBoundingClientRect().top - barH - 8;
+    };
+    const applyPic = () => {
+      if (!pin) return;
+      const room = roomForPic();
+      const pic = room >= 120 ? Math.min(240, Math.floor(room)) : 128;
+      pin.dataset.picH = String(pic);
+      sizePreview();
+    };
+    const tightenLead = () => {
+      if (!lead) return;
+      lead.style.whiteSpace = "nowrap";
+      let fit = 1;
+      let guard = 0;
+      while (guard++ < 12 && fit > 0.45 && lead.scrollWidth > lead.clientWidth + 2) {
+        fit = Math.round((fit - 0.05) * 100) / 100;
+        lead.style.setProperty("--fit", String(fit));
+      }
+      if (lead.scrollWidth > lead.clientWidth + 2) {
+        lead.style.whiteSpace = "";
+        lead.style.removeProperty("--fit");
+      }
+    };
+    const reductions = [
+      () => { root.dataset.compact = "1"; },
+      () => {
+        if (modelText) modelText.hidden = true;
+        if (getModel) getModel.hidden = true;
+      },
+      () => { if (lyrics) { lyrics.style.minHeight = "48px"; lyrics.style.height = "48px"; } },
+      () => { root.dataset.syncflat = "1"; tightenLead(); },
+      () => { if (lyrics) { lyrics.style.minHeight = "36px"; lyrics.style.height = "36px"; } },
+    ];
+    let step = 0;
+    applyPic();
+    while (step < reductions.length && (!above() || roomForPic() < 150 || (pin && pin.getBoundingClientRect().bottom > dockTopPx() - 1))) {
+      reductions[step++]();
+      applyPic();
+    }
+    if (pin && pin.getBoundingClientRect().bottom > dockTopPx() - 1 && roomForPic() >= 96) {
+      pin.dataset.picH = String(Math.floor(roomForPic()));
+      sizePreview();
+    }
+  }
   function fitPinClear() {
+    if (state.screen === "sync") { fitSyncStack(); return; }
     const pin = $("#previewPin");
     const host = pin && pin.parentElement;
-    const dock = document.querySelector(".dock");
-    if (!host || !host.classList.contains("pinhost") || !dock || state.screen === "video") return;
+    if (!pin || !host || !host.classList.contains("pinhost") || state.screen === "video") return;
+    host.style.height = "";
+    host.style.maxHeight = "";
     const lead = document.querySelector(".screen.on .screenhead .lead");
     const root = document.documentElement;
     root.removeAttribute("data-compact");
     if (lead) lead.style.display = "";
     const tighten = () => {
-      host.style.height = "";
-      host.style.maxHeight = "";
       pin.classList.remove("stuck");
+      const bar = pin.querySelector(".previewbar");
+      const barH = bar ? bar.offsetHeight : 48;
+      const room = dockTopPx() - pin.getBoundingClientRect().top - barH - 10;
+      pin.dataset.picH = String(Math.max(96, Math.min(240, Math.floor(room))));
       sizePreview();
-      const sc = document.scrollingElement || document.documentElement;
-      let guard = 0;
-      while (guard++ < 16) {
-        const hostDocTop = host.getBoundingClientRect().top + sc.scrollTop;
-        const limit = dock.getBoundingClientRect().top - 8;
-        const bottomAtRest = hostDocTop + host.getBoundingClientRect().height;
-        if (bottomAtRest <= limit) break;
-        const h = host.getBoundingClientRect().height;
-        const next = Math.floor(h - (bottomAtRest - limit) - 1);
-        if (!(next < h - 0.5)) break;
-        // Stay above the dock. A 48px floor used to overlap it once the
-        // stepper and the lyrics line were on screen.
-        const clamped = Math.max(0, next);
-        host.style.height = clamped + "px";
-        host.style.maxHeight = clamped + "px";
-        sizePreview();
-        if (clamped <= 20) break;
-      }
-    };
-    const cramped = () => {
-      const dockTop = dock.getBoundingClientRect().top;
-      const leadShown = lead && getComputedStyle(lead).display !== "none";
-      const leadR = leadShown ? lead.getBoundingClientRect() : null;
-      const leadBad = state.screen === "sync" && (!leadR || leadR.height < 8 || leadR.bottom > dockTop - 2);
-      return pictureRoom() < 36 || stageRoom() < 28 || host.getBoundingClientRect().bottom > dockTop - 4 || leadBad;
     };
     tighten();
-    if (cramped() || root.dataset.sheet === "1") {
+    if (pin.getBoundingClientRect().bottom > dockTopPx() - 1 || root.dataset.sheet === "1") {
       root.dataset.compact = "1";
-      if (lead) lead.style.display = "";
       tighten();
     }
-    // Lyrics keeps its line. Other steps drop the line so the picture stays.
-    if (state.screen !== "sync" && lead && (pictureRoom() < 36 || stageRoom() < 28)) {
+    if (lead && pin.getBoundingClientRect().bottom > dockTopPx() - 1) {
       lead.style.display = "none";
       tighten();
     }
@@ -2383,51 +2647,34 @@
     const pin = $("#previewPin");
     const canvas = $("#stage");
     if (!pin || !canvas) return;
-    const host = pin.parentElement && pin.parentElement.classList.contains("pinhost") ? pin.parentElement : null;
-    const stuck = pin.classList.contains("stuck");
-    const fitted = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pin-h")) || 0;
-    if (stuck) {
-      const dockEl = document.querySelector(".dock");
-      const anchor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pin-top")) || 0;
-      const dockTop = dockEl ? dockEl.getBoundingClientRect().top : window.innerHeight;
-      const cap = Math.max(48, dockTop - anchor - 8);
-      const vh = window.innerHeight * 0.3;
-      const want = fitted > 48 ? fitted : vh;
-      const used = Math.max(48, Math.min(want, cap, window.innerHeight * 0.32));
-      pin.style.height = Math.round(used) + "px";
-      pin.style.maxHeight = Math.round(used) + "px";
-    } else {
-      pin.style.height = "";
-      pin.style.maxHeight = "";
-    }
-    // API 30 WebView ignores `inset`, so an absolute pin otherwise shrinks to a
-    // zero-height canvas. Stretch it to the host with the longhand edges.
-    if (!stuck) {
-      pin.style.top = "0";
-      pin.style.right = "0";
-      pin.style.bottom = "0";
-      pin.style.left = "0";
-    } else {
-      pin.style.top = "";
-      pin.style.right = "";
-      pin.style.bottom = "";
-      pin.style.left = "";
-    }
-    const box = stuck ? pin : (host || pin);
-    if (box.clientHeight < 20 || box.clientWidth < 20) return;
+    pin.classList.remove("stuck");
+    pin.style.top = "";
+    pin.style.right = "";
+    pin.style.bottom = "";
+    pin.style.left = "";
+    pin.style.height = "";
+    pin.style.maxHeight = "";
     const bar = pin.querySelector(".previewbar");
-    const barFloat = bar && getComputedStyle(bar).position === "absolute";
     const cs = getComputedStyle(pin);
-    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    const availH = Math.max(16, box.clientHeight - padY - (barFloat ? 0 : (bar ? bar.offsetHeight : 0)));
-    const availW = Math.max(16, box.clientWidth - padX);
+    const availW = Math.max(16, (pin.clientWidth || pin.parentElement && pin.parentElement.clientWidth || 160) - padX);
     const a = aspectParts();
-    let h = availH;
-    let w = Math.round(h * a.w / a.h);
+    let capH = parseFloat(pin.dataset.picH) || 0;
+    if (!(capH > 0)) {
+      const barH = bar ? bar.offsetHeight : 48;
+      const room = dockTopPx() - pin.getBoundingClientRect().top - barH - 12;
+      const ideal = Math.round(Math.min(availW * 0.72, 200) * a.h / Math.max(1, a.w));
+      capH = room >= 96 ? Math.min(Math.max(ideal, 120), room) : Math.max(96, ideal);
+    }
+    let h = Math.max(64, Math.floor(capH));
+    let w = Math.round(h * a.w / Math.max(1, a.h));
     if (w > availW) {
-      w = availW;
-      h = Math.round(w * a.h / a.w);
+      w = Math.floor(availW);
+      h = Math.max(64, Math.round(w * a.h / Math.max(1, a.w)));
+    }
+    if (w < 72 && availW >= 72) {
+      const grown = Math.round(72 * a.h / Math.max(1, a.w));
+      if (grown <= h + 1) w = 72;
     }
     canvas.style.width = w + "px";
     canvas.style.height = h + "px";
@@ -2436,30 +2683,25 @@
   function previewPinned() {
     const pin = $("#previewPin");
     const stageEl = $("#stage");
-    if (!pin || !stageEl) return false;
-    const sc = document.scrollingElement || document.documentElement;
-    const saved = sc.scrollTop;
-    const max = Math.max(sc.scrollHeight, document.documentElement.scrollHeight, document.body.scrollHeight);
-    sc.scrollTop = max;
-    document.documentElement.scrollTop = max;
-    document.body.scrollTop = max;
+    const bar = pin && pin.querySelector(".previewbar");
+    if (!pin || !stageEl || !bar) return false;
+    resetScroll();
     pinPreview();
-    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
-    const dock = document.querySelector(".dock").getBoundingClientRect();
-    const r = pin.getBoundingClientRect();
     const sr = stageEl.getBoundingClientRect();
+    const br = bar.getBoundingClientRect();
+    const pr = pin.getBoundingClientRect();
     const why = [];
-    if (r.height < 48) why.push("h" + Math.round(r.height));
-    if (r.top < sys - 2) why.push("top" + Math.round(r.top));
-    if (r.bottom > dock.top + 2) why.push("bot" + Math.round(r.bottom) + "/" + Math.round(dock.top));
-    if (r.left < -1 || r.right > window.innerWidth + 1) why.push("x" + Math.round(r.left) + "-" + Math.round(r.right));
-    const stageIn = sr.height >= 24 && sr.top >= r.top - 1 && sr.bottom <= r.bottom + 1 && sr.left >= r.left - 1 && sr.right <= r.right + 1;
-    if (!stageIn) why.push("stage" + Math.round(sr.height));
+    const minH = window.innerHeight >= 700 ? 96 : 72;
+    if (sr.height < minH) why.push("h" + Math.round(sr.height));
+    if (sr.width < 64) why.push("w" + Math.round(sr.width));
+    if (br.top < sr.bottom - 2) why.push("bar" + Math.round(br.top) + "/" + Math.round(sr.bottom));
+    if (sr.top < pr.top - 2 || sr.bottom > pr.bottom + 2 || sr.left < pr.left - 2 || sr.right > pr.right + 2) why.push("stage" + Math.round(sr.height));
+    const vis = visibleRect(stageEl);
+    if (vis && vis.bottom > dockTopPx() + 1) why.push("dock" + Math.round(vis.bottom));
+    if (window.innerHeight >= 700 && (!vis || vis.height < 72)) why.push("vis" + (vis ? Math.round(vis.height) : 0));
+    const barVis = visibleRect(bar);
+    if (barVis && barVis.bottom > dockTopPx() + 1) why.push("bardock");
     state.pinWhy = why.join("/");
-    sc.scrollTop = saved;
-    document.documentElement.scrollTop = saved;
-    document.body.scrollTop = saved;
-    pinPreview();
     return why.length === 0;
   }
   window.addEventListener("scroll", () => { pinPreview(); placeSheet(); }, { passive: true });
@@ -3219,19 +3461,22 @@
     layoutVidHandle();
   }
   function parkMoveableControls() {
-    const vw = document.documentElement.clientWidth;
-    const head = document.querySelector(".screen.on .screenhead h1");
-    const minTop = head ? head.getBoundingClientRect().bottom + 1 : 0;
+    const stageEl = document.getElementById("stage");
+    if (!stageEl) return;
+    const bounds = stageEl.getBoundingClientRect();
+    const roomy = bounds.width >= 100 && bounds.height >= 150;
     document.querySelectorAll(".moveable-control").forEach((el) => {
       el.style.marginLeft = "-24px";
       el.style.marginTop = "-24px";
+      if (!roomy) return;
       const r = el.getBoundingClientRect();
       if (r.width < 1) return;
       let dx = 0;
       let dy = 0;
-      if (r.left < 1) dx = 1 - r.left;
-      else if (r.right > vw - 1) dx = (vw - 1) - r.right;
-      if (r.top < minTop) dy = minTop - r.top;
+      if (r.left < bounds.left) dx = bounds.left - r.left;
+      else if (r.right > bounds.right) dx = bounds.right - r.right;
+      if (r.top < bounds.top) dy = bounds.top - r.top;
+      else if (r.bottom > bounds.bottom) dy = bounds.bottom - r.bottom;
       if (dx || dy) {
         el.style.marginLeft = (-24 + dx) + "px";
         el.style.marginTop = (-24 + dy) + "px";
@@ -3411,25 +3656,23 @@
     if (!inner || !scroll) return;
     const pps = state.pxPerSec || 46;
     const span = Math.max(1, state.length || 20);
-    const view = scroll.clientWidth || scroll.offsetWidth || 280;
     const cssW = Math.max(160, Math.round(span * pps));
-    const origin = view / 2;
-    state.tlOrigin = origin;
-    inner.style.width = (view + cssW) + "px";
-    mountVideoLibs(span);
-    if (libs.ready) layoutLibs(origin, cssW, pps, span);
-    else {
-      paintRuler(origin, span, pps);
-      paintVideoTrack(origin, cssW, pps);
-      const cv = $("#tl");
-      if (cv) {
-        cv.style.position = "absolute";
-        cv.style.left = origin + "px";
-        cv.style.bottom = "0";
-        cv.style.top = "auto";
-      }
-      paintTimeline();
+    const clipOrigin = 8;
+    const rulerOrigin = 64;
+    state.tlOrigin = rulerOrigin;
+    inner.style.width = (rulerOrigin + cssW + 16) + "px";
+    paintRuler(rulerOrigin, span, pps);
+    paintVideoTrack(clipOrigin, cssW, pps);
+    paintTextTrack(clipOrigin, pps);
+    paintLyricTrack(clipOrigin, pps);
+    paintAudioTrack(clipOrigin, span, pps);
+    const head = document.querySelector("#tlview .playhead");
+    if (head) {
+      if (head.parentElement !== inner) inner.appendChild(head);
+      head.style.left = (rulerOrigin + (state.t || 0) * pps) + "px";
     }
+    document.documentElement.removeAttribute("data-editor");
+    settleEditor();
     const input = $("#lyricInput");
     if (input) input.hidden = true;
     layoutVidHandle();
@@ -3462,7 +3705,7 @@
   }
   function syntheticThumbs() {
     if (syntheticThumbs.cache) return syntheticThumbs.cache;
-    const colors = ["#8d1d2c", "#c23b22", "#d4782a", "#1f6f8b", "#2a4f8f", "#3d2a55"];
+    const colors = ["#1f6f8b", "#2a6f8f", "#3d7a72", "#245a86", "#1d4e6e", "#3a6a62"];
     syntheticThumbs.cache = colors.map((color, i) => {
       const c = document.createElement("canvas");
       c.width = 48;
@@ -3534,10 +3777,12 @@
       empty.className = "vclip";
       empty.style.left = origin + "px";
       empty.style.width = Math.max(120, Math.min(cssW, 220)) + "px";
+      const film = document.createElement("canvas");
+      paintFilm(film, { t0: 0, t1: 4 });
       const name = document.createElement("span");
       name.className = "vname";
       name.textContent = "No clip";
-      empty.append(name);
+      empty.append(film, name);
       track.append(empty);
       return;
     }
@@ -3600,58 +3845,68 @@
       track.append(el);
     });
   }
+  function paintTextTrack(origin, pps) {
+    const track = $("#textTrack");
+    if (!track) return;
+    track.innerHTML = "";
+    (state.overlays || []).forEach((o) => {
+      if (!o || !o.text) return;
+      const a = Math.max(0, +o.start || 0);
+      const b = Math.max(a + 0.2, +o.end || 0);
+      const el = document.createElement("div");
+      el.className = "lblock";
+      el.style.left = (origin + a * pps) + "px";
+      el.style.width = Math.max(44, (b - a) * pps) + "px";
+      el.style.pointerEvents = "none";
+      const name = document.createElement("span");
+      name.className = "lname";
+      name.textContent = o.text;
+      el.append(name);
+      track.append(el);
+    });
+  }
+  function paintAudioTrack(origin, span, pps) {
+    const track = $("#audioTrack");
+    if (!track) return;
+    track.innerHTML = "";
+    const w = Math.max(48, Math.round(span * pps));
+    const h = 44;
+    const cv = document.createElement("canvas");
+    cv.width = w;
+    cv.height = h;
+    cv.style.position = "absolute";
+    cv.style.left = origin + "px";
+    cv.style.top = "0";
+    cv.style.width = w + "px";
+    cv.style.height = "100%";
+    const ctx = cv.getContext("2d");
+    const peaks = state.peaks && state.peaks.length ? state.peaks : fakePeaks(240);
+    ctx.fillStyle = cssVar("--wave-on", "#1aa9d6");
+    peaks.forEach((p, i) => {
+      const bh = Math.max(2, Math.min(1, p) * (h - 8));
+      const x = (i / peaks.length) * w;
+      ctx.fillRect(x, (h - bh) / 2, Math.max(1, w / peaks.length - 1), bh);
+    });
+    track.append(cv);
+  }
   function paintLyricTrack(origin, pps) {
     const track = $("#lyricTrack");
     if (!track) return;
     track.innerHTML = "";
-    state.lines.forEach((ln, i) => {
+    state.lines.forEach((ln) => {
       const words = ln.words || [];
       if (!words.length) return;
       const a = words[0].start;
       const b = words[words.length - 1].end;
       const el = document.createElement("div");
-      el.className = "lblock" + (state.selectedLine === i ? " on" : "") + (ln.low_confidence ? " low" : "");
+      el.className = "lblock" + (ln.low_confidence ? " low" : "");
       el.style.left = (origin + a * pps) + "px";
       el.style.width = Math.max(44, (b - a) * pps) + "px";
+      el.style.pointerEvents = "none";
       const name = document.createElement("span");
       name.className = "lname";
       name.textContent = words.map((w) => w.text).join(" ");
-      const left = document.createElement("button");
-      left.type = "button";
-      left.className = "trim left";
-      left.setAttribute("aria-label", "Line start");
-      const right = document.createElement("button");
-      right.type = "button";
-      right.className = "trim right";
-      right.setAttribute("aria-label", "Line end");
-      el.append(name, left, right);
-      let moved = false;
-      watchDrag(el, (e) => {
-        const handle = e.target.closest && e.target.closest(".trim");
-        moved = false;
-        state.selectedLine = i;
-        return {
-          x0: e.clientX,
-          mode: handle ? (handle.classList.contains("left") ? "left" : "right") : "tap",
-          snap: words.map((w) => ({ start: w.start, end: w.end })),
-        };
-      }, (drag, dt) => {
-        if (drag.mode === "tap") return;
-        if (!LS().scaleLine(words, drag.snap, drag.mode, dt, state.length || 20)) return;
-        moved = true;
-        const na2 = words[0].start;
-        const nb2 = words[words.length - 1].end;
-        el.style.left = (origin + na2 * pps) + "px";
-        el.style.width = Math.max(44, (nb2 - na2) * pps) + "px";
-        paintLines();
-      });
-      el.addEventListener("click", () => {
-        if (moved) return;
-        state.selectedLine = i;
-        syncLyricInput();
-        const input = $("#lyricInput");
-        if (input) input.focus();
-      });
+      el.append(name);
       track.append(el);
     });
   }
@@ -3860,7 +4115,7 @@
       if (screen === "video") await whenEditor();
       fitAll();
       const msg = measure(screen);
-      document.documentElement.dataset.scroll = String((document.scrollingElement || document.documentElement).scrollTop);
+      document.documentElement.dataset.scroll = String(scroller().scrollTop);
       window.__audits.push(msg);
       document.documentElement.dataset.audit = msg;
       if (demo !== "audit") {

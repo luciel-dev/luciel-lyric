@@ -5,7 +5,7 @@
   --sys-top: 48px;
   --sys-bottom: 32px;
   /* Dock row plus the gap under it. Content pads by that, and the plate covers it. */
-  --dock-clear: calc(80px + var(--sys-bottom));
+  --dock-clear: calc(64px + var(--sys-bottom));
   --dock-plate: #e7eef2;
 }
 :root, [data-theme="aero"] {
@@ -100,9 +100,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
-html { overflow-x: auto; }
-html { max-width: 100%; overflow-x: hidden; scroll-padding-top: calc(var(--sys-top) + 12px); }
+html, body { margin: 0; height: 100%; }
+html { max-width: 100%; overflow: hidden; scroll-padding-top: calc(var(--sys-top) + 12px); }
 body {
   --fs: 16;
   font-family: var(--font);
@@ -113,7 +112,7 @@ body {
   overflow-wrap: normal;
   word-break: normal;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 .safebar {
   position: fixed;
@@ -138,10 +137,13 @@ img { display: block; }
 .app {
   position: relative;
   z-index: 1;
-  min-height: 100%;
-  display: block;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   max-width: 100%;
-  padding: calc(8px + var(--sys-top)) 12px 0;
+  overflow: hidden;
+  padding: calc(8px + var(--sys-top)) 12px var(--dock-clear);
 }
 
 .top { display: block; max-width: 100%; min-width: 0; margin-bottom: 8px; }
@@ -204,11 +206,14 @@ img { display: block; }
 
 main {
   display: block;
+  flex: 1 1 auto;
   max-width: 100%;
   min-width: 0;
-  overflow: visible;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   height: auto;
-  padding-bottom: var(--dock-clear);
+  padding-bottom: 12px;
 }
 .screen { display: none; max-width: 100%; min-width: 0; }
 .screen.on { display: block; }
@@ -228,52 +233,31 @@ html[data-screen="home"] .dock,
 html[data-screen="intro"] .dock,
 html[data-screen="home"] .dockplate,
 html[data-screen="intro"] .dockplate { display: none; }
+html[data-screen="home"] .app,
+html[data-screen="intro"] .app { padding-bottom: 12px; }
 html[data-screen="home"] main,
-html[data-screen="intro"] main { padding-bottom: 24px; }
-html[data-screen="video"] .stepper { display: none; }
+html[data-screen="intro"] main { padding-bottom: 12px; }
 .screen.on > * + * { margin-top: 16px; }
 #screen-video.on > * + * { margin-top: 6px; }
 #screen-video .screenhead h1 { margin: 0; --fs: 22; }
 #screen-video .screenhead .lead { margin-top: 2px; --fs: 12; line-height: 1.2; }
 #screen-video .editorcard { padding: 6px 8px; }
 #screen-video .editorcard > * + * { margin-top: 4px; }
-/* The short phone frame drops the brand row and the lead so the preview,
-   video track, extra-text track, and action bar sit above the dock. */
-html[data-screen="video"] .top,
-html[data-screen="video"] .stepper { display: none; }
-html[data-screen="video"] .app { padding-top: calc(var(--sys-top) + 2px); }
-html[data-screen="video"] #screen-video .screenhead .lead { display: none; }
-html[data-screen="video"] #screen-video .screenhead h1 { --fs: 16; margin: 0; line-height: 1.1; }
-html[data-screen="video"] #screen-video.on > * + * { margin-top: 0; }
-html[data-screen="video"] #screen-video .ruler { height: 20px; }
-html[data-screen="video"] #screen-video .track { height: 36px; margin-top: 0; }
-html[data-screen="video"] #screen-video .vclip { height: 32px; line-height: 32px; top: 2px; }
-html[data-screen="video"] #screen-video .tlview { height: 100px; }
-html[data-screen="video"] #screen-video canvas#tl { height: 16px; }
-html[data-screen="video"] #screen-video .editorcard { padding: 0 6px; }
-html[data-screen="video"] #screen-video .editorcard > * + * { margin-top: 0; }
-html[data-screen="video"] .previewpin { padding: 2px 4px; }
-html[data-screen="video"] .app { padding-bottom: calc(64px + var(--dock-clear)); }
-html[data-screen="video"] #screen-video .tlactions {
-  position: fixed;
-  left: 8px;
-  right: 8px;
-  bottom: calc(84px + var(--sys-bottom));
-  z-index: 35;
-  margin: 0;
-  padding: 0;
-  background: var(--card-solid);
-  border-radius: var(--radius-sm);
+html[data-screen="video"] #screen-video .screenhead h1 { --fs: 20; margin: 0; line-height: 1.1; }
+html[data-screen="video"] #screen-video .editorcard { padding: 8px; }
+#lyrics { min-height: 72px; }
+html[data-syncflat="1"] #modelCard > h2,
+html[data-syncflat="1"] #lyricCard > h2 { display: none; }
+html[data-syncflat="1"] #screen-sync .card { padding: 4px; }
+html[data-syncflat="1"] #screen-sync .card > * + * { margin-top: 0; }
+html[data-syncflat="1"] #screen-sync > * + * { margin-top: 4px; }
+html[data-syncflat="1"] #screen-sync .lead { line-height: 1.15; }
+@media (max-height: 560px) {
+  html[data-compact="1"] .app { padding-top: var(--sys-top); }
+  html[data-compact="1"] .top { margin-bottom: 0; }
+  html[data-compact="1"] .themes { margin-top: 0; }
+  html[data-syncflat="1"] #screen-sync .screenhead h1 { --fs: 18; margin-top: 0; }
 }
-html[data-editor="libs"] #ruler,
-html[data-editor="libs"] #videoTrack,
-html[data-editor="libs"] #lyricTrack,
-html[data-editor="libs"] #zoomTrack,
-html[data-editor="libs"] #tl { display: none; }
-html[data-screen="video"] .pinhost,
-html[data-screen="time"] .pinhost,
-html[data-screen="video"] .previewpin,
-html[data-screen="time"] .previewpin { overflow: visible; }
 .screenhead { display: block; max-width: 100%; min-width: 0; }
 .screenhead h1 {
   --fs: 26;
@@ -410,22 +394,19 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
 }
 .pinhost {
   position: relative;
-  height: 30vh;
-  max-height: 32vh;
+  height: auto;
+  max-height: none;
   min-height: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 .previewpin {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: relative;
   z-index: 6;
   display: flex;
   flex-direction: column;
   max-width: 100%;
+  height: auto;
   padding: 4px 4px 6px;
   border-radius: var(--radius-sm);
   background: var(--card-solid);
@@ -434,21 +415,21 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
   overflow: hidden;
 }
 .previewpin.stuck {
-  position: fixed;
-  top: var(--pin-top, var(--sys-top));
-  right: 8px;
+  position: relative;
+  top: auto;
+  right: auto;
   bottom: auto;
-  left: 8px;
+  left: auto;
   width: auto;
-  height: 30vh;
-  max-height: 32vh;
+  height: auto;
+  max-height: none;
 }
 .previewpin .stagewrap {
   position: relative;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
-  height: 0;
-  overflow: visible;
+  height: auto;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -456,23 +437,25 @@ canvas#tl { height: 40px; width: 100%; max-width: none; }
 .previewpin .stagewrap canvas {
   display: block;
   width: auto;
-  height: 100%;
+  height: auto;
   max-width: 100%;
-  max-height: 100%;
+  max-height: none;
   /* The canvas attribute is 360px. Without this, an API 30 flex item
      refuses to shrink and the resize handles hang off the left edge. */
   min-width: 0;
   min-height: 0;
 }
 .previewbar {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
   z-index: 2;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   min-height: 48px;
+  margin-top: 4px;
   max-width: none;
   min-width: 0;
   padding: 0 4px;
@@ -565,7 +548,25 @@ html[data-compact="1"] .previewpin { padding: 2px; }
 #uploadVideo { width: 100%; --fs: 14; }
 #removeVideo { flex: 0 0 auto; min-height: 44px; --fs: 13; }
 .editorcard { max-width: 100%; min-width: 0; }
-.tlview { position: relative; max-width: 100%; min-width: 0; height: 186px; }
+.tlview { position: relative; max-width: 100%; min-width: 0; height: auto; }
+.tlrow { display: flex; align-items: center; max-width: 100%; min-width: 0; min-height: 36px; margin-top: 4px; }
+.tllabel {
+  flex: 0 0 52px;
+  width: 52px;
+  margin-right: 4px;
+  --fs: 11;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.tlrow .track {
+  flex: 1 1 auto;
+  height: 44px;
+  margin-top: 0;
+  min-width: 0;
+  background: rgba(0, 0, 0, .28);
+  border-radius: 6px;
+  overflow: hidden;
+}
 .playhead {
   position: absolute;
   left: 50%;
@@ -578,18 +579,14 @@ html[data-compact="1"] .previewpin { padding: 2px; }
   pointer-events: none;
 }
 .tlscroll {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
   min-width: 0;
   touch-action: pan-x;
 }
-.tlinner { position: relative; height: 100%; min-height: 100%; }
+.tlinner { position: relative; height: auto; min-height: 0; }
 .ruler { position: relative; height: 20px; overflow: hidden; }
 .ruler b {
   position: absolute;
@@ -608,7 +605,7 @@ html[data-compact="1"] .previewpin { padding: 2px; }
 .vclip, .lblock {
   position: absolute;
   top: 2px;
-  height: 36px;
+  height: 40px;
   border-radius: 6px;
   overflow: hidden;
   background: #111;
@@ -667,7 +664,7 @@ html[data-compact="1"] .previewpin { padding: 2px; }
   background: #f6e27a;
   transform: rotate(45deg);
 }
-.librows { position: absolute; top: 8px; height: 82px; min-width: 0; }
+.librows { display: none; }
 .syncwave { overflow: visible; }
 #syncWsTime { height: 20px; overflow: hidden; position: relative; }
 #syncWsBox { height: 56px; position: relative; overflow: visible; }
@@ -705,14 +702,27 @@ html[data-compact="1"] .previewpin { padding: 2px; }
 .moveable-control {
   width: 48px !important;
   height: 48px !important;
-  margin-left: -24px !important;
-  margin-top: -24px !important;
-  border-radius: 10px !important;
-  background: var(--accent) !important;
-  border: 2px solid #fff !important;
+  margin-left: -24px;
+  margin-top: -24px;
+  border-radius: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
   box-sizing: border-box !important;
   z-index: 1 !important;
   touch-action: none;
+}
+.moveable-control::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  pointer-events: none;
 }
 .moveable-line { z-index: 1 !important; }
 html[data-handles="0"] .moveable-control,
@@ -1061,7 +1071,7 @@ html[data-theme="winamp"] .themes button[data-theme="winamp"] {
   pointer-events: none;
 }
 .stepper {
-  display: flex;
+  display: none;
   max-width: 100%;
   min-width: 0;
   margin: 0 0 10px;
