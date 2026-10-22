@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 // app events (consumed by theme.js / mascot.js): lc:audio, lc:sync-start, lc:sync-done, lc:render-start, lc:render-done, lc:error, lc:play, lc:stop, lc:font, lc:bgvideo
 const emit = (name, detail = {}) => window.dispatchEvent(new CustomEvent('lc:' + name, {detail}));
-const S = {audio: null, start: 0, len: 20, lines: [], preset: 'neon', bgId: null, cfg: null, raf: null, fonts: [], fontId: '', bgMode: 'gradient', bgVideo: null, bgImageUrl: null, timingLock: false};
+const S = {audio: null, start: 0, len: 20, lines: [], preset: 'neon', bgId: null, cfg: null, raf: null, fonts: [], fontId: '', bgMode: 'gradient', bgVideo: null, bgImageUrl: null, timingLock: true};
 const audio = $('#audio');
 
 async function api(path, opts = {}) {
@@ -444,28 +444,36 @@ function showSyncBanner(r) {
   b.textContent = text;
 }
 function paintLock() {
-  const b = $('#lockToggle');
-  if (!b) return;
   const locked = !!S.timingLock;
-  b.textContent = locked ? '🔒 Timings locked' : '🔓 Unlocked';
-  b.title = locked ? 'Unlock to re-sync' : 'Lock timings';
+  const b = $('#lockToggle');
+  if (b) {
+    b.textContent = locked ? '🔒 Timings locked' : '🔓 Unlocked';
+    b.title = locked ? 'Unlock to slide sections or re-sync' : 'Lock timings';
+    b.setAttribute('aria-pressed', locked ? 'true' : 'false');
+  }
   const note = $('#lockNote');
   if (note) note.textContent = locked
-    ? 'Word times stay put while you edit text or pause. Unlock to re-sync.'
-    : 'Unlocked. Sync again to replace the times. Nudge, tap, and the waveform still edit times directly.';
-}
-$('#lockToggle').onclick = () => {
-  if (!S.lines.length) {
-    if (window.LCFlow) LCFlow.fail('Sync the lyrics before locking them.', 2, 'Go to Sync');
-    return;
+    ? 'Word times stay put while you edit text or pause. Unlock to slide sections on the video timeline, or to re-sync.'
+    : 'Unlocked. Drag lyric blocks on the video timeline, or sync again to replace the times.';
+  const tb = $('#tlLock');
+  if (tb) {
+    tb.classList.toggle('locked', locked);
+    tb.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    const label = tb.querySelector('span');
+    if (label) label.textContent = locked ? 'Lyrics locked' : 'Lyrics unlocked';
+    tb.title = locked ? 'Unlock to slide lyric sections' : 'Lock lyrics so the timeline cannot move them';
   }
-  if (S.timingLock) {
-    if (!confirm('Unlock timings so you can re-sync? Current times stay until you sync again.')) return;
-    S.timingLock = false;
-  } else S.timingLock = true;
+  const lane = $('#tlLyrics');
+  if (lane) lane.classList.toggle('locked', locked);
+}
+function setTimingLock(locked) {
+  S.timingLock = !!locked;
   paintLock();
-  renderLines();
-};
+  if (typeof renderLines === 'function') renderLines();
+  if (window.ED && ED.onLock) ED.onLock();
+}
+window.setTimingLock = setTimingLock;
+$('#lockToggle').onclick = () => setTimingLock(!S.timingLock);
 $('#syncBtn').onclick = async () => {
   if (S.lines.length && S.timingLock) {
     if (window.LCFlow) LCFlow.fail('Unlock timings to re-sync. The times you have now stay until you sync again.', 2, 'Show the lock');

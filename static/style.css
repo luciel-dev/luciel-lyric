@@ -7,6 +7,7 @@
   --font:Inter,system-ui,sans-serif; --font-head:var(--font); --font-mono:ui-monospace,monospace;
   --wave-bg:#0f0f15; --wave-on:#1ed760; --wave-off:#45455a; --wave-sel:#1ed76022; --wave-cursor:#fff; --wave-play:#ff3cac;
   --lcd-bg:#0f0f15; --lcd-txt:#1ed760; --lcd-dim:#1ed76055;
+  --tl-label:120px;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:90px}
@@ -251,8 +252,13 @@ textarea{width:100%;resize:vertical}
 .tlscroll{position:relative;overflow-x:auto;overflow-y:hidden;border:1px solid var(--panel-border);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--panel) 65%,#000);user-select:none;touch-action:none}
 .tlinner{position:relative;min-height:240px}
 .tlrow{display:flex;align-items:stretch;height:52px;margin:0 0 4px}
-.tlname{position:sticky;left:0;z-index:3;flex:none;width:68px;display:flex;align-items:center;padding-left:8px;font:700 12px var(--font);color:var(--mut);background:color-mix(in srgb,var(--panel) 88%,#000)}
-.tlruler{position:relative;height:26px;margin-left:68px;color:var(--mut);font:12px/26px var(--font-mono);border-bottom:1px solid var(--panel-border)}
+.tlname{position:sticky;left:0;z-index:3;flex:none;width:var(--tl-label);display:flex;align-items:center;padding-left:8px;font:700 12px var(--font);color:var(--mut);background:color-mix(in srgb,var(--panel) 88%,#000)}
+button.tllock{appearance:none;border:0;border-radius:0;margin:0;padding:2px 6px;height:100%;flex-direction:column;justify-content:center;align-items:flex-start;gap:1px;line-height:1.15;cursor:pointer;text-align:left;text-transform:none;letter-spacing:0;font:700 11px/1.15 var(--font);color:var(--mut);box-shadow:none;overflow:hidden}
+button.tllock span{display:block;max-width:100%;white-space:normal;overflow-wrap:break-word}
+button.tllock .padlock{flex:none;display:block}
+button.tllock.locked .open,button.tllock:not(.locked) .shut{display:none}
+button.tllock:not(.locked){color:var(--acc)}
+.tlruler{position:relative;height:26px;margin-left:var(--tl-label);color:var(--mut);font:12px/26px var(--font-mono);border-bottom:1px solid var(--panel-border)}
 .tlruler i{position:absolute;top:0;height:100%;border-left:1px solid var(--panel-border);padding-left:4px;font-style:normal}
 .tltrack,.tltexts,.tllyrics,.tlaudiohost{position:relative;flex:1;height:52px;min-width:0}
 .tlaudio{position:absolute;top:10px;height:calc(100% - 20px);border-radius:4px;background:repeating-linear-gradient(90deg,var(--acc) 0 2px,transparent 2px 5px);opacity:.55;pointer-events:none}
@@ -267,11 +273,18 @@ textarea{width:100%;resize:vertical}
 .tllane{position:relative;height:22px;margin:0 8px 8px;background:color-mix(in srgb,var(--sub-bg) 80%,transparent);border-radius:4px}
 .tlkf{position:absolute;top:4px;width:14px;height:14px;margin-left:-7px;transform:rotate(45deg);background:var(--acc2);border:1px solid #0008;cursor:ew-resize}
 .tlkf.sel{background:var(--acc)}
-.tllyric{position:absolute;top:6px;height:calc(100% - 12px);margin:0;padding:0 6px;border-radius:4px;border:1px solid var(--panel-border);background:color-mix(in srgb,var(--acc2) 28%,var(--sub-bg));color:var(--txt);display:flex;align-items:center;box-sizing:border-box;overflow:hidden;cursor:pointer;max-width:100%}
-.tllyric span{display:block;min-width:0;font:12px/1.2 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tllyric{position:absolute;top:6px;height:calc(100% - 12px);margin:0;padding:0 4px;border-radius:4px;border:1px solid var(--panel-border);background:color-mix(in srgb,var(--acc2) 28%,var(--sub-bg));color:var(--txt);display:flex;align-items:center;box-sizing:border-box;overflow:hidden;cursor:grab;max-width:none}
+.tllyric span{display:block;flex:1;min-width:0;max-width:100%;font:12px/1.2 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.tllyric .edge{position:absolute;top:0;bottom:0;width:10px;cursor:ew-resize;z-index:2;background:transparent}
+.tllyric .edge.in{left:0;border-left:3px solid var(--acc)}
+.tllyric .edge.out{right:0;border-right:3px solid var(--acc)}
+.tllyric.locked,.tllyrics.locked .tllyric{cursor:not-allowed}
+.tllyric.locked .edge{display:none}
+.tllyric.sel{box-shadow:inset 0 0 0 2px var(--acc)}
 .tllyric.low{background:color-mix(in srgb,#e0a020 42%,var(--sub-bg));border-color:#e0a020}
+.tlmarquee{position:absolute;border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 22%,transparent);pointer-events:none;z-index:5}
 .tlhead{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#ff4d4d;pointer-events:none;z-index:4}
-.tlhead{left:68px}
+.tlhead{left:var(--tl-label)}
 .tlhead::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top-color:#ff4d4d;border-bottom:0}
 
 /* ---- sync panel ---- */

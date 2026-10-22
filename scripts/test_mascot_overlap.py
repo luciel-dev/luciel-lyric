@@ -8,7 +8,10 @@ overlap must be reported, so a checker that never fires fails the run too.
 
 The same run drags the song-section handles and a video-clip edge with pointer
 events. Section times have to move and stay inside 15–30 seconds. Trimming a
-clip must leave lyric word times untouched.
+clip must leave lyric word times untouched. With the lyric lock on, a timeline
+drag does nothing. Unlocked, a block slide, an edge drag, and a multi-select
+drag move only times, and undo puts the previous times back. The lock is the
+same one Sync uses.
 
 CI runs this file. It serves static/ itself and stubs the two JSON endpoints
 the page needs, so it does not boot the whisper stack.
@@ -389,6 +392,331 @@ def range_and_trim(page):
     return failures
 
 
+def _pointer(page, locator, dx, dy=0, steps=12):
+    box = locator.bounding_box()
+    if not box:
+        raise RuntimeError("missing drag target " + str(locator))
+    x = box["x"] + box["width"] / 2
+    y = box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx, y + dy, steps=steps)
+    page.wait_for_timeout(40)
+    return x, y
+
+
+def lyric_slide(page):
+    """Lock, slide, edge-resize, and multi-select lyric blocks. One undo each."""
+    failures = []
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.evaluate("""() => {
+      const lines = [
+        {words: [{text: 'Hello', start: 0.5, end: 1.1}, {text: 'there', start: 1.1, end: 2.0}]},
+        {words: [{text: 'We', start: 3.0, end: 3.4}, {text: 'are', start: 3.4, end: 3.9}, {text: 'here', start: 3.9, end: 5.0}]},
+        {words: [{text: 'Fading', start: 8.2, end: 8.55}]},
+        {words: [{text: 'Chorus', start: 10.0, end: 11.0}, {text: 'line', start: 11.0, end: 12.0}]},
+        {words: [{text: 'Again', start: 13.0, end: 14.2}, {text: 'now', start: 14.2, end: 15.5}]},
+      ];
+      S.lines = JSON.parse(JSON.stringify(lines));
+      S.start = 4;
+      S.len = 20;
+      S.timingLock = true;
+      ED.state().styleOv = {size: 0.09};
+      ED.state().lyricSel = [];
+      if (!ED.state().clips.length) {
+        ED.onVideo({bg_video_id: 'v1', name: 'luciel-clip-916.mp4', duration: 6, preview_url: '', thumbs_url: ''});
+      }
+      setTimingLock(true);
+      LCFlow.show(3);
+      ED.seek(0);
+      ED.refresh();
+    }""")
+    page.wait_for_selector("#tlLyrics .tllyric.locked", timeout=8000)
+
+    def times():
+        return page.evaluate("""() => JSON.stringify(S.lines.map(l => l.words.map(w => [w.text, w.start, w.end])))""")
+
+    base = times()
+    style = page.evaluate("() => JSON.stringify(ED.state().styleOv)")
+    locked_label = page.evaluate("""() => ({
+      label: document.querySelector('#tlLockLabel').textContent,
+      sync: document.querySelector('#lockToggle').textContent,
+      cursor: getComputedStyle(document.querySelector('#tlLyrics .tllyric')).cursor,
+      title: document.querySelector('#tlLyrics .tllyric[data-i="2"]').getAttribute('title'),
+      overflow: getComputedStyle(document.querySelector('#tlLyrics .tllyric')).overflow,
+    })""")
+    if locked_label["label"] != "Lyrics locked":
+        failures.append("default label " + locked_label["label"])
+    if "locked" not in locked_label["sync"].lower():
+        failures.append("sync lock out of step with timeline: " + locked_label["sync"])
+    if locked_label["cursor"] != "not-allowed":
+        failures.append("locked cursor " + locked_label["cursor"])
+    if locked_label["title"] != "Fading" or locked_label["overflow"] != "hidden":
+        failures.append("short block tooltip/overflow " + json.dumps(locked_label))
+    box = page.locator("#tlLyrics .tllyric[data-i='2']")
+    inside = page.evaluate("""() => {
+      const block = document.querySelector('#tlLyrics .tllyric[data-i="2"]');
+      const span = block.querySelector('span');
+      const b = block.getBoundingClientRect();
+      const s = span.getBoundingClientRect();
+      const header = document.querySelector('#tlLock').getBoundingClientRect();
+      const label = document.querySelector('#tlLockLabel').getBoundingClientRect();
+      return {
+        span: s.right <= b.right + 1 && s.left >= b.left - 1 && s.width <= b.width + 1,
+        cut: span.scrollWidth > span.clientWidth + 1,
+        label: label.right <= header.right + 1 && label.bottom <= header.bottom + 1,
+      };
+    }""")
+    if not inside["span"] or not inside["cut"]:
+        failures.append("Fading label overflow " + json.dumps(inside))
+    if not inside["label"]:
+        failures.append("lock label overflows its header " + json.dumps(inside))
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='0']"), 40)
+    mid_lock = page.evaluate("() => ({tip: document.querySelector('#tlTip').textContent, hidden: document.querySelector('#tlTip').hidden})")
+    page.mouse.up()
+    page.wait_for_timeout(40)
+    if mid_lock["tip"] != "Unlock to move" or mid_lock["hidden"]:
+        failures.append("locked hint " + json.dumps(mid_lock))
+    if times() != base:
+        failures.append("locked drag changed times")
+    page.click("#tlLock")
+    shared = page.evaluate("""() => ({
+      label: document.querySelector('#tlLockLabel').textContent,
+      sync: document.querySelector('#lockToggle').textContent,
+      pressed: document.querySelector('#tlLock').getAttribute('aria-pressed'),
+    })""")
+    if shared["label"] != "Lyrics unlocked" or "Unlocked" not in shared["sync"] or shared["pressed"] != "false":
+        failures.append("timeline unlock did not unlock sync " + json.dumps(shared))
+    page.evaluate("() => LCFlow.show(2)")
+    page.click("#lockToggle")
+    relock = page.evaluate("() => document.querySelector('#tlLockLabel').textContent")
+    if relock != "Lyrics locked":
+        failures.append("sync lock did not lock the timeline: " + relock)
+    page.evaluate("() => LCFlow.show(3)")
+    page.click("#tlLock")
+    page.evaluate("() => { ED.seek(0); LCHist.capture(); }")
+    before_slide = times()
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='0']"), 40)
+    slide_tip = page.evaluate("() => ({tip: document.querySelector('#tlTip').textContent, hidden: document.querySelector('#tlTip').hidden})")
+    page.mouse.up()
+    page.wait_for_timeout(80)
+    slid = json.loads(times())
+    orig = json.loads(before_slide)
+    deltas = []
+    for word, was in zip(slid[0], orig[0]):
+        deltas.append(round(word[1] - was[1], 3))
+        deltas.append(round(word[2] - was[2], 3))
+    if len(set(deltas)) != 1 or abs(deltas[0]) < 0.4:
+        failures.append("slide delta " + json.dumps(deltas))
+    if slid[0][-1][2] > slid[1][0][1] + 0.001:
+        failures.append("slide overlapped the next line " + json.dumps(slid[:2]))
+    if any(slid[i] != orig[i] for i in range(1, 5)):
+        failures.append("slide moved another line")
+    if any(word[0] != was[0] for line, was_line in zip(slid, orig) for word, was in zip(line, was_line)):
+        failures.append("slide changed lyric text")
+    if not slide_tip["hidden"] and "→" not in slide_tip["tip"]:
+        failures.append("slide tooltip " + json.dumps(slide_tip))
+    if slide_tip["hidden"]:
+        failures.append("slide tooltip hidden")
+    page.click("#btnUndo")
+    page.wait_for_timeout(80)
+    if times() != before_slide:
+        failures.append("undo did not restore the slide " + times())
+    page.click("#btnRedo")
+    page.wait_for_timeout(80)
+    if json.loads(times()) != slid:
+        failures.append("redo did not restore the slide")
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+
+    page.evaluate("() => { ED.seek(0); LCHist.capture(); }")
+    before_edge = times()
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='1'] .edge.out"), 60)
+    page.mouse.up()
+    page.wait_for_timeout(80)
+    edged = json.loads(times())
+    was = json.loads(before_edge)[1]
+    got = edged[1]
+    if abs(got[0][1] - was[0][1]) > 0.02:
+        failures.append("edge drag moved the line start " + json.dumps(got))
+    if got[-1][2] < was[-1][2] + 0.5:
+        failures.append("edge drag did not extend the line " + json.dumps({"was": was, "got": got}))
+    old_span = was[-1][2] - was[0][1]
+    new_span = got[-1][2] - got[0][1]
+    for word, prev in zip(got, was):
+        expect = got[0][1] + (prev[1] - was[0][1]) / old_span * new_span
+        if abs(word[1] - expect) > 0.03:
+            failures.append("edge drag did not rescale words " + json.dumps({"was": was, "got": got}))
+            break
+    if got[-1][2] > json.loads(before_edge)[2][0][1] + 0.001:
+        failures.append("edge drag overlapped the next block")
+    if any(word[0] != prev[0] for word, prev in zip(got, was)):
+        failures.append("edge drag changed text")
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+    if times() != before_edge:
+        failures.append("undo did not restore the edge drag " + times())
+
+    page.locator("#tlLyrics .tllyric[data-i='3']").click()
+    page.locator("#tlLyrics .tllyric[data-i='4']").click(modifiers=["Shift"])
+    selected = page.evaluate("() => ED.state().lyricSel.slice().sort((a, b) => a - b)")
+    if selected != [3, 4]:
+        failures.append("shift-click selection " + json.dumps(selected))
+    page.evaluate("() => { ED.seek(0); LCHist.capture(); }")
+    before_multi = times()
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='3']"), 50)
+    page.mouse.up()
+    page.wait_for_timeout(80)
+    moved = json.loads(times())
+    prior = json.loads(before_multi)
+    d3 = round(moved[3][0][1] - prior[3][0][1], 3)
+    d4 = round(moved[4][0][1] - prior[4][0][1], 3)
+    if abs(d3 - d4) > 0.001 or abs(d3) < 0.4:
+        failures.append(f"section drag deltas {d3} {d4}")
+    if any(moved[i] != prior[i] for i in (0, 1, 2)):
+        failures.append("section drag moved a line outside the selection")
+    if moved[4][-1][2] > 20.001 or moved[3][0][1] < -0.001:
+        failures.append("section drag left the song window")
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+    if times() != before_multi:
+        failures.append("undo did not restore the section drag " + times())
+
+    gap = page.evaluate("""() => {
+      const blocks = [...document.querySelectorAll('#tlLyrics .tllyric')].map(n => {
+        const b = n.getBoundingClientRect();
+        return {i: +n.dataset.i, left: b.left, right: b.right, top: b.top, bottom: b.bottom};
+      });
+      const a = blocks.find(b => b.i === 2);
+      const c = blocks.find(b => b.i === 4);
+      return {x: a.right + 12, y: a.top + 8, x2: c.right - 6, y2: a.bottom - 6};
+    }""")
+    page.mouse.move(gap["x"], gap["y"])
+    page.mouse.down()
+    page.mouse.move(gap["x2"], gap["y2"], steps=8)
+    page.mouse.up()
+    page.wait_for_timeout(40)
+    marqueed = page.evaluate("() => ED.state().lyricSel.slice().sort((a, b) => a - b)")
+    if marqueed != [3, 4]:
+        failures.append("marquee selection " + json.dumps(marqueed))
+    page.evaluate("() => { ED.seek(0); LCHist.capture(); }")
+    before_box = times()
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='3']"), 36)
+    page.mouse.up()
+    page.wait_for_timeout(80)
+    boxed = json.loads(times())
+    prior_box = json.loads(before_box)
+    if round(boxed[3][0][1] - prior_box[3][0][1], 3) != round(boxed[4][0][1] - prior_box[4][0][1], 3):
+        failures.append("marquee drag did not move the section together")
+    if boxed[3] == prior_box[3]:
+        failures.append("marquee drag did not move")
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+
+    page.evaluate("() => { ED.seek(0); LCHist.capture(); }")
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='0']"), 320)
+    page.mouse.up()
+    page.wait_for_timeout(60)
+    clamped = json.loads(times())
+    if clamped[0][-1][2] > clamped[1][0][1] + 0.001:
+        failures.append("large drag overlapped " + json.dumps(clamped[:2]))
+    if clamped[0][0][1] < -0.001:
+        failures.append("large drag left the window")
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+    _pointer(page, page.locator("#tlLyrics .tllyric[data-i='4']"), 500)
+    page.mouse.up()
+    page.wait_for_timeout(60)
+    windowed = json.loads(times())
+    if windowed[4][-1][2] > 20.001:
+        failures.append("drag left the song window " + json.dumps(windowed[4]))
+    page.click("#btnUndo")
+    page.wait_for_timeout(350)
+    if page.evaluate("() => JSON.stringify(ED.state().styleOv)") != style:
+        failures.append("lyric drag changed styling")
+    if page.evaluate("() => S.start") != 4:
+        failures.append("lyric drag changed the song section start")
+    page.evaluate("""() => {
+      const clip = ED.state().clips[0];
+      clip.in = 0;
+      clip.out = Math.min(4, clip.duration || 4);
+      clip.start = 0;
+      ED.refresh();
+    }""")
+    clip_before = page.evaluate("() => ED.state().clips[0].start")
+    words_before = times()
+    _pointer(page, page.locator("#tlTrack .tlclip").first, 40)
+    page.mouse.up()
+    page.wait_for_timeout(40)
+    if times() != words_before:
+        failures.append("clip drag changed lyric times while lyrics were unlocked")
+    if abs(page.evaluate("() => ED.state().clips[0].start") - clip_before) < 0.05:
+        failures.append("clip drag no longer moves the clip")
+    page.evaluate("""start => { ED.state().clips[0].start = start; ED.refresh(); }""", clip_before)
+
+    page.evaluate("""() => {
+      S.lines = [
+        {words: [{text: 'Hello', start: 0.5, end: 1.1}, {text: 'there', start: 1.1, end: 2.0}]},
+        {words: [{text: 'We', start: 3.0, end: 3.4}, {text: 'are', start: 3.4, end: 3.9}, {text: 'here', start: 3.9, end: 5.0}]},
+        {words: [{text: 'Fading', start: 8.2, end: 8.55}]},
+        {words: [{text: 'Chorus', start: 10.0, end: 11.0}, {text: 'line', start: 11.0, end: 12.0}]},
+        {words: [{text: 'Again', start: 13.0, end: 14.2}, {text: 'now', start: 14.2, end: 15.5}]},
+      ];
+      ED.state().lyricSel = [];
+      setTimingLock(true);
+      ED.seek(4);
+      ED.refresh();
+    }""")
+    for theme in THEMES:
+        page.click(f"#themePick button[data-theme='{theme}']")
+        page.wait_for_timeout(180)
+        page.screenshot(path=str(SHOTS / f"lyric_locked_{theme}.png"), full_page=False)
+        page.screenshot(path=str(DOCS / f"lyric-locked-{theme}.png"), full_page=False)
+        page.click("#tlLock")
+        page.wait_for_timeout(80)
+        block = page.locator("#tlLyrics .tllyric[data-i='3']")
+        _pointer(page, block, 70)
+        tip = page.evaluate("() => document.querySelector('#tlTip').textContent")
+        if "→" not in tip:
+            failures.append(theme + " drag tooltip missing " + tip)
+        page.screenshot(path=str(SHOTS / f"lyric_drag_{theme}.png"), full_page=False)
+        page.screenshot(path=str(DOCS / f"lyric-drag-{theme}.png"), full_page=False)
+        page.mouse.up()
+        page.wait_for_timeout(40)
+        page.evaluate("""() => {
+          const lines = [
+            {words: [{text: 'Hello', start: 0.5, end: 1.1}, {text: 'there', start: 1.1, end: 2.0}]},
+            {words: [{text: 'We', start: 3.0, end: 3.4}, {text: 'are', start: 3.4, end: 3.9}, {text: 'here', start: 3.9, end: 5.0}]},
+            {words: [{text: 'Fading', start: 8.2, end: 8.55}]},
+            {words: [{text: 'Chorus', start: 10.0, end: 11.0}, {text: 'line', start: 11.0, end: 12.0}]},
+            {words: [{text: 'Again', start: 13.0, end: 14.2}, {text: 'now', start: 14.2, end: 15.5}]},
+          ];
+          S.lines = lines;
+          ED.state().lyricSel = [3, 4];
+          ED.seek(4);
+          ED.refresh();
+        }""")
+        page.wait_for_timeout(60)
+        _pointer(page, page.locator("#tlLyrics .tllyric[data-i='3']"), 48)
+        page.screenshot(path=str(SHOTS / f"lyric_section_{theme}.png"), full_page=False)
+        page.screenshot(path=str(DOCS / f"lyric-section-{theme}.png"), full_page=False)
+        page.mouse.up()
+        page.wait_for_timeout(40)
+        page.evaluate("() => setTimingLock(true)")
+    page.evaluate("""() => {
+      S.lines = [
+        {words: [{text: 'Hello', start: 0.5, end: 1.1}, {text: 'there', start: 1.1, end: 2.0}]},
+        {words: [{text: 'We', start: 3.0, end: 3.4}, {text: 'are', start: 3.4, end: 3.9}, {text: 'here', start: 3.9, end: 5.0}]},
+        {words: [{text: 'Fading', start: 8.2, end: 8.55}]},
+        {words: [{text: 'Chorus', start: 10.0, end: 11.0}, {text: 'line', start: 11.0, end: 12.0}]},
+        {words: [{text: 'Again', start: 13.0, end: 14.2}, {text: 'now', start: 14.2, end: 15.5}]},
+      ];
+      setTimingLock(true);
+      ED.refresh();
+    }""")
+    return failures
+
+
 def launch(p):
     args = ["--no-sandbox", "--disable-dev-shm-usage"]
     try:
@@ -504,7 +832,6 @@ def main():
                             if (width, height) == (1280, 800):
                                 name = f"video-{theme}-1280x800.png"
                                 page.screenshot(path=str(SHOTS / f"video_{theme}_1280800.png"))
-                                page.screenshot(path=str(DOCS / name))
                                 print("shot", name)
             trim_failures = range_and_trim(page)
             for item in trim_failures:
@@ -512,6 +839,12 @@ def main():
                 print("FAIL", item)
             if not trim_failures:
                 print("range and trim ok")
+            lyric_failures = lyric_slide(page)
+            for item in lyric_failures:
+                failures.append(item)
+                print("FAIL", item)
+            if not lyric_failures:
+                print("lyric slide ok")
             page.set_viewport_size({"width": 1280, "height": 800})
             page.evaluate("""() => {
               LCFlow.show(3);

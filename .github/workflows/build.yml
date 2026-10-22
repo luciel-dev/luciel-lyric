@@ -272,10 +272,23 @@ jobs:
             docs/screenshots/video-aero-1280x800.png
             docs/screenshots/video-y2k-1280x800.png
             docs/screenshots/video-winamp-1280x800.png
+            docs/screenshots/lyric-locked-aero.png
+            docs/screenshots/lyric-locked-y2k.png
+            docs/screenshots/lyric-locked-winamp.png
+            docs/screenshots/lyric-drag-aero.png
+            docs/screenshots/lyric-drag-y2k.png
+            docs/screenshots/lyric-drag-winamp.png
+            docs/screenshots/lyric-section-aero.png
+            docs/screenshots/lyric-section-y2k.png
+            docs/screenshots/lyric-section-winamp.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.5.7 — desktop.
+            Luciel Lyric 1.5.8 — desktop.
+
+            The Lyrics track on the video timeline has a lock. It starts locked, and it is the same lock as Sync, so unlocking in either place unlocks both. While locked, lyric blocks do not move, and a drag shows “Unlock to move”. Video and text clips still edit on their own.
+
+            Unlock it and a lyric block slides in time, keeping the gap between its words. Drag the left or right edge and the words inside keep their share of the line. Shift-click or drag a box to select several lines, then slide that section together. Blocks snap to the playhead and to their neighbours, they cannot overlap, and they stay inside the song section. A time tip follows the pointer. Each drag is one undo step. Lyric text and styling stay as they were. A short block keeps its label inside the block and shows the full line on hover.
 
             The song section is a range on the full-song waveform. Drag the start handle, the end handle, or the shaded bar. The window stays between 15 and 30 seconds, with live start, end, and length readouts, nudge buttons, and typed times. Preview playback loops that section. Moving it does not change lyric text or word times.
 
@@ -289,7 +302,7 @@ jobs:
 
             Android is six steps: Audio, Sync, Video, Look, Time, and Render. One numbered dock is the step list, and every step opens even when lyrics are not lined up yet. The preview and the play bar stack, and the picture stays large enough to see. Video resize handles are small corner marks with a 48dp hit area, and the timeline shows Video, Text, Lyrics, and Audio. Sync shows whether the Quick voice model is on the phone, downloading, or missing. Quick is inside the APK (74.1 MB, plus a 0.9 MB voice-activity file), so a fresh install can listen offline. The APK is about 98 MB instead of 23 MB. Clearer stays an optional download, with a progress bar and a retry. If the model is missing, tap Mark while the song plays. Skip sync goes straight to Video. Lyric text stays read-only on Video. Look sets the text. Time sets the zoom and the background. Typed lyrics are force-aligned on device. On the sung test clip the mean word-start error is 0.104 s, and 100% of words fall within 0.3 s (confidence 0.915).
 
-            Screenshots show the desktop song-section handles, the Sync step, and a clip trim mid-drag, in Aero, Y2K, and Winamp, plus the video editor.
+            Screenshots show the locked lyric track, a lyric slide with its time tip, and a multi-line section drag, in Aero, Y2K, and Winamp, plus the song-section handles, the Sync step, a clip trim, and the video editor.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time

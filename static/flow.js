@@ -34,6 +34,7 @@
     if ($('#aspectIn') && d.aspect) $('#aspectIn').value = d.aspect;
     if (window.ED && ED.restore) ED.restore(d);
     if (typeof renderLines === 'function') renderLines();
+    if (typeof paintLock === 'function') paintLock();
     if (typeof setSection === 'function' && S.audio) setSection(S.start, S.len);
     else if (typeof drawWave === 'function') drawWave();
     if (typeof updateStage === 'function') updateStage();
