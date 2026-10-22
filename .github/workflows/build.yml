@@ -269,11 +269,11 @@ jobs:
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.5.3 — desktop and Android.
+            Luciel Lyric 1.5.4 — desktop and Android.
 
             Desktop is five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked, and typed words stay verbatim. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it. The mascot stays in its own row under the controls.
 
-            Android is six steps: Audio, Sync, Video, Look, Time, and Render. Sync holds the pasted lyrics, the Quick or Clearer speech model, and the waveform. Video edits the picture and extra titles only. Lyric text stays read-only there. Look sets the text. Time sets the zoom and the background. Quick and Clearer speech models download once and stay on the phone. Typed lyrics are force-aligned on device. On the sung test clip the mean word-start error is 0.104 s, and 100% of words fall within 0.3 s (confidence 0.915).
+            Android is six steps: Audio, Sync, Video, Look, Time, and Render. One numbered dock is the step list. The preview and the play bar stack, and the picture stays large enough to see. Video resize handles are small corner marks with a 48dp hit area, and the timeline shows Video, Text, Lyrics, and Audio. Sync puts the lyric box, the speech model, and Line up lyrics above the fold. The page scrolls clear of the dock. Lyric text stays read-only on Video. Look sets the text. Time sets the zoom and the background. Quick and Clearer speech models download once and stay on the phone. Typed lyrics are force-aligned on device. On the sung test clip the mean word-start error is 0.104 s, and 100% of words fall within 0.3 s (confidence 0.915).
 
             Screenshots cover every Android step in Aero, Y2K, and Winamp, plus the desktop sync and video panels.
 

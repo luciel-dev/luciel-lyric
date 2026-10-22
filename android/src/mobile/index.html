@@ -130,15 +130,14 @@ try {
         <h1>Lyrics</h1>
         <p class="lead">Paste the words, then line them up.</p>
       </header>
-      <div class="pinhost" id="pin-sync"></div>
       <div class="emptycard" id="syncEmpty">
         <img class="emptymascot" src="mascot/emote-happy.webp" alt="">
         <h2>Add the words</h2>
         <p class="hint">One line per lyric line. An empty box just listens.</p>
       </div>
-      <div class="card">
+      <div class="card" id="lyricCard">
         <h2>Lyrics</h2>
-        <textarea id="lyrics" rows="6" placeholder="One line per lyric line."></textarea>
+        <textarea id="lyrics" rows="3" placeholder="One line per lyric line."></textarea>
       </div>
       <div class="card" id="modelCard">
         <h2>Listening</h2>
@@ -150,6 +149,7 @@ try {
         <button class="pill" id="getModel" type="button">Save for offline</button>
       </div>
       <button class="pill big primary" id="syncBtn" type="button">Line up lyrics</button>
+      <div class="pinhost" id="pin-sync"></div>
       <div class="actions" id="tapRow">
         <button class="pill" id="tapHear" type="button">Hear</button>
         <button class="pill" id="tapMark" type="button">Mark line</button>
@@ -183,15 +183,14 @@ try {
           <div class="playhead" aria-hidden="true"></div>
           <div class="tlscroll" id="tlscroll">
             <div class="tlinner" id="tlinner">
-              <div class="librows" id="librows">
-                <div class="atline">
-                  <div id="atl"></div>
-                  <canvas id="film" width="320" height="32"></canvas>
-                </div>
-              </div>
               <div class="ruler" id="ruler"></div>
-              <div class="track vtrack" id="videoTrack"></div>
-              <canvas id="tl" width="640" height="64"></canvas>
+              <div class="tlrow"><span class="tllabel">Video</span><div class="track vtrack" id="videoTrack"></div></div>
+              <div class="tlrow"><span class="tllabel">Text</span><div class="track" id="textTrack"></div></div>
+              <div class="tlrow"><span class="tllabel">Lyrics</span><div class="track" id="lyricTrack"></div></div>
+              <div class="tlrow"><span class="tllabel">Audio</span><div class="track" id="audioTrack"></div></div>
+              <div class="librows" id="librows" hidden>
+                <div class="atline"><div id="atl"></div><canvas id="film" width="320" height="32"></canvas></div>
+              </div>
             </div>
           </div>
         </div>
