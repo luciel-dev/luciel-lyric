@@ -1344,6 +1344,15 @@ html[data-theme="y2k"][data-screen="render"] .dock button[data-screen="render"] 
   background: linear-gradient(#3a3d4f, #2a2c3a);
   box-shadow: inset 1px 1px 0 #6d7290, inset -1px -1px 0 #15161d, 2px 2px 0 #0d0e13;
 }
+/* Page #1d1e26 and --card-solid #2a2c3a differ by about 20 levels, under the
+   screenshot's 28-level content test, so the editor face reads as empty page.
+   Both stops of this window stay more than 28 levels off that page. */
+[data-theme="winamp"] .sheet {
+  background-color: #454964;
+  background-image: linear-gradient(#5c6078, #454964);
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #a4abc4, inset -1px -1px 0 #1c1e2a, 2px 2px 0 #0d0e13;
+}
 [data-theme="winamp"] .sum {
   background: linear-gradient(#4a4e66, #2b2d3c);
   border-bottom: 1px solid #000;
