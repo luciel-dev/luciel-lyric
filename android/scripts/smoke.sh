@@ -12,6 +12,7 @@ fi
 echo "Installing ${APK}"
 adb wait-for-device
 adb install -r -d "${APK}"
+adb shell pm clear app.luciel.lyric || true
 adb shell wm size 1080x2400 || true
 adb shell wm density 440 || true
 adb shell settings put system font_scale 1.3 || true
@@ -41,8 +42,13 @@ need = {
     "intro3": ["title=1", "intronext=1", "skip=1"],
     "sheet": ["title=1", "sheet=1", "fonts=3", "swatches=6", "tsize=1", "outline=1", "shadow=1", "alignn=3", "scope=2", "nudge=2", "linemerge=2", "undo=1", "preset=1", "previewpin=1", "next=1", "steps=6"],
     "videocheck": ["title=1", "stage=1", "looks=13", "palettes=12", "anims=15", "previewpin=1", "bgvideo=1", "split=1", "trim=1", "lyricdrag=1", "renderframes=1"],
+    "modelmiss": ["title=1", "lyrics=1", "syncbtn=1", "lead=1", "model=missing", "getmodel=1", "skip=1", "next=1", "steps=6"],
+    "modeldown": ["title=1", "lyrics=1", "syncbtn=1", "model=down", "getmodel=1", "skip=1", "next=1", "steps=6"],
+    "modelready": ["title=1", "lyrics=1", "syncbtn=1", "model=ready", "getmodel=1", "skip=1", "next=1", "steps=6"],
+    "freshsync": ["title=1", "lyrics=1", "syncbtn=1", "model=ready", "getmodel=1", "skip=1", "next=1", "steps=6"],
+    "freshvideo": ["title=1", "stage=1", "upload=1", "aspects=4", "fits=3", "previewpin=1", "timeline=1", "next=1", "steps=6", "notice=1"],
 }[screen]
-need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "themefit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1", "overlap=0"]
+need += ["clear=1", "fit=1", "overflow=0", "box=0", "inset=1", "zoom=130", "themes=1", "dock=1", "dockfit=1", "themefit=1", "dockhit=1", "wrap=0", "ellipsis=0", "headclear=1", "overlap=0", "docknav=1"]
 have = set(line.split())
 missing = [tok for tok in need if tok not in have]
 if missing:
@@ -158,6 +164,10 @@ capture() {
   tab="${tab%.png}"
   tab="${tab%-y2k}"
   tab="${tab%-winamp}"
+  case "${tab}" in
+    modelmiss|modeldown|modelready|freshsync) tab="sync" ;;
+    skipvideo|freshvideo) tab="video" ;;
+  esac
   blank=1
   for _try in 1 2 3 4 5 6 7 8; do
     sleep 2
@@ -196,5 +206,40 @@ for theme in aero y2k winamp; do
   capture intro2 "${theme}" "android-intro2${suffix}.png"
   capture intro3 "${theme}" "android-intro3${suffix}.png"
   capture sheet "${theme}" "android-sheet${suffix}.png"
+  capture modelmiss "${theme}" "android-modelmiss${suffix}.png"
 done
+capture modeldown aero "android-modeldown.png"
+capture modelready aero "android-modelready.png"
+
+adb shell pm clear app.luciel.lyric || true
+adb logcat -c || true
+adb shell am force-stop app.luciel.lyric || true
+adb shell am start -n app.luciel.lyric/.MainActivity --es demo fresh --es theme aero --es textZoom 130
+fresh_sync=""
+fresh_video=""
+for _ in $(seq 1 90); do
+  fresh_sync=$(adb logcat -d -s LucielReady:I | grep -F "freshsync aero " | tail -1 || true)
+  fresh_video=$(adb logcat -d -s LucielReady:I | grep -F "freshvideo aero " | tail -1 || true)
+  if [ -n "${fresh_sync}" ] && [ -n "${fresh_video}" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "${fresh_sync}" ] || [ -z "${fresh_video}" ]; then
+  echo "fresh install did not reach sync and video"
+  adb logcat -d -s LucielReady:I | tail -40
+  fail=1
+else
+  echo "${fresh_sync}"
+  echo "${fresh_video}"
+  check_line "${fresh_sync}" freshsync aero || fail=1
+  check_line "${fresh_video}" freshvideo aero || fail=1
+fi
+out="docs/screenshots/android-skipvideo.png"
+adb shell screencap -p /sdcard/luciel-shot.png >/dev/null || true
+adb pull /sdcard/luciel-shot.png "${out}" >/dev/null || true
+if ! python3 android/scripts/shot_check.py "${out}" video aero; then
+  echo "screenshot stayed blank: android-skipvideo.png"
+  fail=1
+fi
 exit "${fail}"

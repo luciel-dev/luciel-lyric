@@ -36,6 +36,31 @@ object ModelStore {
 
     fun spec(id: String): Spec = if (id == "accurate") ACCURATE else FAST
 
+    /** Copy the Quick model and VAD out of the APK on first launch. Clearer stays a download. */
+    fun installBundled(context: Context) {
+        synchronized(this) {
+            for (spec in listOf(FAST, VAD)) {
+                if (ready(context, spec)) continue
+                val tmp = File(context.filesDir, spec.name + ".part")
+                try {
+                    context.assets.open("models/" + spec.name).use { input ->
+                        tmp.outputStream().use { out -> input.copyTo(out) }
+                    }
+                } catch (_: Exception) {
+                    if (tmp.exists()) tmp.delete()
+                    continue
+                }
+                if (tmp.length() < spec.minBytes) {
+                    tmp.delete()
+                    continue
+                }
+                val dest = file(context, spec)
+                if (dest.exists()) dest.delete()
+                if (!tmp.renameTo(dest)) tmp.delete()
+            }
+        }
+    }
+
     fun file(context: Context, spec: Spec = FAST): File = File(context.filesDir, spec.name)
 
     fun ready(context: Context, spec: Spec = FAST): Boolean {
@@ -51,7 +76,7 @@ object ModelStore {
             instanceFollowRedirects = true
             connectTimeout = 30_000
             readTimeout = 120_000
-            setRequestProperty("User-Agent", "LucielLyric/1.5.4")
+            setRequestProperty("User-Agent", "LucielLyric/1.5.5")
         }
         try {
             conn.connect()
