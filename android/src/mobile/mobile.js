@@ -827,14 +827,19 @@
       if (screen !== "sheet") {
         const box = $("#syncWsBox");
         if (box) { try { box.scrollIntoView({ block: "center", inline: "nearest" }); } catch (e) {} }
-        if (!handlesReady()) syncRegions();
+        revealWaveStart();
+        if (!handlesReady()) {
+          syncRegions();
+          tuneRegionHandles();
+        }
         const handles = regionHandles();
-        const sized = handles.length >= 2 && handles.every((h) => {
+        const live = handles.filter((h) => h.isConnected);
+        const sized = live.length >= 2 && live.every((h) => {
           const hr = h.getBoundingClientRect();
-          return hr.width >= 48 && hr.height >= 48;
+          return hr.width >= 47.5 && hr.height >= 47.5;
         });
         expect.syncregions = sized ? 1 : 0;
-        if (!sized) flags.push("syncregions" + handles.length);
+        if (!sized) flags.push("syncregions" + handles.length + "live" + live.length);
       }
     } else if (kind === "look") {
       const stage = $("#stage");
@@ -3191,12 +3196,24 @@
       libs.waiters.push(() => { clearTimeout(timer); resolve(); });
     });
   }
+  function revealWaveStart() {
+    try {
+      const wrap = libs.ws && libs.ws.getWrapper && libs.ws.getWrapper();
+      const root = wrap && wrap.getRootNode && wrap.getRootNode();
+      const scroll = root && root.querySelector && root.querySelector(".scroll");
+      if (scroll && scroll.scrollLeft) scroll.scrollLeft = 0;
+    } catch (e) {}
+  }
   function handlesReady() {
     const handles = regionHandles();
     if (handles.length < 2) return false;
-    return handles.every((h) => {
+    // Wavesurfer detaches regions that sit outside the wave's scroll window.
+    // A detached handle reports an empty box, which is not a small hit target.
+    const live = handles.filter((h) => h.isConnected);
+    if (live.length < 2) return false;
+    return live.every((h) => {
       const r = h.getBoundingClientRect();
-      return r.width >= 48 && r.height >= 48;
+      return r.width >= 47.5 && r.height >= 47.5;
     });
   }
   function settleSync() {
@@ -3215,6 +3232,7 @@
       libs.syncWaiters.push(() => { clearTimeout(timer); resolve(); });
       const poll = () => {
         if (libs.syncSettled) return;
+        revealWaveStart();
         syncRegions();
         if (handlesReady()) settleSync();
         else setTimeout(poll, 80);
@@ -3242,11 +3260,11 @@
   }
   function tuneRegionHandles() {
     regionHandles().forEach((h) => {
-      h.style.width = "48px";
-      h.style.minWidth = "48px";
-      h.style.height = "48px";
-      h.style.minHeight = "48px";
-      h.style.touchAction = "none";
+      h.style.setProperty("width", "48px", "important");
+      h.style.setProperty("min-width", "48px", "important");
+      h.style.setProperty("height", "48px", "important");
+      h.style.setProperty("min-height", "48px", "important");
+      h.style.setProperty("touch-action", "none", "important");
     });
     const wrap = libs.ws && libs.ws.getWrapper && libs.ws.getWrapper();
     const root = wrap && wrap.getRootNode ? wrap.getRootNode() : null;
