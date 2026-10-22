@@ -12,7 +12,7 @@
   const E = {look: 'neon', animId: 'karaoke', styleOv: {}, animOv: {}, palette: null, fx: [], zoom: {preset: 'none', keys: [], target: 'bg'},
     clips: [], selClip: -1, tlPps: 48, quality: 'standard', animLive: false,
     sel: -1, t: 0, playing: false, eng: null, stage: null, pcm: null, pcmId: null, image: null, imageUrl: null, tab: 'look',
-    place: null, overlays: [], videoSkipped: false};
+    place: null, overlays: [], videoSkipped: false, lyricSel: []};
   window.ED = {};
   const qa = s => [...document.querySelectorAll(s)];
   const fmtS = v => (+v).toFixed(2);
@@ -552,9 +552,180 @@
     const r = track.getBoundingClientRect();
     return Math.max(0, (e.clientX - r.left) / E.tlPps);
   }
+  function tlLabelW() {
+    const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tl-label'));
+    return Number.isFinite(n) ? n : 120;
+  }
   function tlHead() {
     const head = $('#tlHead');
-    if (head) head.style.left = (68 + E.t * E.tlPps) + 'px';
+    if (head) head.style.left = (tlLabelW() + E.t * E.tlPps) + 'px';
+  }
+  function lyricSpans(lines, indexes) {
+    return indexes.map(i => {
+      const ws = lines[i] && lines[i].words;
+      return {a: +ws[0].start, b: +ws[ws.length - 1].end};
+    });
+  }
+  function lyricObstacles(lines, skip) {
+    const skipSet = new Set(skip);
+    const out = [];
+    (lines || []).forEach((ln, i) => {
+      if (skipSet.has(i) || !ln.words || !ln.words.length) return;
+      out.push({a: +ln.words[0].start, b: +ln.words[ln.words.length - 1].end});
+    });
+    return out;
+  }
+  function deltaFits(spans, obs, delta, limit) {
+    for (const s of spans) {
+      const a = s.a + delta, b = s.b + delta;
+      if (a < -1e-4 || b > limit + 1e-4) return false;
+      for (const o of obs) if (a < o.b - 1e-4 && b > o.a + 1e-4) return false;
+    }
+    return true;
+  }
+  function clampDelta(spans, obs, delta, limit) {
+    let lo = -Infinity, hi = Infinity;
+    spans.forEach(s => {
+      lo = Math.max(lo, -s.a);
+      hi = Math.min(hi, limit - s.b);
+      obs.forEach(o => {
+        if (s.b <= o.a + 1e-6) hi = Math.min(hi, o.a - s.b);
+        else if (s.a >= o.b - 1e-6) lo = Math.max(lo, o.b - s.a);
+      });
+    });
+    if (lo > hi) return 0;
+    return Math.max(lo, Math.min(hi, delta));
+  }
+  function snapDelta(spans, obs, delta, limit) {
+    const base = clampDelta(spans, obs, delta, limit);
+    const tol = 10 / (E.tlPps || 48);
+    const marks = [E.t];
+    obs.forEach(o => marks.push(o.a, o.b));
+    let best = base, bestD = tol + 1e-9;
+    const consider = cand => {
+      const d = Math.abs(cand - base);
+      if (d <= tol && d < bestD && deltaFits(spans, obs, cand, limit)) { best = cand; bestD = d; }
+    };
+    spans.forEach(s => marks.forEach(m => { consider(m - s.a); consider(m - s.b); }));
+    return best;
+  }
+  function cloneLyricWords(lines) {
+    return (lines || []).map(ln => ({words: (ln.words || []).map(w => ({text: w.text, start: +w.start, end: +w.end}))}));
+  }
+  function paintLyricNodes() {
+    const lane = $('#tlLyrics');
+    if (!lane) return;
+    const pps = E.tlPps || 48;
+    lane.querySelectorAll('.tllyric').forEach(node => {
+      const ln = (S.lines || [])[+node.dataset.i];
+      if (!ln || !ln.words || !ln.words.length) return;
+      const a = +ln.words[0].start, b = +ln.words[ln.words.length - 1].end;
+      node.style.left = (a * pps) + 'px';
+      node.style.width = Math.max(18, (b - a) * pps) + 'px';
+    });
+  }
+  function applyLyricMove(drag, dx) {
+    const limit = S.len || 20;
+    const spans = lyricSpans(drag.orig, drag.sel);
+    const obs = lyricObstacles(drag.orig, drag.sel);
+    const delta = +snapDelta(spans, obs, dx / (E.tlPps || 48), limit).toFixed(3);
+    drag.sel.forEach(i => {
+      const src = drag.orig[i].words, dst = S.lines[i] && S.lines[i].words;
+      if (!dst) return;
+      src.forEach((w, k) => {
+        if (!dst[k]) return;
+        dst[k].start = +(w.start + delta).toFixed(3);
+        dst[k].end = +(w.end + delta).toFixed(3);
+      });
+    });
+    return {a: Math.min(...spans.map(s => s.a)) + delta, b: Math.max(...spans.map(s => s.b)) + delta};
+  }
+  function applyLyricEdge(drag, dx) {
+    const i = drag.i;
+    const src = drag.orig[i].words;
+    const oldA = +src[0].start, oldB = +src[src.length - 1].end;
+    const span = Math.max(0.05, oldB - oldA);
+    const limit = S.len || 20;
+    const obs = lyricObstacles(drag.orig, [i]);
+    let leftB = 0, rightB = limit;
+    obs.forEach(o => {
+      if (o.b <= oldA + 1e-6) leftB = Math.max(leftB, o.b);
+      if (o.a >= oldB - 1e-6) rightB = Math.min(rightB, o.a);
+    });
+    const minSpan = 0.2;
+    const tol = 10 / (E.tlPps || 48);
+    const marks = [E.t];
+    obs.forEach(o => marks.push(o.a, o.b));
+    const snapEdge = (t, lo, hi) => {
+      let best = Math.max(lo, Math.min(hi, t)), bestD = tol + 1e-9;
+      marks.forEach(m => {
+        if (m < lo - 1e-6 || m > hi + 1e-6) return;
+        const d = Math.abs(m - t);
+        if (d <= tol && d < bestD) { best = m; bestD = d; }
+      });
+      return Math.max(lo, Math.min(hi, best));
+    };
+    const dt = dx / (E.tlPps || 48);
+    let newA = oldA, newB = oldB;
+    if (drag.edge === 'in') newA = snapEdge(oldA + dt, leftB, oldB - minSpan);
+    else newB = snapEdge(oldB + dt, oldA + minSpan, rightB);
+    const width = Math.max(minSpan, newB - newA);
+    const dst = S.lines[i].words;
+    src.forEach((w, k) => {
+      if (!dst[k]) return;
+      const u0 = (+w.start - oldA) / span, u1 = (+w.end - oldA) / span;
+      const start = newA + width * u0;
+      dst[k].start = +start.toFixed(3);
+      dst[k].end = +Math.max(start + 0.02, newA + width * u1).toFixed(3);
+    });
+    dst[0].start = +newA.toFixed(3);
+    dst[dst.length - 1].end = +newB.toFixed(3);
+    if (dst[dst.length - 1].end < dst[dst.length - 1].start + 0.02) dst[dst.length - 1].end = +(dst[dst.length - 1].start + 0.02).toFixed(3);
+    return {a: +dst[0].start, b: +dst[dst.length - 1].end};
+  }
+  function finishMarquee(drag) {
+    const lane = $('#tlLyrics');
+    const box = lane && lane.querySelector('#tlMarquee');
+    const rect = box ? box.getBoundingClientRect() : null;
+    const small = !rect || (rect.width < 4 && rect.height < 4);
+    if (!small && lane) {
+      const hits = [];
+      lane.querySelectorAll('.tllyric').forEach(node => {
+        const b = node.getBoundingClientRect();
+        const ix = Math.min(rect.right, b.right) - Math.max(rect.left, b.left);
+        const iy = Math.min(rect.bottom, b.bottom) - Math.max(rect.top, b.top);
+        if (ix > 0 && iy > 0) hits.push(+node.dataset.i);
+      });
+      E.lyricSel = drag.shift ? [...new Set([...E.lyricSel, ...hits])] : hits;
+    } else if (!drag.shift) E.lyricSel = [];
+    if (box) box.remove();
+    tlDrag = null;
+    hideTip();
+    tlRender();
+  }
+  function finishLyric(drag) {
+    tlDrag = null;
+    (S.lines || []).forEach((ln, i) => {
+      const src = drag.orig[i];
+      if (!src || !ln.words) return;
+      const edited = drag.edge === 'move' ? drag.sel.includes(i) : i === drag.i;
+      ln.words.forEach((w, k) => {
+        const orig = src.words[k];
+        if (!orig) return;
+        w.text = orig.text;
+        if (!edited) { w.start = orig.start; w.end = orig.end; }
+      });
+    });
+    if (drag.style && JSON.stringify(E.styleOv) !== drag.style) E.styleOv = JSON.parse(drag.style);
+    hideTip();
+    tlRender();
+    syncRegions();
+    paintWords();
+    const changed = drag.sel.some(i => {
+      const src = drag.orig[i].words, dst = S.lines[i] && S.lines[i].words;
+      return src.some((w, k) => dst && dst[k] && (Math.abs(dst[k].start - w.start) > 1e-6 || Math.abs(dst[k].end - w.end) > 1e-6));
+    });
+    if (changed && window.LCHist) LCHist.capture();
   }
   function tlRender() {
     const inner = $('#tlInner'); if (!inner) return;
@@ -588,12 +759,17 @@
     }
     const lyricLane = $('#tlLyrics');
     if (lyricLane) {
+      const locked = !!S.timingLock;
+      lyricLane.classList.toggle('locked', locked);
+      const picked = E.lyricSel || [];
       lyricLane.innerHTML = (S.lines || []).map((ln, i) => {
         const words = ln.words || [];
         if (!words.length) return '';
         const a = +words[0].start, b = +words[words.length - 1].end;
         const text = words.map(w => w.text).join(' ');
-        return `<button type="button" class="tllyric${ln.low_confidence ? ' low' : ''}" data-i="${i}" style="left:${a * pps}px;width:${Math.max(18, (b - a) * pps)}px" title="${esc(text)}"><span>${esc(text)}</span></button>`;
+        const cls = ['tllyric', ln.low_confidence ? 'low' : '', locked ? 'locked' : '', picked.includes(i) ? 'sel' : ''].filter(Boolean).join(' ');
+        const edges = locked ? '' : '<i class="edge in" data-edge="in"></i><i class="edge out" data-edge="out"></i>';
+        return `<button type="button" class="${cls}" data-i="${i}" style="left:${a * pps}px;width:${Math.max(18, (b - a) * pps)}px" title="${esc(text)}">${edges}<span>${esc(text)}</span></button>`;
       }).join('');
     }
     tlHead();
@@ -628,6 +804,12 @@
     window.LCHist && LCHist.capture();
   }
   function wireTimeline() {
+    const lockBtn = $('#tlLock');
+    if (lockBtn) lockBtn.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof setTimingLock === 'function') setTimingLock(!S.timingLock);
+    };
     $('#tlSplit').onclick = splitClip;
     $('#tlDelete').onclick = () => {
       if (E.selClip < 0) return;
@@ -659,6 +841,7 @@
     $('#tlZoom').oninput = e => { E.tlPps = +e.target.value; tlRender(); };
     const sc = $('#tlScroll');
     sc.addEventListener('pointerdown', e => {
+      if (e.target.closest('#tlLock')) return;
       if (!audio.paused) stopPlay();
       const clipEl = e.target.closest('.tlclip');
       const kf = e.target.closest('.tlkf');
@@ -677,9 +860,47 @@
       }
       const lyric = e.target.closest('.tllyric');
       if (lyric) {
-        const ln = (S.lines || [])[+lyric.dataset.i];
-        const t = ln && ln.words && ln.words[0] ? +ln.words[0].start : 0;
-        seek(Math.max(0, Math.min(S.len || 20, t)));
+        e.preventDefault();
+        const i = +lyric.dataset.i;
+        if (S.timingLock) {
+          showTip(e, 'Unlock to move');
+          tlDrag = {kind: 'lyric-locked'};
+          sc.setPointerCapture(e.pointerId);
+          return;
+        }
+        const edge = e.target.closest('.edge');
+        if (e.shiftKey && !edge) {
+          const sel = (E.lyricSel || []).slice();
+          const at = sel.indexOf(i);
+          if (at >= 0) sel.splice(at, 1); else sel.push(i);
+          E.lyricSel = sel;
+          tlRender();
+          return;
+        }
+        if (!(E.lyricSel || []).includes(i)) E.lyricSel = [i];
+        qa('#tlLyrics .tllyric').forEach(node => node.classList.toggle('sel', E.lyricSel.includes(+node.dataset.i)));
+        tlDrag = {
+          kind: 'lyric',
+          edge: edge ? edge.dataset.edge : 'move',
+          i,
+          sel: edge ? [i] : E.lyricSel.slice(),
+          x0: e.clientX,
+          orig: cloneLyricWords(S.lines),
+          style: JSON.stringify(E.styleOv),
+        };
+        sc.setPointerCapture(e.pointerId);
+        return;
+      }
+      const lyricLane = e.target.closest('#tlLyrics');
+      if (lyricLane && !S.timingLock) {
+        e.preventDefault();
+        const rect = lyricLane.getBoundingClientRect();
+        const mark = document.createElement('div');
+        mark.id = 'tlMarquee';
+        mark.className = 'tlmarquee';
+        lyricLane.appendChild(mark);
+        tlDrag = {kind: 'marquee', lx: e.clientX - rect.left, ly: e.clientY - rect.top, shift: !!e.shiftKey};
+        sc.setPointerCapture(e.pointerId);
         return;
       }
       if (e.target.closest('.tllane')) {
@@ -693,6 +914,27 @@
     });
     sc.addEventListener('pointermove', e => {
       if (!tlDrag) return;
+      if (tlDrag.kind === 'lyric-locked') { showTip(e, 'Unlock to move'); return; }
+      if (tlDrag.kind === 'marquee') {
+        const lane = $('#tlLyrics');
+        const mark = lane && lane.querySelector('#tlMarquee');
+        if (lane && mark) {
+          const rect = lane.getBoundingClientRect();
+          const x1 = e.clientX - rect.left, y1 = e.clientY - rect.top;
+          mark.style.left = Math.min(tlDrag.lx, x1) + 'px';
+          mark.style.top = Math.min(tlDrag.ly, y1) + 'px';
+          mark.style.width = Math.abs(x1 - tlDrag.lx) + 'px';
+          mark.style.height = Math.abs(y1 - tlDrag.ly) + 'px';
+        }
+        return;
+      }
+      if (tlDrag.kind === 'lyric') {
+        const span = tlDrag.edge === 'move' ? applyLyricMove(tlDrag, e.clientX - tlDrag.x0) : applyLyricEdge(tlDrag, e.clientX - tlDrag.x0);
+        paintLyricNodes();
+        const clock = window.fmtClock || fmt;
+        showTip(e, clock(span.a) + ' → ' + clock(span.b));
+        return;
+      }
       const dt = (e.clientX - tlDrag.x0) / E.tlPps;
       if (tlDrag.kind === 'scrub') { seek(Math.max(0, Math.min(S.len || 20, tlTime(e)))); return; }
       if (tlDrag.kind === 'kf') {
@@ -742,6 +984,9 @@
     });
     const endDrag = () => {
       if (!tlDrag) return;
+      if (tlDrag.kind === 'lyric-locked') { tlDrag = null; hideTip(); return; }
+      if (tlDrag.kind === 'marquee') { finishMarquee(tlDrag); return; }
+      if (tlDrag.kind === 'lyric') { finishLyric(tlDrag); return; }
       const kind = tlDrag.kind, i = tlDrag.i, lyric = tlDrag.lyric, style = tlDrag.style;
       tlDrag = null;
       hideTip();
@@ -1307,7 +1552,8 @@
         video_in: first ? first.in : 0, video_out: first ? first.out : null};
     },
     state: () => E,
-    paintWords, syncRegions, onStep(n) { layoutHandle(); if (n === 2) mountWave(); if (n === 3) { mountAtl(); pushAtl(); } paintWords(); paintSrcTrim(); },
+    paintWords, syncRegions, onLock() { tlRender(); },
+    onStep(n) { layoutHandle(); if (n === 2) mountWave(); if (n === 3) { mountAtl(); pushAtl(); } paintWords(); paintSrcTrim(); },
     onSection() {
       if (!E.stage) return;
       const lines = JSON.stringify(S.lines);
