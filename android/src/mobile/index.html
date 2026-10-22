@@ -16,7 +16,7 @@ try {
   var screen0 = demo0 === "videocheck" ? "look" : demo0 === "syncshot" ? "sync" : demo0;
   if (demo0 === "intro" || demo0 === "intro2" || demo0 === "intro3") screen0 = "intro";
   if (demo0 === "home") screen0 = "home";
-  if (demo0 === "sheet" || demo0 === "modelmiss" || demo0 === "modeldown" || demo0 === "modelready" || demo0 === "fresh") screen0 = "sync";
+  if (demo0 === "sheet" || demo0 === "modelmiss" || demo0 === "modeldown" || demo0 === "modelready" || demo0 === "fresh" || demo0 === "freshsync") screen0 = "sync";
   if (screen0 === "track" || screen0 === "sync" || screen0 === "video" || screen0 === "look" || screen0 === "time" || screen0 === "render" || screen0 === "home" || screen0 === "intro") {
     document.documentElement.dataset.screen = screen0;
   }

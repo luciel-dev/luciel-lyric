@@ -31,7 +31,7 @@ class NativeBridge(private val activity: MainActivity) {
         val tier = tierId()
         val selected = ModelStore.ready(activity, ModelStore.spec(tier))
         return JSONObject()
-            .put("version", "1.5.5")
+            .put("version", "1.5.6")
             .put("model", selected)
             .put("tier", tier)
             .put("fast", ModelStore.ready(activity, ModelStore.FAST))

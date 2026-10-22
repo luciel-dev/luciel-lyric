@@ -212,6 +212,7 @@ capture modeldown aero "android-modeldown.png"
 capture modelready aero "android-modelready.png"
 
 adb shell pm clear app.luciel.lyric || true
+capture freshsync aero "android-freshsync.png"
 adb logcat -c || true
 adb shell am force-stop app.luciel.lyric || true
 adb shell am start -n app.luciel.lyric/.MainActivity --es demo fresh --es theme aero --es textZoom 130

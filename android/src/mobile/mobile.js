@@ -4275,12 +4275,13 @@
       await publish(demo);
       return;
     }
-    if (demo === "fresh") {
+    if (demo === "fresh" || demo === "freshsync") {
       state.model.forced = "";
       readModelInfo();
       theme(document.documentElement.dataset.theme || "aero");
       show("sync");
       await publish("freshsync");
+      if (demo === "freshsync") return;
       state.synced = false;
       tapMarks.length = 0;
       paintFlow();
