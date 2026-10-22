@@ -658,7 +658,10 @@
     const head = document.getElementById("linesHead");
     const sc = scroller();
     if (!head) return;
-    const origin = sc.getBoundingClientRect ? sc.getBoundingClientRect().top + 8 : 12;
+    const sys = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sys-top")) || 0;
+    const scTop = sc.getBoundingClientRect ? sc.getBoundingClientRect().top : 0;
+    // Sit the heading on the scrollport's top edge, and never under the status bar.
+    const origin = Math.max(scTop, sys);
     const y = Math.max(0, Math.round(head.getBoundingClientRect().top + sc.scrollTop - origin));
     sc.scrollTop = y;
     document.documentElement.scrollTop = y;
