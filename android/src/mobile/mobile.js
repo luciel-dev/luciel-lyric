@@ -1067,6 +1067,7 @@
     }
     const fitted = Math.round(host.getBoundingClientRect().height);
     if (fitted > 48) document.documentElement.style.setProperty("--pin-h", fitted + "px");
+    refreshMoveable();
   }
   function labelNodes() {
     const sel = "button, h1, h2, .sum, .brand, .tag, .docklabel, .lead, .hint, .lcd, #previewTime, #previewMeta, .clipname, .colors label, .lookgrid small, .fx span";
@@ -3188,10 +3189,9 @@
     const show = state.screen === "video";
     handle.hidden = !show;
     document.documentElement.dataset.handles = show ? "1" : "0";
-    if (!show) {
-      if (libs.mv) { try { libs.mv.updateRect(); } catch (e) {} }
-      return;
-    }
+    // A hidden target reports an empty box. updateRect then parks the
+    // handles at the corner, and the next theme's audit sees them off-screen.
+    if (!show) return;
     const cr = canvas.getBoundingClientRect();
     const wr = wrap.getBoundingClientRect();
     if (cr.width < 8 || cr.height < 8) return;
@@ -3205,6 +3205,38 @@
     handle.style.width = w + "px";
     handle.style.height = h + "px";
     if (libs.mv) { try { libs.mv.updateRect(); } catch (e) {} }
+    parkMoveableControls();
+  }
+  function refreshMoveable() {
+    if (state.screen !== "video") return;
+    layoutVidHandle();
+    if (libs.mv) {
+      try { libs.mv.destroy(); } catch (e) {}
+      libs.mv = null;
+    }
+    document.querySelectorAll(".moveable-control-box").forEach((el) => el.remove());
+    mountMoveable();
+    layoutVidHandle();
+  }
+  function parkMoveableControls() {
+    const vw = document.documentElement.clientWidth;
+    const head = document.querySelector(".screen.on .screenhead h1");
+    const minTop = head ? head.getBoundingClientRect().bottom + 1 : 0;
+    document.querySelectorAll(".moveable-control").forEach((el) => {
+      el.style.marginLeft = "-24px";
+      el.style.marginTop = "-24px";
+      const r = el.getBoundingClientRect();
+      if (r.width < 1) return;
+      let dx = 0;
+      let dy = 0;
+      if (r.left < 1) dx = 1 - r.left;
+      else if (r.right > vw - 1) dx = (vw - 1) - r.right;
+      if (r.top < minTop) dy = minTop - r.top;
+      if (dx || dy) {
+        el.style.marginLeft = (-24 + dx) + "px";
+        el.style.marginTop = (-24 + dy) + "px";
+      }
+    });
   }
   function readVidHandle() {
     const handle = document.getElementById("vidHandle");
