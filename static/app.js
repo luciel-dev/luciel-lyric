@@ -122,11 +122,13 @@ async function uploadAudio(f) {
   }
   $('#trackInfo').innerHTML = `🎵 <b>${S.audio.name}</b> · ${fmt(S.audio.duration)}`;
   audio.src = `/api/audio/${S.audio.id}`;
-  S.start = 0; S.len = Math.min(+$('#lenIn').value, S.audio.duration);
+  const picked = clampSection(0, +$('#lenIn').value || 20, S.audio.duration);
+  S.start = picked.start; S.len = picked.len;
   $('#waveWrap').classList.remove('hidden'); $('#syncBtn').disabled = false;
   $('#tapBox').classList.remove('hidden'); paintTap();
-  $('#startIn').max = Math.max(0, S.audio.duration - 15);
   drawWave(); emit('audio', S.audio); window.ED && ED.onAudio();
+  if (window.LCFlow && LCFlow.placeSongRange) LCFlow.placeSongRange();
+  else mountSongWave();
 }
 
 // ---------- waveform ----------
@@ -176,27 +178,178 @@ function drawWave() {
   c.font = theme === 'winamp' ? `${16 * dpr}px VT323` : theme === 'y2k' ? `${13 * dpr}px "Share Tech Mono"` : `${12 * dpr}px ${cssVar('--font', 'Inter')}`;
   c.fillText(`${fmt(S.start)} → ${fmt(Math.min(D, S.start + S.len))}`, x0 + 6, 16 * dpr);
 }
-window.addEventListener('lc:theme', drawWave);
 window.addEventListener('resize', drawWave);
-function setStartFromEvent(e) {
-  const r = cv.getBoundingClientRect();
-  const t = (e.clientX - r.left) / r.width * S.audio.duration;
-  setStart(t - S.len / 2 * 0); }
-function setStart(t) {
-  S.start = Math.max(0, Math.min(t, Math.max(0, S.audio.duration - S.len)));
-  $('#startIn').value = S.start.toFixed(1); drawWave();
+
+// The 15–30s window. Lyric lines stay as they are; word times are relative to S.start.
+function sectionBounds(dur) {
+  dur = Math.max(0, +dur || 0);
+  return {minLen: Math.min(15, dur), maxLen: Math.min(30, dur)};
 }
+function clampSection(start, len, dur) {
+  dur = Math.max(0, +dur || 0);
+  const {minLen, maxLen} = sectionBounds(dur);
+  let L = Math.max(minLen, Math.min(maxLen, +len || minLen));
+  if (!Number.isFinite(L)) L = minLen;
+  let s = Math.max(0, Math.min(+start || 0, Math.max(0, dur - L)));
+  if (s + L > dur) L = Math.max(0, dur - s);
+  return {start: +s.toFixed(3), len: +L.toFixed(3)};
+}
+function fmtClock(t) {
+  t = Math.max(0, +t || 0);
+  const m = Math.floor(t / 60);
+  const s = t - m * 60;
+  return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
+}
+function parseClock(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = /^(\d+):(\d+(?:\.\d+)?)$/.exec(s);
+  if (m) return (+m[1]) * 60 + (+m[2]);
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+function writeInput(el, value) {
+  if (!el || document.activeElement === el) return;
+  if (el.value !== value) el.value = value;
+}
+function sectionColor() {
+  const theme = document.documentElement.dataset.theme;
+  if (theme === 'y2k') return 'rgba(212,162,74,.45)';
+  if (theme === 'winamp') return 'rgba(0,224,0,.35)';
+  return 'rgba(30,215,96,.38)';
+}
+let songWs = null, songRegions = null, songRegion = null, songAudioId = null, songMute = false;
+function paintSection() {
+  const start = S.start || 0, len = S.len || 0, end = start + len;
+  const set = (id, text) => { const n = document.getElementById(id); if (n) n.textContent = text; };
+  set('songStartRead', fmtClock(start));
+  set('songEndRead', fmtClock(end));
+  set('songLenRead', fmtClock(len));
+  writeInput($('#songStartIn'), fmtClock(start));
+  writeInput($('#songEndIn'), fmtClock(end));
+  writeInput($('#songLenIn'), len.toFixed(1));
+  writeInput($('#startIn'), start.toFixed(1));
+  writeInput($('#lenIn'), String(len));
+  const lv = $('#lenVal'); if (lv) lv.textContent = (+len).toFixed(1).replace(/\.0$/, '');
+  if (S.audio) {
+    const b = sectionBounds(S.audio.duration);
+    if ($('#lenIn')) { $('#lenIn').min = b.minLen; $('#lenIn').max = b.maxLen; }
+    if ($('#songLenIn')) { $('#songLenIn').min = b.minLen; $('#songLenIn').max = b.maxLen; }
+    if ($('#startIn')) $('#startIn').max = Math.max(0, S.audio.duration - b.minLen).toFixed(1);
+  }
+}
+function widenSongHandles(reg) {
+  if (!reg || !reg.element) return;
+  reg.element.querySelectorAll('[part*="region-handle"]').forEach(h => { h.style.width = '16px'; });
+}
+function syncSongRegion() {
+  if (!songRegion) return;
+  const end = Math.min(S.audio ? S.audio.duration : S.start + S.len, S.start + S.len);
+  songMute = true;
+  try { songRegion.setOptions({start: S.start, end: Math.max(S.start, end), color: sectionColor(), drag: true}); }
+  catch (e) {}
+  widenSongHandles(songRegion);
+  songMute = false;
+}
+function setSection(start, len, fromRegion) {
+  if (!S.audio) return;
+  const lines = JSON.stringify(S.lines);
+  const c = clampSection(start, len, S.audio.duration);
+  S.start = c.start;
+  S.len = c.len;
+  if (JSON.stringify(S.lines) !== lines) S.lines = JSON.parse(lines);
+  paintSection();
+  drawWave();
+  if (window.LCTheme && LCTheme.refresh) LCTheme.refresh();
+  if (!fromRegion) syncSongRegion();
+  if (window.ED && ED.onSection) ED.onSection();
+  if (!fromRegion && window.LCHist) LCHist.touch();
+}
+function mountSongWave() {
+  const box = document.getElementById('songWave');
+  if (!box || !S.audio || !window.WaveSurfer || !WaveSurfer.Regions) return;
+  if (box.clientWidth < 20) {
+    if (box.offsetParent) requestAnimationFrame(mountSongWave);
+    return;
+  }
+  if (songWs && songAudioId === S.audio.id) { syncSongRegion(); try { songWs.setOptions({height: 128}); } catch (e) {} return; }
+  if (songWs) { try { songWs.destroy(); } catch (e) {} songWs = null; songRegion = null; songRegions = null; }
+  songAudioId = S.audio.id;
+  songRegions = WaveSurfer.Regions.create();
+  const opts = {
+    container: box, height: 128, waveColor: '#8a8aa0', progressColor: '#1ed760', cursorColor: '#ff3cac',
+    interact: false, hideScrollbar: true, autoCenter: false, plugins: [songRegions],
+  };
+  if (S.audio.peaks && S.audio.peaks.length && S.audio.duration) {
+    opts.peaks = [S.audio.peaks];
+    opts.duration = S.audio.duration;
+  } else opts.url = `/api/audio/${S.audio.id}`;
+  songWs = WaveSurfer.create(opts);
+  const arm = () => {
+    if (!songWs || !S.audio || songAudioId !== S.audio.id) return;
+    const dur = songWs.getDuration() || S.audio.duration;
+    const b = sectionBounds(dur);
+    const c = clampSection(S.start, S.len, dur);
+    S.start = c.start; S.len = c.len;
+    songRegions.clearRegions();
+    songRegion = songRegions.addRegion({
+      id: 'section', start: S.start, end: Math.min(dur, S.start + S.len),
+      drag: true, resize: true, color: sectionColor(), minLength: b.minLen, maxLength: Math.max(b.minLen, b.maxLen),
+    });
+    widenSongHandles(songRegion);
+    paintSection();
+  };
+  songWs.on('ready', arm);
+  songRegions.on('region-update', region => {
+    if (songMute || !region || region.id !== 'section') return;
+    setSection(region.start, region.end - region.start, true);
+  });
+  songRegions.on('region-updated', region => {
+    if (songMute || !region || region.id !== 'section') return;
+    setSection(region.start, region.end - region.start, true);
+    const end = S.start + S.len;
+    if (Math.abs(region.start - S.start) > 0.02 || Math.abs(region.end - end) > 0.02) {
+      songMute = true;
+      try { region.setOptions({start: S.start, end}); } catch (e) {}
+      songMute = false;
+    }
+    if (window.LCHist) LCHist.capture();
+  });
+}
+window.addEventListener('lc:theme', () => { drawWave(); syncSongRegion(); });
+function setStartFromEvent(e) {
+  if (!S.audio || !cv.clientWidth) return;
+  const r = cv.getBoundingClientRect();
+  setSection((e.clientX - r.left) / r.width * S.audio.duration, S.len);
+}
+function setStart(t) { if (S.audio) setSection(t, S.len); }
 let dragging = false;
 cv.addEventListener('mousedown', e => { dragging = true; setStartFromEvent(e); });
 window.addEventListener('mousemove', e => dragging && setStartFromEvent(e));
 window.addEventListener('mouseup', () => dragging = false);
 $('#startIn').onchange = e => setStart(+e.target.value);
-$('#lenIn').oninput = e => { S.len = +e.target.value; $('#lenVal').textContent = S.len; if (S.audio) setStart(S.start); };
+$('#lenIn').oninput = e => { if (S.audio) setSection(S.start, +e.target.value); else { S.len = +e.target.value; $('#lenVal').textContent = S.len; } };
+function bindSongInputs() {
+  const n = id => document.getElementById(id);
+  if (n('songStartMinus')) n('songStartMinus').onclick = () => setSection(S.start - 0.1, S.len);
+  if (n('songStartPlus')) n('songStartPlus').onclick = () => setSection(S.start + 0.1, S.len);
+  if (n('songEndMinus')) n('songEndMinus').onclick = () => setSection(S.start, S.len - 0.1);
+  if (n('songEndPlus')) n('songEndPlus').onclick = () => setSection(S.start, S.len + 0.1);
+  if (n('songStartIn')) n('songStartIn').onchange = e => { const t = parseClock(e.target.value); if (t == null) return paintSection(); setSection(t, S.len); };
+  if (n('songEndIn')) n('songEndIn').onchange = e => { const t = parseClock(e.target.value); if (t == null) return paintSection(); setSection(S.start, t - S.start); };
+  if (n('songLenIn')) n('songLenIn').onchange = e => setSection(S.start, +e.target.value);
+}
+bindSongInputs();
+window.setSection = setSection;
+window.mountSongWave = mountSongWave;
+window.clampSection = clampSection;
+window.fmtClock = fmtClock;
 
 // ---------- playback ----------
-function stopPlay() { const was = !audio.paused; audio.pause(); if (was) emit('stop'); cancelAnimationFrame(S.raf); $('#playBtn').textContent = '▶ Play clip'; $('#previewBtn').textContent = '▶ Preview sync'; $('#stagePlay').textContent = '▶ Preview'; window.ED && ED.onStop(); drawWave(); }
+let sectionPlaying = false;
+function stopPlay() { sectionPlaying = false; const was = !audio.paused; audio.pause(); if (was) emit('stop'); cancelAnimationFrame(S.raf); $('#playBtn').textContent = '▶ Play clip'; $('#previewBtn').textContent = '▶ Preview sync'; $('#stagePlay').textContent = '▶ Preview'; window.ED && ED.onStop(); drawWave(); }
 function playClip(withPreview, btn, from = 0) {
   if (!audio.paused) return stopPlay();
+  sectionPlaying = true;
   audio.currentTime = S.start + from;
   const played = audio.play();
   if (played && typeof played.catch === 'function') played.catch(() => {});
@@ -204,9 +357,14 @@ function playClip(withPreview, btn, from = 0) {
   (btn || (withPreview ? $('#previewBtn') : $('#playBtn'))).textContent = '■ Stop';
   emit('play', {preview: !!withPreview});
   const tick = () => {
-    if (audio.currentTime >= S.start + S.len || audio.paused) return stopPlay();
-    drawWave(); if (withPreview) updatePreview(audio.currentTime - S.start);
-    window.ED && ED.onTick(audio.currentTime - S.start);
+    if (!sectionPlaying) return;
+    const end = S.start + S.len;
+    if (audio.ended || audio.currentTime >= end - 0.02) {
+      audio.currentTime = S.start;
+      if (audio.paused) { const again = audio.play(); if (again && again.catch) again.catch(() => {}); }
+    }
+    drawWave(); if (withPreview) updatePreview(Math.max(0, audio.currentTime - S.start));
+    window.ED && ED.onTick(Math.max(0, audio.currentTime - S.start));
     S.raf = requestAnimationFrame(tick);
   };
   tick();

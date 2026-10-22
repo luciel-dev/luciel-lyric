@@ -174,10 +174,11 @@ textarea{width:100%;resize:vertical}
 .focal[data-z]::marker{content:none}
 .srcvideo{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0}
 .stagecol{position:sticky;top:96px}
-.transport{display:flex;align-items:center;gap:8px;margin-top:8px}
-.transport .tc{font:12px var(--font-mono);color:var(--mut);min-width:42px;text-align:right}
-.scrubwrap{position:relative;flex:1;display:flex;align-items:center}
-.scrubwrap input{width:100%}
+.transport{display:flex;align-items:center;gap:8px;margin-top:8px;width:100%;max-width:none}
+.transport .tc{font:12px var(--font-mono);color:var(--mut);min-width:3.6rem;flex:none;text-align:right;padding-left:4px}
+.scrubwrap{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center;height:36px}
+.scrubwrap input,#scrub{width:100%;height:32px;margin:0;cursor:pointer;accent-color:var(--acc)}
+#stagePlay{flex:none}
 .kfmarks{position:absolute;left:8px;right:8px;top:-6px;height:6px;pointer-events:none}
 .kfmarks i{position:absolute;width:8px;height:8px;margin-left:-4px;transform:rotate(45deg);background:var(--acc2);border:1px solid #0006}
 .kfmarks i.sel{background:var(--acc)}
@@ -261,6 +262,7 @@ textarea{width:100%;resize:vertical}
 .tlclip.sel{box-shadow:0 0 0 2px var(--acc)}
 .tlclip .nm{position:absolute;left:26px;right:26px;top:50%;transform:translateY(-50%);font:13px var(--font);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;text-shadow:0 1px 2px #000}
 .tlclip .edge{position:absolute;top:0;bottom:0;width:22px;cursor:ew-resize;background:var(--acc);z-index:2}
+.tlclip .edge::before{content:"";position:absolute;top:50%;left:50%;width:2px;height:16px;margin:-8px 0 0 -1px;border-radius:1px;background:#fff;box-shadow:4px 0 0 #fff8,-4px 0 0 #fff8;pointer-events:none}
 .tlclip .edge.in{left:0}.tlclip .edge.out{right:0}
 .tllane{position:relative;height:22px;margin:0 8px 8px;background:color-mix(in srgb,var(--sub-bg) 80%,transparent);border-radius:4px}
 .tlkf{position:absolute;top:4px;width:14px;height:14px;margin-left:-7px;transform:rotate(45deg);background:var(--acc2);border:1px solid #0008;cursor:ew-resize}
@@ -318,7 +320,9 @@ main.appgrid.nodock{grid-template-columns:minmax(0,1fr)}
 .vidhandle i{position:absolute;right:2px;bottom:2px;width:18px;height:18px;background:var(--acc);border:2px solid #fff;border-radius:3px;cursor:nwse-resize;z-index:2}
 .ovhandle{position:absolute;border:2px dashed var(--acc2);z-index:4}
 .atl{height:168px;border:1px solid var(--panel-border);border-radius:var(--radius-sm);margin:6px 0 10px;background:#101011}
-#wsBox{min-height:84px}
+#wsBox{min-height:150px;height:150px}
+#wsWrap{min-width:0;overflow:visible}
+#wsHint{margin:8px 0 0;line-height:1.45;overflow:visible;white-space:normal;overflow-wrap:anywhere}
 .rotimes{display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto}
 .rotimes div{overflow-wrap:anywhere}
 .overlay{position:fixed;inset:0;z-index:40;background:#0008;display:grid;place-items:center;padding:18px}
@@ -368,7 +372,7 @@ body.video-edit.side-shut #step3 .titlebar::after{display:none}
 body.video-edit.side-shut #step3 .titlebar{margin:0;padding:8px 4px;justify-content:center}
 body.video-edit .stagecol{grid-area:stage;position:static;min-width:0;min-height:0;height:100%;width:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;align-items:center;justify-items:center}
 body.video-edit #preview,body.video-edit .stagecol > .row.center{display:none}
-body.video-edit .transport{width:min(100%,640px);margin:6px 0 0}
+body.video-edit .transport{width:100%;max-width:none;margin:6px 0 0;justify-self:stretch}
 body.video-edit #stage{width:auto;height:100%;max-width:100%;max-height:100%;margin:0}
 body.video-edit .tlsplit{display:flex;grid-area:split;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none}
 body.video-edit .tlsplit::before{content:"";width:18%;min-width:72px;height:5px;border-radius:5px;background:var(--panel-border);box-shadow:inset 0 1px 0 #fff6}
@@ -402,6 +406,27 @@ body.video-edit .mascot{overflow:hidden}
 [data-theme=y2k] body.video-edit #step3 .titlebar{flex-wrap:wrap}
 [data-theme=y2k] body.video-edit #step3 .titlebar::after{white-space:normal;min-width:0}
 [data-theme=y2k] body.video-edit .topbar{flex-wrap:wrap}
+
+/* Song section: two handles on the full-song waveform. Sync drops the empty preview. */
+.songrange{min-width:0;margin:0 0 12px}
+.songrange .small{overflow-wrap:anywhere}
+#songWave{height:128px;min-height:128px;border-radius:var(--radius-sm);overflow:hidden;background:var(--wave-bg)}
+.songread{display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0;font:13px var(--font-mono);font-variant-numeric:tabular-nums}
+.songread b{color:var(--txt);font-weight:700}
+.songnudge{align-items:flex-end}
+.songnudge .field{flex:1 1 7.5rem;min-width:0}
+#songStartIn,#songEndIn{width:6.6rem;max-width:100%;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+body.sync-step .dock,body.sync-step .stagecol{position:static;top:auto}
+body.sync-step #preview,body.sync-step #stage,body.sync-step .stagecol > .row.center{display:none!important}
+body.render-step #wave{display:none}
+.srctrim{margin:8px 0 12px;min-width:0}
+.srctrack{position:relative;height:36px;border-radius:8px;background:#1a1a22;border:1px solid var(--panel-border);touch-action:none;cursor:grab}
+.srcreg{position:absolute;top:3px;bottom:3px;background:color-mix(in srgb,var(--acc) 42%,transparent);border-radius:6px;min-width:20px}
+.srchandle{position:absolute;top:0;bottom:0;width:16px;padding:0;border:0;background:var(--acc);cursor:ew-resize;border-radius:4px}
+.srchandle.in{left:0}
+.srchandle.out{right:0}
+.tltip{position:fixed;z-index:40;pointer-events:none;background:#111c;color:#fff;border:1px solid #fff3;border-radius:6px;padding:4px 8px;font:12px var(--font-mono);white-space:nowrap}
+.tltip[hidden]{display:none}
 @media (max-width:860px){
   body.video-edit main.appgrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"side" "stage" "split" "time";grid-template-rows:auto minmax(180px,1fr) 12px minmax(220px,var(--tl-h,33%))}
   body.video-edit.side-shut main.appgrid{grid-template-columns:minmax(0,1fr)}

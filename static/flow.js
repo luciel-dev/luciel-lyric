@@ -34,7 +34,8 @@
     if ($('#aspectIn') && d.aspect) $('#aspectIn').value = d.aspect;
     if (window.ED && ED.restore) ED.restore(d);
     if (typeof renderLines === 'function') renderLines();
-    if (typeof drawWave === 'function') drawWave();
+    if (typeof setSection === 'function' && S.audio) setSection(S.start, S.len);
+    else if (typeof drawWave === 'function') drawWave();
     if (typeof updateStage === 'function') updateStage();
     mute = false;
     hints();
@@ -119,8 +120,11 @@
     const handle = $('#vidHandle');
     if (handle) handle.classList.toggle('on', n === 3 && S.bgMode === 'video');
     document.body.classList.toggle('video-edit', n === 3);
+    document.body.classList.toggle('sync-step', n === 2);
+    document.body.classList.toggle('render-step', n === 5);
     document.body.classList.add('mascot-slot');
     placeMascot();
+    placeSongRange();
     if (n === 3) requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     if (window.ED && ED.onStep) ED.onStep(n);
     if (n === 5 && typeof drawWave === 'function') drawWave();
@@ -229,7 +233,34 @@
   addEventListener('lc:sync-done', () => { hints(); capture(); });
   addEventListener('lc:render-done', () => hints());
 
-  window.LCFlow = {show, step: () => step, hints, fail, ready};
+  function placeSongRange() {
+    const box = document.getElementById('songRange');
+    if (!box) return;
+    const showIt = (step === 1 || step === 2 || step === 5) && !!S.audio;
+    if (!showIt) { box.classList.add('hidden'); return; }
+    if (step === 1) {
+      const foot = document.querySelector('#step1 .stepfoot');
+      const host = document.getElementById('step1');
+      if (foot && box.parentElement !== host) host.insertBefore(box, foot);
+      else if (foot && box.nextElementSibling !== foot) host.insertBefore(box, foot);
+    } else if (step === 2) {
+      const dock = document.getElementById('dock');
+      if (dock && box.parentElement !== dock) dock.insertBefore(box, dock.firstChild);
+      else if (dock && dock.firstElementChild !== box) dock.insertBefore(box, dock.firstChild);
+    } else if (step === 5) {
+      const wrap = document.getElementById('waveWrap');
+      if (wrap) {
+        wrap.classList.remove('hidden');
+        if (box.parentElement !== wrap) wrap.insertBefore(box, wrap.firstChild);
+      }
+    }
+    box.classList.remove('hidden');
+    const mount = () => { if (typeof mountSongWave === 'function') mountSongWave(); };
+    if (box.offsetParent) mount();
+    else requestAnimationFrame(mount);
+  }
+
+  window.LCFlow = {show, step: () => step, hints, fail, ready, placeSongRange};
   window.LCHist = {capture, touch, undo, redo};
 
   function placeMascot() {

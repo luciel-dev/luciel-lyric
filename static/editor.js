@@ -522,6 +522,31 @@
     c.start = Math.max(0, c.start);
   }
   let tlDrag = null;
+  function snapMark(t, selfIndex) {
+    const tol = 10 / (E.tlPps || 48);
+    let best = null, bestD = tol;
+    const marks = [E.t];
+    E.clips.forEach((o, i) => {
+      if (i === selfIndex) return;
+      marks.push(o.start, o.start + clipSpan(o));
+    });
+    marks.forEach(m => {
+      const d = Math.abs(m - t);
+      if (d <= bestD) { best = m; bestD = d; }
+    });
+    return best;
+  }
+  function showTip(e, text) {
+    const tip = $('#tlTip');
+    if (!tip) return;
+    tip.hidden = false;
+    tip.textContent = text;
+    const x = Math.max(8, Math.min(window.innerWidth - 160, e.clientX + 14));
+    const y = Math.max(8, e.clientY - 34);
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function hideTip() { const tip = $('#tlTip'); if (tip) tip.hidden = true; }
   function tlTime(e) {
     const track = $('#tlTrack') || $('#tlInner');
     const r = track.getBoundingClientRect();
@@ -572,6 +597,7 @@
       }).join('');
     }
     tlHead();
+    paintSrcTrim();
     if (!tlDrag) pushAtl();
   }
   function splitClip() {
@@ -679,22 +705,46 @@
         return;
       }
       const c = E.clips[tlDrag.i]; if (!c) return;
-      if (tlDrag.kind === 'move') c.start = Math.max(0, tlDrag.start + dt);
-      else if (tlDrag.kind === 'out') c.out = Math.max(tlDrag.inn + 0.12, Math.min(tlDrag.dur, tlDrag.out + dt));
-      else {
+      if (tlDrag.kind === 'move') {
+        let start = Math.max(0, tlDrag.start + dt);
+        const span = Math.max(0.12, tlDrag.out - tlDrag.inn);
+        const sHit = snapMark(start, tlDrag.i);
+        const eHit = snapMark(start + span, tlDrag.i);
+        const dS = sHit == null ? Infinity : Math.abs(sHit - start);
+        const dE = eHit == null ? Infinity : Math.abs(eHit - (start + span));
+        if (dE <= dS && eHit != null) start = Math.max(0, eHit - span);
+        else if (sHit != null) start = sHit;
+        c.start = start;
+      } else if (tlDrag.kind === 'out') {
+        let out = Math.max(tlDrag.inn + 0.12, Math.min(tlDrag.dur, tlDrag.out + dt));
+        const snapped = snapMark(tlDrag.start + (out - tlDrag.inn), tlDrag.i);
+        if (snapped != null) out = Math.max(tlDrag.inn + 0.12, Math.min(tlDrag.dur, snapped - tlDrag.start + tlDrag.inn));
+        c.out = out;
+      } else {
         let inn = tlDrag.inn + dt, start = tlDrag.start + dt;
         if (inn < 0) { start -= inn; inn = 0; }
         if (inn > tlDrag.out - 0.12) { start -= inn - (tlDrag.out - 0.12); inn = tlDrag.out - 0.12; }
         if (start < 0) { inn = Math.max(0, inn - start); start = 0; }
+        const snapped = snapMark(start, tlDrag.i);
+        if (snapped != null) {
+          const delta = snapped - start;
+          inn += delta; start = snapped;
+          if (inn < 0) { start -= inn; inn = 0; }
+          if (inn > tlDrag.out - 0.12) { start -= inn - (tlDrag.out - 0.12); inn = tlDrag.out - 0.12; }
+          if (start < 0) { inn = Math.max(0, inn - start); start = 0; }
+        }
         c.in = inn; c.start = start; c.out = tlDrag.out;
       }
       const node = $('#tlTrack').querySelector(`.tlclip[data-i="${tlDrag.i}"]`);
       if (node) { node.style.left = (c.start * E.tlPps) + 'px'; node.style.width = Math.max(8, clipSpan(c) * E.tlPps) + 'px'; }
+      const clock = window.fmtClock || fmt;
+      if (tlDrag.kind === 'move' || tlDrag.kind === 'in' || tlDrag.kind === 'out') showTip(e, clock(c.start) + ' → ' + clock(c.start + clipSpan(c)));
     });
     const endDrag = () => {
       if (!tlDrag) return;
       const kind = tlDrag.kind, i = tlDrag.i, lyric = tlDrag.lyric, style = tlDrag.style;
       tlDrag = null;
+      hideTip();
       if (lyric && JSON.stringify(S.lines) !== lyric) S.lines = JSON.parse(lyric);
       if (style && JSON.stringify(E.styleOv) !== style) E.styleOv = JSON.parse(style);
       if (kind === 'move' || kind === 'in') unoverlap(i);
@@ -702,6 +752,81 @@
       tlRender(); refresh();
     };
     sc.addEventListener('pointerup', endDrag); sc.addEventListener('pointercancel', endDrag);
+    wireSrcTrim();
+  }
+  function paintSrcTrim() {
+    const box = $('#srcTrim');
+    if (!box) return;
+    const onVideo = window.LCFlow && LCFlow.step() === 3;
+    const c = onVideo && E.selClip >= 0 ? E.clips[E.selClip] : null;
+    box.classList.toggle('hidden', !c);
+    if (!c) return;
+    const dur = Math.max(0.2, +c.duration || 0.2);
+    const inn = Math.max(0, Math.min(+c.in || 0, dur));
+    const out = Math.max(inn, Math.min(+c.out || dur, dur));
+    const reg = $('#srcReg');
+    if (reg) {
+      reg.style.left = (inn / dur * 100) + '%';
+      reg.style.width = Math.max(0, (out - inn) / dur * 100) + '%';
+    }
+    const clock = window.fmtClock || fmt;
+    if ($('#srcInRead')) $('#srcInRead').textContent = clock(inn);
+    if ($('#srcOutRead')) $('#srcOutRead').textContent = clock(out);
+  }
+  function wireSrcTrim() {
+    const track = $('#srcTrack');
+    if (!track || track.dataset.wired) return;
+    track.dataset.wired = '1';
+    let srcDrag = null;
+    const endSrc = () => {
+      if (!srcDrag) return;
+      const lyric = srcDrag.lyric, style = srcDrag.style;
+      srcDrag = null;
+      hideTip();
+      if (lyric && JSON.stringify(S.lines) !== lyric) S.lines = JSON.parse(lyric);
+      if (style && JSON.stringify(E.styleOv) !== style) E.styleOv = JSON.parse(style);
+      tlRender();
+      refresh();
+    };
+    track.addEventListener('pointerdown', e => {
+      const c = E.selClip >= 0 ? E.clips[E.selClip] : null;
+      if (!c) return;
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      const handle = e.target.closest('[data-src]');
+      srcDrag = {kind: handle ? handle.dataset.src : 'move', inn: c.in, out: c.out, dur: c.duration, x0: e.clientX, lyric: JSON.stringify(S.lines), style: JSON.stringify(E.styleOv)};
+      track.setPointerCapture(e.pointerId);
+    });
+    track.addEventListener('pointermove', e => {
+      if (!srcDrag) return;
+      const c = E.clips[E.selClip];
+      if (!c) return;
+      const dur = Math.max(0.2, srcDrag.dur || 0.2);
+      const width = track.getBoundingClientRect().width || 1;
+      const dt = (e.clientX - srcDrag.x0) / width * dur;
+      const span0 = Math.max(0.12, srcDrag.out - srcDrag.inn);
+      if (srcDrag.kind === 'in') {
+        c.in = Math.max(0, Math.min(srcDrag.out - 0.12, srcDrag.inn + dt));
+        c.out = srcDrag.out;
+      } else if (srcDrag.kind === 'out') {
+        c.out = Math.max(srcDrag.inn + 0.12, Math.min(dur, srcDrag.out + dt));
+        c.in = srcDrag.inn;
+      } else {
+        let inn = srcDrag.inn + dt, out = srcDrag.out + dt;
+        if (inn < 0) { inn = 0; out = span0; }
+        if (out > dur) { out = dur; inn = Math.max(0, dur - span0); }
+        c.in = inn; c.out = out;
+      }
+      if (JSON.stringify(S.lines) !== srcDrag.lyric) S.lines = JSON.parse(srcDrag.lyric);
+      if (JSON.stringify(E.styleOv) !== srcDrag.style) E.styleOv = JSON.parse(srcDrag.style);
+      paintSrcTrim();
+      const node = $('#tlTrack') && $('#tlTrack').querySelector(`.tlclip[data-i="${E.selClip}"]`);
+      if (node) node.style.width = Math.max(8, clipSpan(c) * E.tlPps) + 'px';
+      const clock = window.fmtClock || fmt;
+      showTip(e, clock(c.in) + ' → ' + clock(c.out));
+    });
+    track.addEventListener('pointerup', endSrc);
+    track.addEventListener('pointercancel', endSrc);
   }
   function previewVideoAt(vt) { const v = $('#stageVideo'); try { v.currentTime = vt; } catch (e) {} v.onseeked = () => { E.stage && E.stage.cfg && E.stage.cfg.video && E.stage.drawFrame(E.t); }; }
 
@@ -902,21 +1027,30 @@
   }
   function mountWave() {
     const box = $('#wsBox');
-    if (!window.WaveSurfer || !S.audio || !box || box.clientWidth < 20) return;
+    if (!window.WaveSurfer || !S.audio || !box) return;
+    if (box.clientWidth < 20) {
+      if (box.offsetParent) requestAnimationFrame(mountWave);
+      return;
+    }
     if (E.ws && E.wsUrl === S.audio.id) { syncRegions(); return; }
     if (E.ws) { try { E.ws.destroy(); } catch (e) {} }
     const regions = WaveSurfer.Regions.create();
     E.regions = regions;
     E.wsUrl = S.audio.id;
-    E.ws = WaveSurfer.create({
+    const waveOpts = {
       container: '#wsBox',
-      url: `/api/audio/${S.audio.id}`,
-      height: 84,
+      height: 150,
       waveColor: '#8a8aa0',
       progressColor: '#1ed760',
       cursorColor: '#ff3cac',
+      hideScrollbar: true,
       plugins: [regions, WaveSurfer.Timeline.create({container: '#wsTime'})],
-    });
+    };
+    if (S.audio.peaks && S.audio.peaks.length && S.audio.duration) {
+      waveOpts.peaks = [S.audio.peaks];
+      waveOpts.duration = S.audio.duration;
+    } else waveOpts.url = `/api/audio/${S.audio.id}`;
+    E.ws = WaveSurfer.create(waveOpts);
     E.ws.on('ready', () => syncRegions());
     regions.on('region-updated', region => {
       const m = /^L(\d+)$/.exec(region.id || '');
@@ -1173,7 +1307,19 @@
         video_in: first ? first.in : 0, video_out: first ? first.out : null};
     },
     state: () => E,
-    paintWords, syncRegions, onStep(n) { layoutHandle(); if (n === 2) mountWave(); if (n === 3) { mountAtl(); pushAtl(); } paintWords(); },
+    paintWords, syncRegions, onStep(n) { layoutHandle(); if (n === 2) mountWave(); if (n === 3) { mountAtl(); pushAtl(); } paintWords(); paintSrcTrim(); },
+    onSection() {
+      if (!E.stage) return;
+      const lines = JSON.stringify(S.lines);
+      setAudioSlice();
+      if (E.t > (S.len || 20)) E.t = S.len || 20;
+      const scrub = $('#scrub');
+      if (scrub) { scrub.max = S.len || 20; scrub.value = E.t; }
+      syncRegions();
+      tlRender();
+      if (audio.paused) draw();
+      if (JSON.stringify(S.lines) !== lines) S.lines = JSON.parse(lines);
+    },
     splitAtPlayhead: splitClip,
     skipVideo() { E.videoSkipped = true; },
     videoSkipped: () => E.videoSkipped,
