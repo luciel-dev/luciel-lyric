@@ -132,6 +132,19 @@
       <div><b>Drop a video</b> or click to browse<br><small>mp4 · mov · webm</small></div>
     </label>
     <div id="bgVideoName" class="muted">No video yet</div>
+    <div id="srcTrim" class="srctrim hidden">
+      <div class="sublbl">Source trim</div>
+      <div class="srctrack" id="srcTrack" title="Drag the edges to choose where this clip starts and ends in the source file">
+        <div class="srcreg" id="srcReg">
+          <button type="button" class="srchandle in" data-src="in" title="Source start"></button>
+          <button type="button" class="srchandle out" data-src="out" title="Source end"></button>
+        </div>
+      </div>
+      <div class="songread">
+        <span>In <b id="srcInRead">0:00.0</b></span>
+        <span>Out <b id="srcOutRead">0:00.0</b></span>
+      </div>
+    </div>
     <details class="subbox" open>
       <summary class="sublbl">Frame</summary>
       <div class="row">
@@ -273,7 +286,7 @@
       <div class="row">
         <button id="playBtn" class="btn ghost" type="button" title="Play the chosen section">▶ Play section</button>
         <div class="field" title="Section start in seconds"><span>Start</span><input type="number" id="startIn" step="0.1" min="0" value="0"> s</div>
-        <div class="field grow" title="Section length, 15 to 30 seconds"><span>Length <b id="lenVal">20</b>s</span><input type="range" id="lenIn" min="15" max="30" step="1" value="20"></div>
+        <div class="field grow" title="Section length, 15 to 30 seconds"><span>Length <b id="lenVal">20</b>s</span><input type="range" id="lenIn" min="15" max="30" step="0.1" value="20"></div>
       </div>
     </div>
     <div class="tabpane on" data-pane="render">
@@ -345,7 +358,6 @@
     <div id="errBox" class="syncbanner bad hidden" role="alert"></div>
   </section>
   </div>
-
   <aside class="dock step-off" id="dock">
     <div class="stagecol">
       <div id="preview" class="preview" title="Lyric preview. Words are read-only here."><div id="pvLine">&nbsp;</div><div id="pvNext"></div></div>
@@ -362,7 +374,7 @@
       <div class="sublbl">Lyric timing</div>
       <div id="wsBox"></div>
       <div id="wsTime"></div>
-      <p class="muted small">Drag a bar to retiming that line. This is the only waveform that moves word times.</p>
+      <p class="muted small" id="wsHint">Drag a bar to retime that line. This is the only waveform that moves word times.</p>
     </div>
     <div id="tlSplitBar" class="tlsplit" role="separator" aria-orientation="horizontal" title="Drag to resize the timeline"></div>
     <div id="videoTl" class="dockline step-off">
@@ -380,7 +392,7 @@
           <div class="tlrow"><span class="tlname">Video</span><div class="tltrack" id="tlTrack"></div></div>
           <div class="tlrow"><span class="tlname">Text</span><div class="tltexts" id="tlTexts" title="Extra titles and credits"></div></div>
           <div class="tlrow"><span class="tlname">Lyrics</span><div class="tllyrics" id="tlLyrics" title="Lyrics are read-only on this step"></div></div>
-          <div class="tlrow"><span class="tlname">Audio</span><div class="tlaudiohost" id="tlAudio" title="Song audio. Choose the 15–30 second section on Render."></div></div>
+          <div class="tlrow"><span class="tlname">Audio</span><div class="tlaudiohost" id="tlAudio" title="Song audio. Drag the song-section handles to choose the 15–30 second window."></div></div>
           <div class="tlhead" id="tlHead"></div>
         </div>
       </div>
@@ -393,6 +405,26 @@
     </div>
   </aside>
 </main>
+<div id="songRange" class="songrange hidden">
+  <div class="sublbl">Song section</div>
+  <p class="muted small">Drag either edge for the start or end. Drag the shaded bar to slide the whole section. It stays between 15 and 30 seconds. Lyric text does not change.</p>
+  <div id="songWave"></div>
+  <div class="songread">
+    <span>Start <b id="songStartRead">00:00.0</b></span>
+    <span>End <b id="songEndRead">00:20.0</b></span>
+    <span>Length <b id="songLenRead">00:20.0</b></span>
+  </div>
+  <div class="row songnudge">
+    <button type="button" id="songStartMinus" class="btn ghost small" title="Move the start 0.1 seconds earlier">Start −0.1</button>
+    <button type="button" id="songStartPlus" class="btn ghost small" title="Move the start 0.1 seconds later">Start +0.1</button>
+    <button type="button" id="songEndMinus" class="btn ghost small" title="Move the end 0.1 seconds earlier">End −0.1</button>
+    <button type="button" id="songEndPlus" class="btn ghost small" title="Move the end 0.1 seconds later">End +0.1</button>
+    <label class="field" title="Section start, minutes:seconds"><span>Start</span><input id="songStartIn" type="text" inputmode="decimal" value="00:00.0"></label>
+    <label class="field" title="Section end, minutes:seconds"><span>End</span><input id="songEndIn" type="text" inputmode="decimal" value="00:20.0"></label>
+    <label class="field" title="Section length, 15 to 30 seconds"><span>Length</span><input id="songLenIn" type="number" min="15" max="30" step="0.1" value="20"></label>
+  </div>
+</div>
+<div id="tlTip" class="tltip" hidden></div>
 <audio id="audio" preload="auto"></audio>
 <div id="helpOverlay" class="overlay hidden" role="dialog" aria-label="Shortcuts">
   <div class="overlaycard">

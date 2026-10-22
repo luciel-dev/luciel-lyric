@@ -260,24 +260,38 @@ jobs:
             out/*.zip
             out/*.dmg
             out/*.tar.gz
-            docs/screenshots/sync-v140.png
-            docs/screenshots/sync-panel-y2k.png
-            docs/screenshots/sync-panel-winamp.png
+            docs/screenshots/sync-aero.png
+            docs/screenshots/sync-y2k.png
+            docs/screenshots/sync-winamp.png
+            docs/screenshots/song-range-aero.png
+            docs/screenshots/song-range-y2k.png
+            docs/screenshots/song-range-winamp.png
+            docs/screenshots/trim-drag-aero.png
+            docs/screenshots/trim-drag-y2k.png
+            docs/screenshots/trim-drag-winamp.png
             docs/screenshots/video-aero-1280x800.png
             docs/screenshots/video-y2k-1280x800.png
             docs/screenshots/video-winamp-1280x800.png
           draft: false
           prerelease: false
           body: |
-            Luciel Lyric 1.5.6 — desktop and Android.
+            Luciel Lyric 1.5.7 — desktop.
+
+            The song section is a range on the full-song waveform. Drag the start handle, the end handle, or the shaded bar. The window stays between 15 and 30 seconds, with live start, end, and length readouts, nudge buttons, and typed times. Preview playback loops that section. Moving it does not change lyric text or word times.
+
+            On Video, each clip has edge handles to trim the in and out points, and the clip itself drags along the timeline. Drags snap to the playhead and to other clip edges, and a time tip follows the pointer. The selected clip also has a source trim range. None of that edits lyric text, timings, or styling.
+
+            Sync no longer leaves an empty preview above a paper-thin waveform. The seek bar spans the column, and its labels stay clear of the Preview button.
+
+            Android stays on 1.5.6. This tag does not include an APK. The signing key is unchanged.
 
             Desktop is five guided steps: Audio, Sync lyrics, Video, Text, and Render. Synced word times stay locked, and typed words stay verbatim. Space plays and pauses outside a text field. Video resize, crop, trim, and extra captions live on the Video step and do not change lyric text, timings, or style. That step fills the window: the preview sits on the right, the picture controls fold into a side panel, and the multitrack timeline runs across the bottom. Drag the bar between them to resize it. The mascot stays in its own row under the controls.
 
             Android is six steps: Audio, Sync, Video, Look, Time, and Render. One numbered dock is the step list, and every step opens even when lyrics are not lined up yet. The preview and the play bar stack, and the picture stays large enough to see. Video resize handles are small corner marks with a 48dp hit area, and the timeline shows Video, Text, Lyrics, and Audio. Sync shows whether the Quick voice model is on the phone, downloading, or missing. Quick is inside the APK (74.1 MB, plus a 0.9 MB voice-activity file), so a fresh install can listen offline. The APK is about 98 MB instead of 23 MB. Clearer stays an optional download, with a progress bar and a retry. If the model is missing, tap Mark while the song plays. Skip sync goes straight to Video. Lyric text stays read-only on Video. Look sets the text. Time sets the zoom and the background. Typed lyrics are force-aligned on device. On the sung test clip the mean word-start error is 0.104 s, and 100% of words fall within 0.3 s (confidence 0.915).
 
-            Screenshots cover every Android step in Aero, Y2K, and Winamp, plus the desktop sync and video panels.
+            Screenshots show the desktop song-section handles, the Sync step, and a clip trim mid-drag, in Aero, Y2K, and Winamp, plus the video editor.
 
             * Windows: run LucielLyric-Setup.exe (SmartScreen: More info > Run anyway), or unzip the portable zip and run LucielLyric.exe. No Python. Works offline, including vocal isolation.
             * macOS (Apple Silicon): open the .dmg, drag Luciel Lyric to Applications, then right-click > Open the first time
               (macOS 15+: System Settings > Privacy & Security > Open Anyway). The app is not notarized.
-            * Android (arm64, Android 8+): install LucielLyric-android.apk over 1.5.4 or 1.5.5. The Quick voice model is in the APK. Clearer and the line-up file download once, then stay on the phone. Vocal isolation is desktop-only. This build is signed with the permanent release key. It installs over 1.5.4 and 1.5.5 with no uninstall. Later updates install over this one.
+            * Android stays on 1.5.6. This desktop tag does not add an APK. The 1.5.6 APK remains the signed phone build.

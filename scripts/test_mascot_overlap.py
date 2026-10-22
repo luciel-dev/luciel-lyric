@@ -1,9 +1,14 @@
 """The mascot card and its speech bubble must not cover controls.
 
-For every editor step and theme, at 1280x800 and 1366x768, the visible boxes of
-#mascot and #mascotBubble have to miss every input, button, select, textarea,
-label, heading, and the preview/timeline. A planted overlap must be reported,
-so a checker that never fires fails the run too.
+For every editor step and theme, at 1280x800, 1366x768, 1280x720, and 1920x1080,
+the visible boxes of #mascot and #mascotBubble have to miss every input, button,
+select, textarea, label, heading, and the preview/timeline. Audio, Sync, and
+Video are also checked for clipped readouts and a full-width seek bar. A planted
+overlap must be reported, so a checker that never fires fails the run too.
+
+The same run drags the song-section handles and a video-clip edge with pointer
+events. Section times have to move and stay inside 15–30 seconds. Trimming a
+clip must leave lyric word times untouched.
 
 CI runs this file. It serves static/ itself and stubs the two JSON endpoints
 the page needs, so it does not boot the whisper stack.
@@ -21,7 +26,7 @@ STATIC = ROOT / "static"
 SHOTS = Path("/opt/cursor/artifacts/screenshots")
 DOCS = ROOT / "docs" / "screenshots"
 THEMES = ("aero", "y2k", "winamp")
-VIEWPORTS = ((1280, 800), (1366, 768))
+VIEWPORTS = ((1280, 800), (1366, 768), (1280, 720), (1920, 1080))
 
 _ENGINE = json.loads((STATIC / "engine" / "presets.json").read_text(encoding="utf-8"))
 _LOOKS = _ENGINE["looks"]
@@ -178,8 +183,210 @@ LAYOUT_JS = r"""
 """
 
 
+CLIP_JS = r"""
+() => {
+  const step = window.LCFlow ? LCFlow.step() : 0;
+  const hits = [];
+  function shown(el) {
+    if (!el || el.closest('.step-off, .hidden')) return false;
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden';
+  }
+  function clipped(el) {
+    if (!shown(el)) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return false;
+    let left = rect.left, right = rect.right, top = rect.top, bottom = rect.bottom;
+    for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+      const ps = getComputedStyle(p);
+      if (ps.display === 'none' || ps.visibility === 'hidden') return false;
+      const b = p.getBoundingClientRect();
+      if (/hidden|auto|scroll|clip/.test(ps.overflowX)) {
+        left = Math.max(left, b.left); right = Math.min(right, b.right);
+      }
+      if (/hidden|auto|scroll|clip/.test(ps.overflowY)) {
+        top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom);
+      }
+    }
+    return (bottom - top) < rect.height - 2 || (right - left) < rect.width - 2;
+  }
+  for (const sel of ['#wsHint', '#songRange .songread', '#stageTime', '#stagePlay']) {
+    const el = document.querySelector(sel);
+    if (el && clipped(el)) hits.push(sel + ' clipped');
+  }
+  if (step === 2 || step === 3) {
+    const scrub = document.querySelector('#scrub');
+    const transport = document.querySelector('.transport');
+    const host = step === 3 ? document.querySelector('.stagecol') : document.querySelector('#dock');
+    if (scrub && transport && host) {
+      const sw = scrub.getBoundingClientRect();
+      const tw = transport.getBoundingClientRect();
+      const hw = host.getBoundingClientRect();
+      if (hw.width > 40 && tw.width < hw.width * 0.92) hits.push('transport narrow ' + Math.round(tw.width) + '/' + Math.round(hw.width));
+      if (tw.width > 40 && sw.width < tw.width * 0.45) hits.push('scrub narrow ' + Math.round(sw.width) + '/' + Math.round(tw.width));
+      if (sw.height < 24) hits.push('scrub short ' + Math.round(sw.height));
+    }
+    const play = document.querySelector('#stagePlay');
+    const time = document.querySelector('#stageTime');
+    const hint = document.querySelector('#wsHint');
+    function hit(a, b) {
+      if (!a || !b || !shown(a) || !shown(b)) return false;
+      const A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+      const w = Math.min(A.right, B.right) - Math.max(A.left, B.left);
+      const h = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
+      return w > 1 && h > 1;
+    }
+    if (hit(play, scrub)) hits.push('preview covers scrub');
+    if (hit(scrub, time)) hits.push('scrub covers time');
+    if (hit(play, hint)) hits.push('preview covers hint');
+    if (hit(time, hint)) hits.push('time covers hint');
+  }
+  if (step === 1 || step === 2 || step === 5) {
+    const wave = document.querySelector('#songWave');
+    if (!wave || wave.getBoundingClientRect().height < 100) hits.push('song wave short');
+  }
+  if (step === 2) {
+    const stage = document.querySelector('#stage');
+    if (stage && getComputedStyle(stage).display !== 'none') hits.push('sync stage still visible');
+    const preview = document.querySelector('#preview');
+    if (preview && getComputedStyle(preview).display !== 'none') hits.push('sync preview still visible');
+    const lyric = document.querySelector('#wsBox');
+    if (!lyric || lyric.getBoundingClientRect().height < 120) hits.push('lyric wave short');
+  }
+  return hits;
+}
+"""
+
+
 def overlap_hits(page):
     return page.evaluate(OVERLAP_JS)
+
+
+def clip_hits(page):
+    return page.evaluate(CLIP_JS)
+
+
+def _drag(page, locator, dx, steps=24):
+    box = locator.bounding_box()
+    if not box:
+        raise RuntimeError("missing drag target " + str(locator))
+    x = box["x"] + box["width"] / 2
+    y = box["y"] + min(box["height"] / 2, 40)
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx, y, steps=steps)
+    page.mouse.up()
+    page.wait_for_timeout(60)
+
+
+def range_and_trim(page):
+    """Pointer-drag the song window and a clip edge. Lyrics must stay put."""
+    failures = []
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    kept = page.evaluate("""() => {
+      const lines = [
+        {words: [{text: 'ONE', start: 0.2, end: 0.6}, {text: 'TWO', start: 0.6, end: 1.0}]},
+        {words: [{text: 'THREE', start: 1.2, end: 1.6}]},
+        {words: [{text: 'FOUR', start: 2.0, end: 2.4}]},
+        {words: [{text: 'FIVE', start: 3.0, end: 3.5}]},
+      ];
+      const peaks = [];
+      for (let i = 0; i < 400; i++) peaks.push(0.25 + 0.6 * Math.abs(Math.sin(i / 11)));
+      S.audio = {id: 'long', name: 'long.wav', duration: 90, peaks};
+      S.lines = JSON.parse(JSON.stringify(lines));
+      S.start = 0;
+      S.len = 20;
+      LCFlow.show(1);
+      return JSON.stringify(S.lines);
+    }""")
+    page.wait_for_selector("#songWave [part~='region-handle-right']", timeout=8000)
+    before = page.evaluate("() => ({start: S.start, len: S.len})")
+    _drag(page, page.locator("#songWave [part~='region-handle-right']"), 700, steps=40)
+    right = page.evaluate("() => ({start: S.start, len: S.len, lines: JSON.stringify(S.lines), read: document.querySelector('#songLenRead').textContent})")
+    if right["lines"] != kept:
+        failures.append("end-handle drag changed lyric lines")
+    if not (28 <= right["len"] <= 30.05):
+        failures.append(f"end handle did not clamp near 30s: {right}")
+    if abs(right["start"] - before["start"]) > 0.2 and right["len"] <= before["len"]:
+        failures.append(f"end handle moved the start: {before} -> {right}")
+    page.wait_for_selector("#songWave [part~='region-handle-left']", timeout=4000)
+    _drag(page, page.locator("#songWave [part~='region-handle-left']"), 500, steps=36)
+    left = page.evaluate("() => ({start: S.start, len: S.len, lines: JSON.stringify(S.lines)})")
+    if left["lines"] != kept:
+        failures.append("start-handle drag changed lyric lines")
+    if left["len"] < 14.95 or left["len"] > 16.5:
+        failures.append(f"start handle did not clamp near 15s: {left}")
+    if left["start"] <= 0.2:
+        failures.append(f"start handle did not move: {left}")
+    length_held = left["len"]
+    _drag(page, page.locator("#songWave [part='region section']"), 180, steps=16)
+    moved = page.evaluate("() => ({start: S.start, len: S.len, lines: JSON.stringify(S.lines)})")
+    if moved["lines"] != kept:
+        failures.append("region drag changed lyric lines")
+    if abs(moved["len"] - length_held) > 0.25:
+        failures.append(f"region drag changed length: {length_held} -> {moved}")
+    if moved["start"] <= left["start"] + 0.3:
+        failures.append(f"region drag did not move the section: {left} -> {moved}")
+    typed = page.evaluate("""() => {
+      const input = document.querySelector('#songLenIn');
+      input.value = '22';
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      return {len: S.len, lines: JSON.stringify(S.lines)};
+    }""")
+    if abs(typed["len"] - 22) > 0.05 or typed["lines"] != kept:
+        failures.append(f"typed length failed: {typed}")
+    # Settle a section with both handles inset for the screenshots.
+    page.evaluate("""() => { setSection(8, 18); LCFlow.show(1); }""")
+    page.wait_for_timeout(250)
+    for theme in THEMES:
+        page.click(f"#themePick button[data-theme='{theme}']")
+        page.wait_for_timeout(180)
+        page.screenshot(path=str(SHOTS / f"song_range_{theme}.png"))
+        page.screenshot(path=str(DOCS / f"song-range-{theme}.png"))
+    page.evaluate("""() => { setSection(4, 18); LCFlow.show(2); }""")
+    page.wait_for_function(
+        """() => {
+          const stage = document.querySelector('#stage');
+          const wave = document.querySelector('#wsBox');
+          return stage && getComputedStyle(stage).display === 'none' && wave && wave.getBoundingClientRect().height >= 120;
+        }""",
+        timeout=8000,
+    )
+    for theme in THEMES:
+        page.click(f"#themePick button[data-theme='{theme}']")
+        page.wait_for_timeout(220)
+        page.screenshot(path=str(SHOTS / f"sync_{theme}.png"))
+        page.screenshot(path=str(DOCS / f"sync-{theme}.png"))
+    words = page.evaluate("""() => {
+      const words = JSON.stringify(S.lines.map(l => l.words.map(w => [w.text, w.start, w.end])));
+      ED.onVideo({bg_video_id: 'v1', name: 'luciel-clip-916.mp4', duration: 6, preview_url: '', thumbs_url: ''});
+      LCFlow.show(3);
+      return words;
+    }""")
+    page.wait_for_selector("#tlTrack .tlclip .edge.out", timeout=8000)
+    out0 = page.evaluate("() => ED.state().clips[0].out")
+    for theme in THEMES:
+        page.click(f"#themePick button[data-theme='{theme}']")
+        page.wait_for_timeout(120)
+        edge = page.locator("#tlTrack .tlclip .edge.out").first
+        box = edge.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(box["x"] - 70, box["y"] + 8, steps=8)
+        page.wait_for_timeout(40)
+        page.screenshot(path=str(SHOTS / f"trim_drag_{theme}.png"))
+        page.screenshot(path=str(DOCS / f"trim-drag-{theme}.png"))
+        page.mouse.up()
+        page.wait_for_timeout(40)
+    after = page.evaluate("""() => ({
+      words: JSON.stringify(S.lines.map(l => l.words.map(w => [w.text, w.start, w.end]))),
+      out: ED.state().clips[0].out,
+    })""")
+    if after["words"] != words:
+        failures.append("clip trim changed lyric word times")
+    if not (after["out"] < out0 - 0.2):
+        failures.append(f"clip out edge did not trim: {out0} -> {after['out']}")
+    return failures
 
 
 def launch(p):
@@ -243,8 +450,23 @@ def main():
                                 document.querySelector('#overlayAdd').click();
                               }
                             }""")
+                        if step in (1, 2, 5):
+                            page.wait_for_function(
+                                """() => {
+                                  const wave = document.querySelector('#songWave');
+                                  const box = document.querySelector('#songRange');
+                                  return wave && box && !box.classList.contains('hidden') && wave.getBoundingClientRect().height >= 100;
+                                }""",
+                                timeout=8000,
+                            )
                         hits = overlap_hits(page)
                         where = f"step {step} {theme} {width}x{height}"
+                        if step in (1, 2, 3):
+                            clipped = clip_hits(page)
+                            if clipped:
+                                failures.append(f"{where} clip: {clipped}")
+                                page.screenshot(path=str(SHOTS / f"clip_fail_{theme}_{width}x{height}_s{step}.png"))
+                                print("FAIL", where, "clip", clipped)
                         if hits:
                             failures.append(f"{where}: {hits}")
                             page.screenshot(path=str(SHOTS / f"overlap_fail_{theme}_{width}x{height}_s{step}.png"))
@@ -284,6 +506,13 @@ def main():
                                 page.screenshot(path=str(SHOTS / f"video_{theme}_1280800.png"))
                                 page.screenshot(path=str(DOCS / name))
                                 print("shot", name)
+            trim_failures = range_and_trim(page)
+            for item in trim_failures:
+                failures.append(item)
+                print("FAIL", item)
+            if not trim_failures:
+                print("range and trim ok")
+            page.set_viewport_size({"width": 1280, "height": 800})
             page.evaluate("""() => {
               LCFlow.show(3);
               const target = document.querySelector('#overlayText');
